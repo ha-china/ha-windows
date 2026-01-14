@@ -1,0 +1,28 @@
+# Home Assistant Windows 客户端依赖
+
+# UI 框架
+customtkinter>=5.2.0
+
+# Home Assistant 连接
+aioesphomeapi>=42.7.0
+
+# 音频处理
+soundcard<1
+python-mpv>=1.0.0
+numpy>=1.24.0
+
+# 唤醒词和 VAD
+pymicro-wakeword>=2.0.0
+webrtcvad>=2.0.10
+
+# 系统监控和服务发现
+psutil>=5.9.0
+zeroconf<1
+
+# Windows 特定
+win10toast>=0.9
+pycaw>=0.0.1  # Windows 音量控制
+Pillow>=10.0.0  # 截图功能
+
+# 打包工具（开发依赖）
+pyinstaller>=6.0.0

@@ -1,14 +1,16 @@
 """
-mDNS/Zeroconf 发现模块
-用于自动发现局域网内的 Home Assistant 实例
+mDNS/Zeroconf 服务广播模块
+向局域网广播 ESPHome 设备，让 Home Assistant 能够发现
 """
 
 import asyncio
 import logging
-from typing import List, Optional, Dict, Any
+import socket
+from typing import Optional, Dict, Any
 from dataclasses import dataclass
-from zeroconf import ServiceBrowser, Zeroconf, ServiceStateChange
-from zeroconf.asyncio import AsyncZeroconf, AsyncServiceBrowser
+
+from zeroconf import ServiceInfo, Zeroconf
+from zeroconf.asyncio import AsyncZeroconf
 
 from src.i18n import get_i18n
 
@@ -17,305 +19,241 @@ _i18n = get_i18n()
 
 
 @dataclass
-class HomeAssistantInstance:
-    """Home Assistant 实例信息"""
+class DeviceInfo:
+    """设备信息"""
 
-    name: str
-    host: str
-    port: int
-    ipv4_addresses: List[str]
-    properties: Dict[str, Any]
+    name: str = "Windows Assistant"
+    version: str = "1.0.0"
+    platform: str = "Windows"
+    board: str = "PC"
+    mac_address: Optional[str] = None
 
-    @property
-    def url(self) -> str:
-        """获取 HA URL"""
-        return f"http://{self.host}:{self.port}"
+    def __post_init__(self):
+        """初始化后处理"""
+        if self.mac_address is None:
+            # 获取本机 MAC 地址
+            self.mac_address = self._get_mac_address()
 
-    @property
-    def esphome_port(self) -> int:
-        """获取 ESPHome API 端口（通常是 6053）"""
-        # ESPHome 默认端口是 6053
-        return 6053
+    @staticmethod
+    def _get_mac_address() -> str:
+        """获取本机 MAC 地址"""
+        try:
+            # 获取第一个非回网接口的 MAC 地址
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
 
-    @property
-    def esphome_url(self) -> str:
-        """获取 ESPHome API URL"""
-        return f"http://{self.host}:{self.esphome_port}"
+            # 通过 IP 获取 MAC
+            import uuid
+            mac = uuid.getnode()
+            mac_str = ':'.join(f'{(mac >> (i * 8)) & 0xff:02x}' for i in range(5, -1, -1))
+            return mac_str
+        except Exception:
+            # 返回默认 MAC
+            return "00:00:00:00:00:01"
 
-    def __str__(self) -> str:
-        return f"{self.name} ({self.url})"
 
+class MDNSBroadcaster:
+    """
+    mDNS 服务广播器
 
-class MDNSDiscovery:
-    """mDNS 服务发现器"""
+    向局域网广播 ESPHome 设备服务，让 Home Assistant 能够发现并连接
+    """
 
-    # Home Assistant 的 mDNS 服务类型
-    HOME_ASSISTANT_SERVICE = "_home-assistant._tcp.local."
-    ESPHOME_SERVICE = "_esphomelib._tcp.local."
+    # ESPHome 的 mDNS 服务类型
+    ESPHOME_SERVICE_TYPE = "_esphomelib._tcp.local."
+    SERVICE_PORT = 6053  # ESPHome API 默认端口
 
-    def __init__(self):
-        """初始化 mDNS 发现器"""
-        self.aiobrowser: Optional[AsyncServiceBrowser] = None
-        self.aiozc: Optional[AsyncZeroconf] = None
-        self.discovered_instances: List[HomeAssistantInstance] = []
-
-    async def discover_home_assistant(
-        self, timeout: float = 5.0
-    ) -> List[HomeAssistantInstance]:
+    def __init__(self, device_info: Optional[DeviceInfo] = None):
         """
-        发现局域网内的 Home Assistant 实例
+        初始化 mDNS 广播器
 
         Args:
-            timeout: 发现超时时间（秒）
+            device_info: 设备信息，默认使用 DeviceInfo()
+        """
+        self.device_info = device_info or DeviceInfo()
+        self.aiozc: Optional[AsyncZeroconf] = None
+        self.service_info: Optional[ServiceInfo] = None
+        self._is_registered = False
+
+    async def register_service(self, port: int = SERVICE_PORT) -> bool:
+        """
+        注册 mDNS 服务，向网络广播设备存在
+
+        Args:
+            port: ESPHome API 监听端口
 
         Returns:
-            List[HomeAssistantInstance]: 发现的 HA 实例列表
+            bool: 注册是否成功
         """
-        logger.info(_i18n.t('discovering_ha'))
-
-        self.discovered_instances.clear()
-        instances = []
-
         try:
+            logger.info(_i18n.t('registering_mdns'))
+
             # 创建 AsyncZeroconf 实例
             self.aiozc = AsyncZeroconf()
 
-            # 定义服务类型监听列表
-            service_types = [
-                self.HOME_ASSISTANT_SERVICE,
-                self.ESPHOME_SERVICE,
-            ]
+            # 获取本机 IP 地址
+            local_ip = self._get_local_ip()
+            if not local_ip:
+                logger.error("无法获取本机 IP 地址")
+                return False
 
-            # 创建服务浏览器
-            self.aiobrowser = AsyncServiceBrowser(
-                self.aiozc.zeroconf,
-                service_types,
-                handlers=[self._on_service_state_change],
+            # 构建 TXT 记录（ESPHome 设备属性）
+            txt_record = self._build_txt_record()
+
+            # 创建服务信息
+            # 服务名称格式: {device_name}._esphomelib._tcp.local.
+            service_name = f"{self.device_info.name}.{self.ESPHOME_SERVICE_TYPE}"
+
+            self.service_info = ServiceInfo(
+                self.ESPHOME_SERVICE_TYPE,
+                service_name,
+                addresses=[socket.inet_aton(local_ip)],
+                port=port,
+                properties=txt_record,
+                server=f"{socket.gethostname().split('.')[0]}.local.",
             )
 
-            # 等待服务发现
-            await asyncio.sleep(timeout)
+            # 注册服务
+            await self.aiozc.async_register_service(self.service_info)
+            self._is_registered = True
 
-            # 收集发现的实例
-            instances = self.discovered_instances.copy()
+            logger.info(f"✅ mDNS 服务注册成功!")
+            logger.info(f"   设备名称: {self.device_info.name}")
+            logger.info(f"   本机 IP: {local_ip}")
+            logger.info(f"   监听端口: {port}")
+            logger.info(f"   MAC 地址: {self.device_info.mac_address}")
 
-            logger.info(
-                _i18n.t('ha_found').format(len(instances))
-                if instances
-                else _i18n.t('ha_not_found')
-            )
-
-        except Exception as e:
-            logger.error(f"mDNS 发现失败: {e}")
-
-        finally:
-            # 清理资源
-            await self._cleanup()
-
-        return instances
-
-    def _on_service_state_change(
-        self,
-        zeroconf: Zeroconf,
-        service_type: str,
-        name: str,
-        state_change: ServiceStateChange,
-    ) -> None:
-        """
-        服务状态变化回调
-
-        Args:
-            zeroconf: Zeroconf 实例
-            service_type: 服务类型
-            name: 服务名称
-            state_change: 状态变化
-        """
-        if state_change == ServiceStateChange.Added:
-            self._on_service_added(zeroconf, service_type, name)
-
-    def _on_service_added(
-        self, zeroconf: Zeroconf, service_type: str, name: str
-    ) -> None:
-        """
-        处理新发现的服务的
-
-        Args:
-            zeroconf: Zeroconf 实例
-            service_type: 服务类型
-            name: 服务名称
-        """
-        try:
-            # 查询服务信息
-            info = zeroconf.get_service_info(service_type, name)
-
-            if info is None:
-                return
-
-            # 解析服务信息
-            instance = self._parse_service_info(service_type, name, info)
-
-            if instance:
-                # 避免重复添加
-                if not any(
-                    inst.host == instance.host and inst.port == instance.port
-                    for inst in self.discovered_instances
-                ):
-                    self.discovered_instances.append(instance)
-                    logger.info(f"发现服务: {instance}")
+            return True
 
         except Exception as e:
-            logger.error(f"解析服务信息失败: {e}")
+            logger.error(f"❌ mDNS 服务注册失败: {e}")
+            return False
 
-    def _parse_service_info(
-        self, service_type: str, name: str, info
-    ) -> Optional[HomeAssistantInstance]:
+    def _build_txt_record(self) -> Dict[str, str]:
         """
-        解析服务信息为 HomeAssistantInstance
+        构建 ESPHome 设备的 TXT 记录
 
-        Args:
-            service_type: 服务类型
-            name: 服务名称
-            info: 服务信息
+        这些属性会被 Home Assistant 读取，用于识别设备
 
         Returns:
-            Optional[HomeAssistantInstance]: 解析后的实例信息
+            Dict[str, str]: TXT 记录字典
+        """
+        txt_record = {
+            # ESPHome 核心属性
+            "version": self.device_info.version,
+            "platform": self.device_info.platform,
+            "board": self.device_info.board,
+            # MAC 地址用于设备唯一标识
+            "mac": self.device_info.mac_address,
+            # 设备名称
+            "friendly_name": self.device_info.name,
+            # 设备类型标识
+            "package_import": "false",
+            "project_name": "HomeAssistantWindows.windows_client",
+            "project_version": self.device_info.version,
+        }
+        return txt_record
+
+    @staticmethod
+    def _get_local_ip() -> Optional[str]:
+        """
+        获取本机局域网 IP 地址
+
+        Returns:
+            Optional[str]: 本机 IP 地址，获取失败返回 None
         """
         try:
-            # 获取 IPv4 地址
-            ipv4_addresses = [
-                addr
-                for addr in info.parsed_addresses()
-                if len(addr.split(".")) == 4  # IPv4
-            ]
-
-            if not ipv4_addresses:
-                return None
-
-            host = ipv4_addresses[0]
-            port = info.port
-
-            # 解析属性
-            properties = {}
-            for key, value in info.properties.items():
-                if isinstance(value, bytes):
-                    try:
-                        properties[key.decode("utf-8")] = value.decode("utf-8")
-                    except UnicodeDecodeError:
-                        properties[key.decode("utf-8")] = str(value)
-                else:
-                    properties[key] = value
-
-            # 解析服务名称
-            # 格式通常是: "My Home Assistant._home-assistant._tcp.local."
-            # 去掉后缀
-            service_name = name.replace(f".{service_type}", "").split(".")[0]
-
-            # 创建实例
-            instance = HomeAssistantInstance(
-                name=service_name,
-                host=host,
-                port=port,
-                ipv4_addresses=ipv4_addresses,
-                properties=properties,
-            )
-
-            return instance
-
-        except Exception as e:
-            logger.error(f"解析服务信息失败: {e}")
+            # 通过连接外部地址获取本机 IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
             return None
+
+    @property
+    def is_registered(self) -> bool:
+        """服务是否已注册"""
+        return self._is_registered
+
+    async def unregister_service(self) -> None:
+        """注销 mDNS 服务"""
+        if self.aiozc and self.service_info and self._is_registered:
+            try:
+                await self.aiozc.async_unregister_service(self.service_info)
+                logger.info("mDNS 服务已注销")
+            except Exception as e:
+                logger.error(f"注销服务失败: {e}")
+            finally:
+                await self._cleanup()
+                self._is_registered = False
 
     async def _cleanup(self) -> None:
         """清理资源"""
-        if self.aiobrowser:
-            await self.aiobrowser.async_cancel()
-            self.aiobrowser = None
-
         if self.aiozc:
-            await self.aiozc.async_close()
-            self.aiozc = None
-
-
-class MDNSDiscoverySync:
-    """mDNS 发现的同步封装（用于非异步环境）"""
-
-    def __init__(self):
-        """初始化同步发现器"""
-        self.discovery = MDNSDiscovery()
-
-    def discover_home_assistant(
-        self, timeout: float = 5.0
-    ) -> List[HomeAssistantInstance]:
-        """
-        同步发现 Home Assistant 实例
-
-        Args:
-            timeout: 发现超时时间（秒）
-
-        Returns:
-            List[HomeAssistantInstance]: 发现的 HA 实例列表
-        """
-        try:
-            # 在新的事件循环中运行异步发现
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
             try:
-                instances = loop.run_until_complete(
-                    self.discovery.discover_home_assistant(timeout)
-                )
-                return instances
-            finally:
-                loop.close()
+                await self.aiozc.async_close()
+            except Exception:
+                pass
+            self.aiozc = None
+        self.service_info = None
 
-        except Exception as e:
-            logger.error(f"同步发现失败: {e}")
-            return []
+    async def __aenter__(self):
+        """异步上下文管理器入口"""
+        await self.register_service()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器出口"""
+        await self.unregister_service()
 
 
 # 便捷函数
-async def discover_ha_async(timeout: float = 5.0) -> List[HomeAssistantInstance]:
+async def register_device(
+    device_name: str = "Windows Assistant",
+    port: int = MDNSBroadcaster.SERVICE_PORT,
+) -> MDNSBroadcaster:
     """
-    异步发现 Home Assistant 实例
+    注册设备到 mDNS 网络
 
     Args:
-        timeout: 发现超时时间（秒）
+        device_name: 设备名称
+        port: API 服务端口
 
     Returns:
-        List[HomeAssistantInstance]: 发现的 HA 实例列表
+        MDNSBroadcaster: 广播器实例
     """
-    discovery = MDNSDiscovery()
-    return await discovery.discover_home_assistant(timeout)
-
-
-def discover_ha(timeout: float = 5.0) -> List[HomeAssistantInstance]:
-    """
-    同步发现 Home Assistant 实例
-
-    Args:
-        timeout: 发现超时时间（秒）
-
-    Returns:
-        List[HomeAssistantInstance]: 发现的 HA 实例列表
-    """
-    sync_discovery = MDNSDiscoverySync()
-    return sync_discovery.discover_home_assistant(timeout)
+    device_info = DeviceInfo(name=device_name)
+    broadcaster = MDNSBroadcaster(device_info)
+    await broadcaster.register_service(port)
+    return broadcaster
 
 
 if __name__ == "__main__":
-    # 测试代码
-    logging.basicConfig(level=logging.INFO)
+    # 测试代码 - 广播设备 30 秒
+    import asyncio
 
-    print("开始发现 Home Assistant 实例...")
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
 
-    instances = discover_ha(timeout=10.0)
+    async def test():
+        print("开始广播 ESPHome 设备...")
 
-    if instances:
-        print(f"\n发现 {len(instances)} 个 Home Assistant 实例:")
-        for i, instance in enumerate(instances, 1):
-            print(f"{i}. {instance}")
-            print(f"   URL: {instance.url}")
-            print(f"   ESPHome: {instance.esphome_url}")
-            print(f"   IPv4: {', '.join(instance.ipv4_addresses)}")
-    else:
-        print("未发现任何 Home Assistant 实例")
+        broadcaster = MDNSBroadcaster()
+        success = await broadcaster.register_service()
+
+        if success:
+            print(f"\n✅ 设备已广播到网络!")
+            print(f"   在 Home Assistant 中添加 ESPHome 设备即可发现")
+            print(f"\n等待 30 秒后自动退出...")
+
+            await asyncio.sleep(30)
+
+            await broadcaster.unregister_service()
+
+    asyncio.run(test())

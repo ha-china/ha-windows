@@ -35,6 +35,7 @@ class I18n:
                 'recent_conversations': '最近对话',
 
                 # 连接
+                'registering_mdns': '正在注册 mDNS 服务...',
                 'discovering_ha': '正在发现 Home Assistant...',
                 'ha_found': '发现 Home Assistant: {}',
                 'ha_not_found': '未发现 Home Assistant',
@@ -103,6 +104,7 @@ class I18n:
                 'recent_conversations': 'Recent Conversations',
 
                 # Connection
+                'registering_mdns': 'Registering mDNS service...',
                 'discovering_ha': 'Discovering Home Assistant...',
                 'ha_found': 'Home Assistant found: {}',
                 'ha_not_found': 'Home Assistant not found',

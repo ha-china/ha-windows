@@ -1,6 +1,6 @@
 """
-Home Assistant Windows 客户端主程序入口
-零配置 HA Windows 原生客户端，支持 Voice Assistant
+Home Assistant Windows 客户端主程序
+模拟 ESPHome 设备，让 Home Assistant 可以发现并连接
 """
 
 import sys
@@ -11,14 +11,14 @@ from pathlib import Path
 
 # PyInstaller 打包后的路径设置
 if getattr(sys, 'frozen', False):
-    # PyInstaller 打包后的环境
-    # _MEIPASS 是临时解压目录，src 已经在里面了
-    # 不需要额外设置路径，因为现在是从 src 包启动
-    pass
+    import os
+    src_path = os.path.join(sys._MEIPASS, 'src')
+    if src_path not in sys.path:
+        sys.path.insert(0, src_path)
 
-from i18n import get_i18n, set_language
-from core.mdns_discovery import discover_ha
-from core.esphome_connection import ESPHomeConnectionManager
+from src.i18n import get_i18n, set_language
+from src.core.mdns_discovery import MDNSBroadcaster, DeviceInfo
+from src.core.esphome_server import ESPHomeServer
 
 # 配置日志
 logging.basicConfig(
@@ -31,29 +31,53 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-_i18n = get_i18n()
 
 
 class HomeAssistantWindows:
-    """Home Assistant Windows 客户端主类"""
+    """
+    Home Assistant Windows 客户端主类
 
-    def __init__(self):
-        """初始化客户端"""
-        self.connection_manager = ESPHomeConnectionManager()
+    功能：
+    1. 启动 ESPHome API 服务器（监听 6053 端口）
+    2. 注册 mDNS 服务广播（让 HA 发现设备）
+    3. 等待 Home Assistant 连接
+    """
+
+    DEFAULT_PORT = 6053
+    DEFAULT_DEVICE_NAME = "Windows Assistant"
+
+    def __init__(self, device_name: str = None, port: int = None):
+        """
+        初始化客户端
+
+        Args:
+            device_name: 设备名称
+            port: API 服务端口
+        """
+        self.device_name = device_name or self.DEFAULT_DEVICE_NAME
+        self.port = port or self.DEFAULT_PORT
+
+        # 组件
+        self.mdns_broadcaster: MDNSBroadcaster = None
+        self.api_server: ESPHomeServer = None
+
         self.running = False
 
     async def run(self):
         """运行主程序"""
         try:
             logger.info("=" * 60)
-            logger.info(_i18n.t('app_name'))
-            logger.info(f"Version: 0.1.0")
+            logger.info(f"🖥️  {self.device_name}")
+            logger.info(f"版本: 1.0.0")
             logger.info("=" * 60)
 
-            # Step 1: 发现 Home Assistant 实例
-            await self._discover_and_connect()
+            # Step 1: 启动 ESPHome API 服务器
+            await self._start_api_server()
 
-            # Step 2: 运行主循环
+            # Step 2: 注册 mDNS 服务广播
+            await self._register_mdns_service()
+
+            # Step 3: 运行主循环
             self.running = True
             await self._main_loop()
 
@@ -64,67 +88,94 @@ class HomeAssistantWindows:
         finally:
             await self._cleanup()
 
-    async def _discover_and_connect(self):
-        """发现并连接到 Home Assistant"""
-        logger.info(_i18n.t('discovering_ha'))
+    async def _start_api_server(self):
+        """启动 ESPHome API 服务器"""
+        logger.info("启动 ESPHome API 服务器...")
 
-        # 发现 HA 实例
-        instances = await asyncio.to_thread(discover_ha, timeout=10.0)
+        self.api_server = ESPHomeServer(
+            host="0.0.0.0",
+            port=self.port,
+        )
 
-        if not instances:
-            logger.error(_i18n.t('ha_not_found'))
-            logger.error("请确保:")
-            logger.error("  1. Home Assistant 正在运行")
-            logger.error("  2. 与 Windows 电脑在同一局域网")
-            logger.error("  3. Home Assistant 的 mDNS 服务已启用")
-            return False
+        success = await self.api_server.start()
 
-        # 显示发现的实例
-        logger.info(f"\n发现 {len(instances)} 个 Home Assistant 实例:")
-        for i, instance in enumerate(instances, 1):
-            logger.info(f"  {i}. {instance.name} - {instance.url}")
-            logger.info(f"     ESPHome: {instance.esphome_url}")
+        if not success:
+            raise RuntimeError("API 服务器启动失败")
 
-        # 选择实例（如果多个）
-        if len(instances) == 1:
-            instance = instances[0]
-        else:
-            # TODO: 实现 UI 让用户选择
-            logger.info("\n默认选择第一个实例")
-            instance = instances[0]
+        # 在后台运行服务器
+        asyncio.create_task(self.api_server.serve_forever())
 
-        # 连接到选定的实例
-        logger.info(f"\n正在连接到: {instance.name}")
-        connection = await self.connection_manager.connect_to_instance(instance)
+    async def _register_mdns_service(self):
+        """注册 mDNS 服务广播"""
+        logger.info("注册 mDNS 服务广播...")
 
-        if connection.is_connected():
-            logger.info("✅ " + _i18n.t('connection_successful'))
-            return True
-        else:
-            logger.error("❌ " + _i18n.t('connection_failed'))
-            return False
+        device_info = DeviceInfo(
+            name=self.device_name,
+            version="1.0.0",
+            platform="Windows",
+            board="PC",
+        )
+
+        self.mdns_broadcaster = MDNSBroadcaster(device_info)
+        success = await self.mdns_broadcaster.register_service(self.port)
+
+        if not success:
+            raise RuntimeError("mDNS 服务注册失败")
 
     async def _main_loop(self):
         """主循环"""
-        logger.info("\n主程序已启动，按 Ctrl+C 退出")
+        logger.info("")
+        logger.info("✅ 设备已启动并广播到网络!")
+        logger.info("")
+        logger.info("📍 在 Home Assistant 中操作:")
+        logger.info("   1. 设置 > 设备与服务 > 添加集成")
+        logger.info("   2. 搜索 'ESPHome' 或添加手动")
+        logger.info("   3. 应该能发现此设备")
+        logger.info("")
+        logger.info("按 Ctrl+C 退出程序...")
+        logger.info("")
 
-        # TODO: 实现实际的功能循环
-        # 目前只是保持运行
+        # 保持运行
         while self.running:
             await asyncio.sleep(1)
 
     async def _cleanup(self):
         """清理资源"""
         logger.info("正在清理资源...")
-        await self.connection_manager.disconnect_all()
+
         self.running = False
+
+        # 注销 mDNS 服务
+        if self.mdns_broadcaster:
+            try:
+                await self.mdns_broadcaster.unregister_service()
+            except Exception as e:
+                logger.error(f"注销 mDNS 服务失败: {e}")
+
+        # 停止 API 服务器
+        if self.api_server:
+            try:
+                await self.api_server.stop()
+            except Exception as e:
+                logger.error(f"停止 API 服务器失败: {e}")
 
 
 def main():
     """主函数"""
     # 解析命令行参数
     parser = argparse.ArgumentParser(
-        description="Home Assistant Windows 客户端"
+        description="Home Assistant Windows 客户端 - 模拟 ESPHome 设备"
+    )
+    parser.add_argument(
+        '--name',
+        default="Windows Assistant",
+        help='设备名称（默认: Windows Assistant）'
+    )
+    parser.add_argument(
+        '--port',
+        type=int,
+        default=6053,
+        help='API 服务端口（默认: 6053）'
     )
     parser.add_argument(
         '--language',
@@ -148,7 +199,10 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     # 创建并运行客户端
-    client = HomeAssistantWindows()
+    client = HomeAssistantWindows(
+        device_name=args.name,
+        port=args.port,
+    )
 
     # 运行异步主程序
     try:

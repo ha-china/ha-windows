@@ -203,14 +203,12 @@ flake8 src/
 
 ## 🙏 致谢
 
-- [linux-voice-assistant](https://github.com/grzanyz/linux-voice-assistant) - 提供了 ESPHome Voice Assistant 的参考实现
-- [HASS.Agent](https://github.com/HASS-Apps/HASS.Agent) - 提供了 Windows 传感器和命令执行的参考
+- [linux-voice-assistant](https://github.com/OHF-Voice/linux-voice-assistant) - 提供了 ESPHome Voice Assistant 的参考实现
+- [HASS.Agent](https://github.com/hass-agent/HASS.Agent) - 提供了 Windows 传感器和命令执行的参考
 
 ## 📧 联系方式
 
-- 作者：老王
-- Email: your-email@example.com
-- GitHub Issues: [提交问题](https://github.com/yourusername/ha-windows/issues)
+- GitHub Issues: [提交问题](https://github.com/ha-china/ha-windows/issues)
 
 ---
 

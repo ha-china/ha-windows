@@ -7,6 +7,7 @@ import sys
 import logging
 import asyncio
 import argparse
+import socket
 from pathlib import Path
 
 # PyInstaller 打包后的路径设置
@@ -18,7 +19,8 @@ if getattr(sys, 'frozen', False):
 
 from src.i18n import get_i18n, set_language
 from src.core.mdns_discovery import MDNSBroadcaster, DeviceInfo
-from src.core.esphome_server import ESPHomeServer
+from src.core.esphome_protocol import ESPHomeServer
+from src.ui.system_tray_icon import get_tray
 
 # 配置日志
 logging.basicConfig(
@@ -31,6 +33,15 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_hostname() -> str:
+    """获取本机机器名（去除域名部分）"""
+    try:
+        hostname = socket.gethostname()
+        return hostname.split('.')[0]
+    except Exception:
+        return "Windows-PC"
 
 
 class HomeAssistantWindows:
@@ -53,12 +64,18 @@ class HomeAssistantWindows:
             device_name: 设备名称（为 None 时使用本机机器名）
             port: API 服务端口
         """
-        self.device_name = device_name  # None 时会使用本机机器名
+        # 如果 device_name 为 None，使用本机机器名
+        if device_name is None:
+            device_name = _get_hostname()
+
+        self.device_name = device_name
         self.port = port or self.DEFAULT_PORT
 
         # 组件
         self.mdns_broadcaster: MDNSBroadcaster = None
         self.api_server: ESPHomeServer = None
+        self.tray = get_tray()
+        self._local_ip = None  # 保存本机 IP 用于托盘显示
 
         self.running = False
 
@@ -94,6 +111,7 @@ class HomeAssistantWindows:
         self.api_server = ESPHomeServer(
             host="0.0.0.0",
             port=self.port,
+            device_name=self.device_name,
         )
 
         success = await self.api_server.start()
@@ -122,6 +140,17 @@ class HomeAssistantWindows:
         if not success:
             raise RuntimeError("mDNS 服务注册失败")
 
+        # 保存本机 IP 用于托盘显示
+        self._local_ip = self.mdns_broadcaster._get_local_ip()
+
+        # 启动系统托盘图标
+        display_name = device_info.name if device_info.name else self.device_name
+        self.tray.start(
+            name=display_name,
+            ip=self._local_ip or "Unknown",
+            port=self.port
+        )
+
     async def _main_loop(self):
         """主循环"""
         logger.info("")
@@ -144,6 +173,12 @@ class HomeAssistantWindows:
         logger.info("正在清理资源...")
 
         self.running = False
+
+        # 停止系统托盘图标
+        try:
+            self.tray.stop()
+        except Exception as e:
+            logger.error(f"停止托盘图标失败: {e}")
 
         # 注销 mDNS 服务
         if self.mdns_broadcaster:

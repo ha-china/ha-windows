@@ -23,6 +23,7 @@ zeroconf<1
 win10toast>=0.9
 pycaw>=0.0.1  # Windows 音量控制
 Pillow>=10.0.0  # 截图功能
+pystray>=0.19.0  # 系统托盘图标
 
 # 打包工具（开发依赖）
 pyinstaller>=6.0.0

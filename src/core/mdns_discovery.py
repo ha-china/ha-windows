@@ -147,26 +147,23 @@ class MDNSBroadcaster:
 
     def _build_txt_record(self) -> Dict[str, str]:
         """
-        构建 ESPHome 设备的 TXT 记录
+        构建 ESPHome 设备的 TXT 讗录
 
-        这些属性会被 Home Assistant 读取，用于识别设备
+        完全参考 linux-voice-assistant 的格式
 
         Returns:
             Dict[str, str]: TXT 记录字典
         """
+        # mDNS 中的 MAC 地址用无冒号格式
+        mac_no_colons = self.device_info.mac_address.replace(":", "").lower()
+
         txt_record = {
-            # ESPHome 核心属性
-            "version": self.device_info.version,
-            "platform": self.device_info.platform,
-            "board": self.device_info.board,
-            # MAC 地址用于设备唯一标识
-            "mac": self.device_info.mac_address,
-            # 设备名称
-            "friendly_name": self.device_info.name,
-            # 设备类型标识
-            "package_import": "false",
-            "project_name": "HomeAssistantWindows.windows_client",
-            "project_version": self.device_info.version,
+            # 参考 linux-voice-assistant 的 TXT 记录格式
+            "version": "2025.9.0",
+            "mac": mac_no_colons,
+            "board": "host",
+            "platform": "HOST",
+            "network": "ethernet",
         }
         return txt_record
 

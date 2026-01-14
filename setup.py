@@ -59,10 +59,12 @@ def build_exe():
         "--hidden-import=zeroconf",
         "--hidden-import=pycaw",
         "--hidden-import=PIL",
+        "--hidden-import=pystray",
         # src 模块隐藏导入（重要！）
         "--hidden-import=i18n",
         "--hidden-import=core.mdns_discovery",
-        "--hidden-import=core.esphome_connection",
+        "--hidden-import=core.esphome_server",
+        "--hidden-import=ui.system_tray_icon",
         "--hidden-import=voice.audio_recorder",
         "--hidden-import=voice.mpv_player",
         "--hidden-import=voice.wake_word",

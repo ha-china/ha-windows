@@ -44,17 +44,16 @@ class HomeAssistantWindows:
     """
 
     DEFAULT_PORT = 6053
-    DEFAULT_DEVICE_NAME = "Windows Assistant"
 
     def __init__(self, device_name: str = None, port: int = None):
         """
         初始化客户端
 
         Args:
-            device_name: 设备名称
+            device_name: 设备名称（为 None 时使用本机机器名）
             port: API 服务端口
         """
-        self.device_name = device_name or self.DEFAULT_DEVICE_NAME
+        self.device_name = device_name  # None 时会使用本机机器名
         self.port = port or self.DEFAULT_PORT
 
         # 组件
@@ -109,8 +108,9 @@ class HomeAssistantWindows:
         """注册 mDNS 服务广播"""
         logger.info("注册 mDNS 服务广播...")
 
+        # device_name 为 None 时自动使用本机机器名
         device_info = DeviceInfo(
-            name=self.device_name,
+            name=self.device_name,  # None 会自动使用本机机器名
             version="1.0.0",
             platform="Windows",
             board="PC",
@@ -168,8 +168,8 @@ def main():
     )
     parser.add_argument(
         '--name',
-        default="Windows Assistant",
-        help='设备名称（默认: Windows Assistant）'
+        default=None,
+        help='设备名称（默认: 本机机器名）'
     )
     parser.add_argument(
         '--port',

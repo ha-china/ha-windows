@@ -22,7 +22,7 @@ _i18n = get_i18n()
 class DeviceInfo:
     """设备信息"""
 
-    name: str = "Windows Assistant"
+    name: str = None  # 默认使用本机机器名
     version: str = "1.0.0"
     platform: str = "Windows"
     board: str = "PC"
@@ -30,9 +30,23 @@ class DeviceInfo:
 
     def __post_init__(self):
         """初始化后处理"""
+        if self.name is None:
+            # 获取本机机器名
+            self.name = self._get_hostname()
         if self.mac_address is None:
             # 获取本机 MAC 地址
             self.mac_address = self._get_mac_address()
+
+    @staticmethod
+    def _get_hostname() -> str:
+        """获取本机机器名"""
+        import socket
+        try:
+            hostname = socket.gethostname()
+            # 去掉可能的域名后缀
+            return hostname.split('.')[0]
+        except Exception:
+            return "Windows-PC"
 
     @staticmethod
     def _get_mac_address() -> str:

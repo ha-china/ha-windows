@@ -63,6 +63,10 @@ htmlcov/
 *.temp
 *.bak
 *.backup
+nul
+commit_v022.py
+commit_workflow.py
+do_tag.py
 
 # 系统文件
 Thumbs.db

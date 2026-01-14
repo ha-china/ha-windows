@@ -9,24 +9,12 @@ import asyncio
 import argparse
 from pathlib import Path
 
-# 设置 PyInstaller 打包环境
+# PyInstaller 打包后的路径设置
 if getattr(sys, 'frozen', False):
     # PyInstaller 打包后的环境
-    if hasattr(sys, '_MEIPASS'):
-        # 单文件打包模式
-        # 关键：设置 __package__ 为 'src'，这样相对导入才能正确工作
-        sys.path.insert(0, str(Path(sys._MEIPASS) / 'src'))
-    else:
-        # 单目录打包模式
-        sys.path.insert(0, str(Path(sys.executable).parent / 'src'))
-else:
-    # 开发环境
-    sys.path.insert(0, str(Path(__file__).parent))
-
-# 设置 __package__，让相对导入正常工作
-if not __package__:
-    __package__ = 'src'
-    sys.modules['src'] = sys.modules['__main__']
+    # _MEIPASS 是临时解压目录，src 已经在里面了
+    # 不需要额外设置路径，因为现在是从 src 包启动
+    pass
 
 from i18n import get_i18n, set_language
 from core.mdns_discovery import discover_ha

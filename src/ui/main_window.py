@@ -12,8 +12,8 @@ from typing import Optional
 
 import customtkinter as ctk
 
-from ..i18n import get_i18n
-from ..core.esphome_connection import ConnectionState
+from src.i18n import get_i18n
+from src.core.esphome_connection import ConnectionState
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()

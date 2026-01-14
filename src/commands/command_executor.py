@@ -12,7 +12,7 @@ from .system_commands import SystemCommands
 from .media_commands import MediaCommands
 from .audio_commands import AudioCommands
 
-from ..i18n import get_i18n
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()

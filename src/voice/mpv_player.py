@@ -10,7 +10,7 @@ from enum import Enum
 
 from mpv import MPV
 
-from ..i18n import get_i18n
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()

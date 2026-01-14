@@ -10,8 +10,8 @@ from typing import Dict, Optional
 from aioesphomeapi import APIClient
 
 from .windows_monitor import WindowsMonitor
-from ..core.mdns_discovery import HomeAssistantInstance
-from ..i18n import get_i18n
+from src.core.mdns_discovery import HomeAssistantInstance
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()

@@ -10,7 +10,7 @@ from typing import Callable, Optional
 import numpy as np
 from pymicro_wakeword import MicroWakeWord
 
-from ..i18n import get_i18n
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n())

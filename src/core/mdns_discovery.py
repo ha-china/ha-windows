@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from zeroconf import ServiceBrowser, Zeroconf, ServiceStateChange
 from zeroconf.asyncio import AsyncZeroconf, AsyncServiceBrowser
 
-from ..i18n import get_i18n
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()

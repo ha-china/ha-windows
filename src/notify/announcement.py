@@ -7,8 +7,8 @@ import asyncio
 import logging
 from typing import Callable, Optional
 
-from ..voice.mpv_player import AsyncMpvMediaPlayer
-from ..i18n import get_i18n
+from src.voice.mpv_player import AsyncMpvMediaPlayer
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()

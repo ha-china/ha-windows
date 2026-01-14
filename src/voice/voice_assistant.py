@@ -12,8 +12,8 @@ from .mpv_player import AsyncMpvMediaPlayer
 from .wake_word import AsyncWakeWordDetector
 from .vad import StreamingVAD
 
-from ..core.esphome_connection import ESPHomeConnection
-from ..i18n import get_i18n
+from src.core.esphome_connection import ESPHomeConnection
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()

@@ -9,7 +9,7 @@ from typing import Optional
 import webrtcvad
 import numpy as np
 
-from ..i18n import get_i18n
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()

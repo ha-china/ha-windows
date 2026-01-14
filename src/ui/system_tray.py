@@ -12,7 +12,7 @@ from typing import Optional, Callable
 import customtkinter as ctk
 from PIL import Image
 
-from ..i18n import get_i18n
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()

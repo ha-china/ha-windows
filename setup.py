@@ -20,8 +20,8 @@ APP_VERSION = "0.1.0"
 APP_AUTHOR = "老王"
 APP_DESCRIPTION = "零配置 Home Assistant Windows 原生客户端"
 
-# 主程序入口（使用包名，这样相对导入才能正常工作）
-MAIN_SCRIPT = "src"
+# 主程序入口（使用 __main__.py，这样相对导入才能正常工作）
+MAIN_SCRIPT = "src/__main__.py"
 
 # 如果主程序不存在，创建一个临时的
 if not os.path.exists(MAIN_SCRIPT):

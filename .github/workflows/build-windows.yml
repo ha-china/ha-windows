@@ -10,7 +10,7 @@ on:
       - 'v*'
   pull_request:
     branches: [main]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -33,7 +33,7 @@ jobs:
     - name: 缓存 pip 依赖
       uses: actions/cache@v4
       with:
-        path: ~\AppData\Local\pip\Cache
+        path: ~/AppData/Local/pip/Cache
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-

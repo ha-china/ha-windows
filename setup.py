@@ -58,16 +58,34 @@ def build_exe():
         "--hidden-import=zeroconf",
         "--hidden-import=pycaw",
         "--hidden-import=PIL",
+        # src 模块隐藏导入（重要！）
+        "--hidden-import=i18n",
+        "--hidden-import=core.mdns_discovery",
+        "--hidden-import=core.esphome_connection",
+        "--hidden-import=voice.audio_recorder",
+        "--hidden-import=voice.mpv_player",
+        "--hidden-import=voice.wake_word",
+        "--hidden-import=voice.vad",
+        "--hidden-import=voice.voice_assistant",
+        "--hidden-import=commands.command_executor",
+        "--hidden-import=commands.system_commands",
+        "--hidden-import=commands.media_commands",
+        "--hidden-import=commands.audio_commands",
+        "--hidden-import=sensors.windows_monitor",
+        "--hidden-import=sensors.esphome_sensors",
+        "--hidden-import=notify.announcement",
+        "--hidden-import=ui.main_window",
+        "--hidden-import=ui.system_tray",
         # 收集所有子模块
         "--collect-all=customtkinter",
         "--collect-all=aioesphomeapi",
+        # 添加 src 目录到 Python 路径
+        "--add-data=src;src",
         # 排除不需要的模块（减小体积）
         "--exclude-module=matplotlib",
         "--exclude-module=pandas",
         "--exclude-module=scipy",
         "--exclude-module=pytest",
-        # 添加数据文件（如果有的话）
-        # "--add-data=src/i18n;src",
     ]
 
     # 过滤空参数

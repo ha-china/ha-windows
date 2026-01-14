@@ -1,5 +1,5 @@
 # GitHub Actions CI/CD Workflow
-# 用于自动构建 Windows 可执行文件
+# Automatically build Windows executable
 
 name: Build Windows EXE
 
@@ -22,15 +22,15 @@ jobs:
         python-version: ['3.11']
 
     steps:
-    - name: Checkout 代码
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: 设置 Python ${{ matrix.python-version }}
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: 缓存 pip 依赖
+    - name: Cache pip dependencies
       uses: actions/cache@v4
       with:
         path: ~/AppData/Local/pip/Cache
@@ -38,37 +38,37 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
 
-    - name: 安装依赖
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: 检查主程序是否存在
+    - name: Check main script exists
       run: |
-        if (!(Test-Path "src\main.py")) {
-          Write-Host "警告: src\main.py 不存在，构建可能会失败！"
-          Write-Host "请确保项目已正确初始化。"
+        if (!(Test-Path "src/__main__.py")) {
+          Write-Host "Warning: src/__main__.py not found, build may fail!"
+          Write-Host "Please ensure project is properly initialized."
         } else {
-          Write-Host "src\main.py 存在，继续构建..."
-          Get-Item src\main.py | Select-Object Name, Length
+          Write-Host "src/__main__.py exists, continuing build..."
+          Get-Item src/__main__.py | Select-Object Name, Length
         }
 
-    - name: 构建 EXE
+    - name: Build EXE
       run: |
         python setup.py --build
 
-    - name: 检查构建产物
+    - name: Check build output
       run: |
         if (Test-Path "dist\HomeAssistantWindows.exe") {
-          Write-Host "EXE 文件构建成功！"
+          Write-Host "EXE file built successfully!"
           Get-Item dist\HomeAssistantWindows.exe | Select-Object Name, Length, LastWriteTime
         } else {
-          Write-Host "EXE 文件构建失败！"
+          Write-Host "EXE file build failed!"
           exit 1
         }
 
-    - name: 上传构建产物
+    - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
         name: ha-windows-exe-python-${{ matrix.python-version }}
@@ -76,22 +76,22 @@ jobs:
         retention-days: 30
 
   release:
-    name: 创建 GitHub Release
+    name: Create GitHub Release
     needs: build
     runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
-    - name: Checkout 代码
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: 下载构建产物
+    - name: Download build artifact
       uses: actions/download-artifact@v4
       with:
         name: ha-windows-exe-python-3.11
         path: dist
 
-    - name: 创建 Release
+    - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         files: dist/HomeAssistantWindows.exe

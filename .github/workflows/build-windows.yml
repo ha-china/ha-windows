@@ -5,11 +5,12 @@ name: Build Windows EXE
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
     tags:
       - 'v*'
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   build:
@@ -25,12 +26,12 @@ jobs:
       uses: actions/checkout@v4
 
     - name: 设置 Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
 
     - name: 缓存 pip 依赖
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~\AppData\Local\pip\Cache
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -46,11 +47,11 @@ jobs:
     - name: 检查主程序是否存在
       run: |
         if (!(Test-Path "src\main.py")) {
-            Write-Host "警告: src\main.py 不存在，构建可能会失败！"
-            Write-Host "请确保项目已正确初始化。"
+          Write-Host "警告: src\main.py 不存在，构建可能会失败！"
+          Write-Host "请确保项目已正确初始化。"
         } else {
-            Write-Host "src\main.py 存在，继续构建..."
-            Get-Item src\main.py | Select-Object Name, Length
+          Write-Host "src\main.py 存在，继续构建..."
+          Get-Item src\main.py | Select-Object Name, Length
         }
 
     - name: 构建 EXE
@@ -60,15 +61,15 @@ jobs:
     - name: 检查构建产物
       run: |
         if (Test-Path "dist\HomeAssistantWindows.exe") {
-            Write-Host "EXE 文件构建成功！"
-            Get-Item dist\HomeAssistantWindows.exe | Select-Object Name, Length, LastWriteTime
+          Write-Host "EXE 文件构建成功！"
+          Get-Item dist\HomeAssistantWindows.exe | Select-Object Name, Length, LastWriteTime
         } else {
-            Write-Host "EXE 文件构建失败！"
-            exit 1
+          Write-Host "EXE 文件构建失败！"
+          exit 1
         }
 
     - name: 上传构建产物
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ha-windows-exe-python-${{ matrix.python-version }}
         path: dist/HomeAssistantWindows.exe
@@ -85,13 +86,13 @@ jobs:
       uses: actions/checkout@v4
 
     - name: 下载构建产物
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ha-windows-exe-python-3.11
         path: dist
 
     - name: 创建 Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: dist/HomeAssistantWindows.exe
         draft: false

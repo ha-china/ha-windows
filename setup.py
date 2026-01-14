@@ -45,6 +45,7 @@ def build_exe():
         "--noconfirm",  # 覆盖输出目录而不询问
         "--distpath=dist",  # 输出目录
         "--workpath=build",  # 构建目录
+        "--additional-hooks-dir=hooks",  # 自定义 hooks 目录（修复 webrtcvad 问题）
         # 隐藏导入（这些模块可能无法自动检测）
         "--hidden-import=customtkinter",
         "--hidden-import=aioesphomeapi",

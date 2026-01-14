@@ -10,8 +10,6 @@ from enum import Enum
 
 from aioesphomeapi import (
     APIClient,
-    APIServer,
-    VoiceAssistantSettings,
     VoiceAssistantEventType,
 )
 
@@ -170,13 +168,22 @@ class ESPHomeConnection:
                 raise RuntimeError("未连接到 ESPHome API")
 
             # 订阅 Voice Assistant 事件
-            # 注意：具体实现需要参考 aioesphomeapi 的文档
-            # 这里是示例代码
-            await self.client.subscribe_voice_assistant(
-                VoiceAssistantSettings(
-                    start=start,
+            # 注意：新版本 aioesphomeapi 使用回调函数而不是 VoiceAssistantSettings
+            # TODO: 实现完整的 Voice Assistant 回调处理
+            async def handle_start(path: str, conversation_id: int, audio_settings, wakeword: str):
+                """处理 Voice Assistant 启动事件"""
+                logger.info(f"Voice Assistant 启动: conversation_id={conversation_id}")
+                return None
+
+            async def handle_stop(force: bool):
+                """处理 Voice Assistant 停止事件"""
+                logger.info(f"Voice Assistant 停止: force={force}")
+
+            if start:
+                self.client.subscribe_voice_assistant(
+                    handle_start=handle_start,
+                    handle_stop=handle_stop,
                 )
-            )
 
             logger.info("Voice Assistant 订阅成功")
 

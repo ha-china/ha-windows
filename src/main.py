@@ -10,7 +10,25 @@ import argparse
 from pathlib import Path
 
 # 添加 src 目录到 Python 路径
-sys.path.insert(0, str(Path(__file__).parent))
+# 支持 PyInstaller 打包后的单文件 EXE
+if getattr(sys, 'frozen', False):
+    # PyInstaller 打包后的环境
+    # sys._MEIPASS 是 PyInstaller 解压临时文件的目录
+    if hasattr(sys, '_MEIPASS'):
+        # 单文件打包模式
+        src_path = Path(sys._MEIPASS) / 'src'
+    else:
+        # 单目录打包模式
+        src_path = Path(sys.executable).parent / 'src'
+
+    if src_path.exists():
+        sys.path.insert(0, str(src_path))
+    else:
+        # 如果 src 不存在，尝试直接添加 _MEIPASS
+        sys.path.insert(0, str(Path(sys._MEIPASS)))
+else:
+    # 开发环境
+    sys.path.insert(0, str(Path(__file__).parent))
 
 from i18n import get_i18n, set_language
 from core.mdns_discovery import discover_ha

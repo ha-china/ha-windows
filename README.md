@@ -4,94 +4,74 @@ A Windows client that emulates an ESPHome device for Home Assistant integration.
 
 ## Features
 
-- **Voice Assistant**: Wake word detection using microWakeWord (same as ESPHome)
+- **Voice Assistant**: Wake word detection (Okay Nabu, Hey Jarvis, etc.)
+- **Floating Mic Button**: Push-to-talk with draggable floating button
 - **System Monitoring**: CPU, memory, disk usage sensors
 - **Media Player**: Play audio announcements and TTS
-- **Remote Control**: Lock screen, shutdown, restart via Home Assistant
+- **Remote Control**: Shutdown, restart, screenshot via Home Assistant
 - **Notifications**: Windows toast notifications from Home Assistant
 - **System Tray**: Runs in background with tray icon
 
-## Requirements
-
-- Windows 10/11
-- Python 3.10+
-- Home Assistant with ESPHome integration
-
 ## Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/your-repo/ha-windows.git
-cd ha-windows
+1. Download `HomeAssistantWindows.exe` from [Releases](https://github.com/ha-china/ha-windows/releases)
+2. Run the executable
+3. The client will appear in your system tray
 
-# Install dependencies
-pip install -r requirements.txt
-```
+## Setup in Home Assistant
+
+The client is automatically discovered by Home Assistant via mDNS:
+
+1. Go to **Settings** > **Devices & Services**
+2. You should see a new ESPHome device discovered
+3. Click **Configure** to add it
+
+Or add manually:
+1. Go to **Settings** > **Devices & Services** > **Add Integration**
+2. Search for **ESPHome**
+3. Enter the device IP and port (default: 6053)
 
 ## Usage
 
-```bash
-# Run the client
-python start.py
+### System Tray
+- **Left-click**: Toggle floating mic button visibility
+- **Right-click**: Show menu (Show/Hide Icon, Status, Quit)
 
-# Or with options
-python start.py --name "My-PC" --port 6053 --language en_US
-```
+### Floating Mic Button
+- **Press and hold**: Start voice input
+- **Release**: Stop voice input
+- **Drag**: Move button to any position
+- Button turns red when listening
 
-## Configuration
+### Voice Assistant
+Say the wake word (default: "Okay Nabu") to activate voice assistant, or use the floating mic button for push-to-talk.
 
-The client will be automatically discovered by Home Assistant via mDNS. You can also add it manually:
+### Available Sensors
+- CPU Usage (%)
+- Memory Usage (%)
+- Memory Free (GB)
+- Disk Usage (%) - per drive
+- Disk Free (GB) - per drive
+- Battery Level/Status (if available)
+- Network Status
 
-1. Go to Settings > Devices & Services > Add Integration
-2. Search for "ESPHome"
-3. Enter the device IP and port (default: 6053)
+### Available Controls
+- Shutdown
+- Restart
+- Screenshot
 
 ## Wake Words
 
-Available wake words (from microWakeWord):
-- Okay Nabu
+Available wake words:
+- Okay Nabu (default)
 - Hey Jarvis
 - Alexa
 - Hey Mycroft
 - Hey Home Assistant
 - Okay Computer
+- Hey Luna
 
-Wake word models are stored in `data/wakewords/`.
-
-## Project Structure
-
-```
-ha-windows/
-├── src/
-│   ├── core/           # Core protocol and models
-│   │   ├── esphome_protocol.py
-│   │   ├── models.py
-│   │   └── mdns_discovery.py
-│   ├── voice/          # Voice assistant
-│   │   ├── wake_word.py
-│   │   ├── audio_recorder.py
-│   │   └── mpv_player.py
-│   ├── sensors/        # System sensors
-│   ├── commands/       # Button entities
-│   ├── notify/         # Notifications
-│   └── ui/             # GUI components
-├── data/
-│   ├── wakewords/      # Wake word models
-│   └── sounds/         # Sound effects
-├── start.py
-└── requirements.txt
-```
-
-## Dependencies
-
-- aioesphomeapi - ESPHome protocol
-- pymicro-wakeword - Wake word detection
-- soundcard - Audio recording
-- pygame - Audio playback
-- customtkinter - GUI
-- pystray - System tray
-- zeroconf - mDNS discovery
-- psutil - System monitoring
+Configure wake word in Home Assistant's ESPHome device settings.
 
 ## License
 

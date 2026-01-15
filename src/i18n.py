@@ -83,6 +83,43 @@ class I18n:
                 'error': '错误',
                 'warning': '警告',
                 'info': '信息',
+
+                # ESPHome 协议
+                'esphome_protocol_init': 'ESPHome 协议初始化',
+                'client_connected': '新客户端连接',
+                'client_disconnected': '客户端断开连接',
+
+                # System Tray UI
+                'device_label': '设备',
+                'ip_label': 'IP',
+                'port_label': '端口',
+                'status_running': '状态: 运行中',
+                'device_status': '设备状态',
+                'status_label': '状态',
+                'ready': '准备就绪',
+                'starting_voice_assistant': '正在启动语音助手...',
+                'status_error': '错误',
+                'open_window': '打开窗口',
+                'client_hello': '客户端发送 Hello',
+                'client_auth': '客户端请求认证',
+                'client_authenticated': '客户端已认证',
+                'handshake_complete': '客户端已完成握手',
+                'device_info_request': '客户端请求设备信息',
+                'device_info_sent': '已发送设备信息',
+                'list_entities_request': '客户端请求实体列表',
+                'entities_sent': '已发送 {} 个传感器实体',
+                'subscribe_states': '客户端订阅状态更新',
+                'sensor_report_failed': '获取传感器状态失败',
+                'sensor_report_error': '传感器上报错误',
+                'voice_config_request': '语音助手配置请求',
+                'voice_config_sent': '已发送语音助手配置',
+                'voice_wake_word_set': 'HA 设置唤醒词',
+                'voice_request': 'HA 发起语音助手请求',
+                'tts_audio_received': '收到 TTS 音频',
+                'tts_play_started': 'TTS 播放已启动',
+                'tts_play_failed': 'TTS 播放失败',
+                'announce_request': '收到语音播报请求',
+                'mpv_initialized': 'MPV 播放器已初始化',
             },
             'en_US': {
                 # App Info
@@ -152,28 +189,55 @@ class I18n:
                 'error': 'Error',
                 'warning': 'Warning',
                 'info': 'Info',
+
+                # ESPHome Protocol
+                'esphome_protocol_init': 'ESPHome protocol initialized',
+                'client_connected': 'New client connected',
+                'client_disconnected': 'Client disconnected',
+
+                # System Tray UI
+                'device_label': 'Device',
+                'ip_label': 'IP',
+                'port_label': 'Port',
+                'status_running': 'Status: Running',
+                'device_status': 'Device Status',
+                'status_label': 'Status',
+                'ready': 'Ready',
+                'starting_voice_assistant': 'Starting voice assistant...',
+                'status_error': 'Error',
+                'open_window': 'Open Window',
+                'client_hello': 'Client sent Hello',
+                'client_auth': 'Client requested authentication',
+                'client_authenticated': 'Client authenticated',
+                'handshake_complete': 'Handshake complete',
+                'device_info_request': 'Client requested device info',
+                'device_info_sent': 'Device info sent',
+                'list_entities_request': 'Client requested entity list',
+                'entities_sent': 'Sent {} sensor entities',
+                'subscribe_states': 'Client subscribed to state updates',
+                'sensor_report_failed': 'Failed to get sensor state',
+                'sensor_report_error': 'Sensor report error',
+                'voice_config_request': 'Voice assistant configuration request',
+                'voice_config_sent': 'Voice assistant configuration sent',
+                'voice_wake_word_set': 'HA set wake word',
+                'voice_request': 'HA initiated voice assistant request',
+                'tts_audio_received': 'Received TTS audio',
+                'tts_play_started': 'TTS playback started',
+                'tts_play_failed': 'TTS playback failed',
+                'announce_request': 'Received announcement request',
+                'mpv_initialized': 'MPV player initialized',
             }
         }
 
     def _detect_system_language(self) -> str:
         """
-        自动检测系统语言
+        Auto-detect system language
 
         Returns:
-            str: 语言代码 ('zh_CN' 或 'en_US')
+            str: Language code ('zh_CN' or 'en_US')
         """
-        try:
-            # 获取系统语言
-            system_lang = locale.getdefaultlocale()[0]
-
-            # 中文环境
-            if system_lang and system_lang.startswith('zh'):
-                return 'zh_CN'
-
-            # 默认英文
-            return 'en_US'
-        except Exception:
-            return 'zh_CN'  # 出错默认中文
+        # Force English for logs
+        return 'en_US'
 
     def t(self, key: str, *args, **kwargs) -> str:
         """

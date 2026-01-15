@@ -1,46 +1,59 @@
 """
-主窗口 UI 模块
-使用 CustomTkinter 构建现代化界面
+Main Window UI Module
+Build modern interface using CustomTkinter
 """
 
 import asyncio
 import logging
 import threading
 import tkinter as tk
-from tkinter import ttk
+from enum import Enum
 from typing import Optional
 
 import customtkinter as ctk
 
 from src.i18n import get_i18n
-from src.core.esphome_connection import ConnectionState
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()
 
 
-class MainWindow(ctk.CTk):
-    """主窗口"""
+class ConnectionState(Enum):
+    """Connection state enumeration"""
+    DISCONNECTED = 0
+    CONNECTING = 1
+    CONNECTED = 2
+    ERROR = 3
 
-    def __init__(self):
-        """初始化主窗口"""
+
+class MainWindow(ctk.CTk):
+    """Main window"""
+
+    def __init__(self, on_mic_click=None):
+        """
+        Initialize main window
+        
+        Args:
+            on_mic_click: Callback when microphone button is clicked
+        """
         super().__init__()
 
-        # 配置窗口
+        # Configure window
         self.title(_i18n.t('app_name'))
         self.geometry("800x600")
 
-        # 设置主题
+        # Set theme
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
-        # 状态
+        # State
         self.connection_state = ConnectionState.DISCONNECTED
+        self._on_mic_click = on_mic_click
 
-        # 创建 UI
+        # Create UI
         self._create_widgets()
 
-        # 启动异步事件循环
+        # Start async event loop
         self._async_loop = asyncio.new_event_loop()
         self._loop_thread = threading.Thread(
             target=self._run_async_loop,
@@ -48,16 +61,16 @@ class MainWindow(ctk.CTk):
         )
         self._loop_thread.start()
 
-        logger.info("主窗口已创建")
+        logger.info("Main window created")
 
     def _run_async_loop(self):
-        """运行异步事件循环（在独立线程中）"""
+        """Run async event loop (in separate thread)"""
         asyncio.set_event_loop(self._async_loop)
         self._async_loop.run_forever()
 
     def _create_widgets(self):
-        """创建 UI 组件"""
-        # 顶部标题栏
+        """Create UI components"""
+        # Top title bar
         title_frame = ctk.CTkFrame(self, height=60)
         title_frame.pack(side="top", fill="x", padx=10, pady=10)
 
@@ -68,19 +81,19 @@ class MainWindow(ctk.CTk):
         )
         title_label.pack(side="left", padx=20)
 
-        # 状态指示器
+        # Status indicator
         self.status_label = ctk.CTkLabel(
             title_frame,
-            text=f"状态: {_i18n.t('status_disconnected')}",
+            text=f"{_i18n.t('status_label')}: {_i18n.t('status_disconnected')}",
             font=ctk.CTkFont(size=12)
         )
         self.status_label.pack(side="right", padx=20)
 
-        # 主内容区域
+        # Main content area
         main_frame = ctk.CTkFrame(self)
         main_frame.pack(side="top", fill="both", expand=True, padx=10, pady=10)
 
-        # 麦克风按钮（大按钮）
+        # Microphone button (large button)
         mic_frame = ctk.CTkFrame(main_frame)
         mic_frame.pack(side="top", fill="x", pady=20)
 
@@ -96,11 +109,11 @@ class MainWindow(ctk.CTk):
         )
         self.mic_button.pack()
 
-        # 控制面板
+        # Control panel
         control_frame = ctk.CTkFrame(main_frame)
         control_frame.pack(side="top", fill="x", pady=20)
 
-        # 音量滑块
+        # Volume slider
         volume_label = ctk.CTkLabel(
             control_frame,
             text=_i18n.t('volume'),
@@ -125,7 +138,7 @@ class MainWindow(ctk.CTk):
         )
         self.volume_label.pack(side="left", padx=10)
 
-        # 设置按钮
+        # Settings button
         settings_button = ctk.CTkButton(
             control_frame,
             text="⚙️",
@@ -134,36 +147,59 @@ class MainWindow(ctk.CTk):
         )
         settings_button.pack(side="right", padx=10)
 
-        # 底部信息栏
+        # Bottom info bar
         info_frame = ctk.CTkFrame(main_frame)
         info_frame.pack(side="bottom", fill="x", pady=10)
 
         self.info_label = ctk.CTkLabel(
             info_frame,
-            text="准备就绪",
+            text=_i18n.t('ready'),
             font=ctk.CTkFont(size=12)
         )
         self.info_label.pack(side="left", padx=20)
 
     def _on_mic_button_click(self):
-        """麦克风按钮点击事件"""
-        logger.info("麦克风按钮被点击")
-        self.info_label.configure(text="正在启动语音助手...")
+        """Microphone button click event"""
+        logger.info("🎤 Microphone button clicked")
+        self.info_label.configure(text=_i18n.t('listening'))
+        
+        # Change button color to indicate listening
+        self.mic_button.configure(fg_color=("red", "darkred"))
 
-        # TODO: 触发 Voice Assistant
+        # Trigger Voice Assistant callback
+        if self._on_mic_click:
+            try:
+                self._on_mic_click()
+            except Exception as e:
+                logger.error(f"Mic click callback error: {e}")
+                self.info_label.configure(text=f"Error: {e}")
+                self.mic_button.configure(fg_color=("gray75", "gray30"))
+        
+    def set_mic_callback(self, callback):
+        """Set microphone button callback"""
+        self._on_mic_click = callback
+        
+    def set_listening_state(self, is_listening: bool):
+        """Update UI to show listening state"""
+        if is_listening:
+            self.mic_button.configure(fg_color=("red", "darkred"))
+            self.info_label.configure(text=_i18n.t('listening'))
+        else:
+            self.mic_button.configure(fg_color=("gray75", "gray30"))
+            self.info_label.configure(text=_i18n.t('ready'))
 
     def _on_settings_click(self):
-        """设置按钮点击事件"""
-        logger.info("设置按钮被点击")
+        """Settings button click event"""
+        logger.info("Settings button clicked")
 
-        # TODO: 打开设置窗口
+        # TODO: Open settings window
 
     def update_connection_state(self, state: ConnectionState):
         """
-        更新连接状态
+        Update connection state
 
         Args:
-            state: 连接状态
+            state: Connection state
         """
         self.connection_state = state
 
@@ -177,73 +213,73 @@ class MainWindow(ctk.CTk):
             status_text = _i18n.t('status_connecting')
             color = "yellow"
         else:
-            status_text = "错误"
+            status_text = _i18n.t('status_error')
             color = "red"
 
-        self.status_label.configure(text=f"状态: {status_text}")
+        self.status_label.configure(text=f"{_i18n.t('status_label')}: {status_text}")
 
     def update_info(self, message: str):
         """
-        更新信息栏
+        Update info bar
 
         Args:
-            message: 信息文本
+            message: Info text
         """
         self.info_label.configure(text=message)
 
 
 class AsyncMainWindow:
-    """异步主窗口封装"""
+    """Async main window wrapper"""
 
     def __init__(self):
-        """初始化异步主窗口"""
+        """Initialize async main window"""
         self.window: Optional[MainWindow] = None
         self._running = False
 
     def start(self):
-        """启动窗口"""
+        """Start window"""
         self.window = MainWindow()
         self._running = True
         self.window.mainloop()
 
     def stop(self):
-        """停止窗口"""
+        """Stop window"""
         if self.window:
             self.window.destroy()
         self._running = False
 
     def update_connection_state(self, state: ConnectionState):
-        """更新连接状态"""
+        """Update connection state"""
         if self.window:
             self.window.update_connection_state(state)
 
     def update_info(self, message: str):
-        """更新信息"""
+        """Update info"""
         if self.window:
             self.window.update_info(message)
 
 
-# 便捷函数
+# Convenience function
 def create_main_window() -> AsyncMainWindow:
     """
-    创建主窗口（便捷函数）
+    Create main window (convenience function)
 
     Returns:
-        AsyncMainWindow: 主窗口实例
+        AsyncMainWindow: Main window instance
     """
     return AsyncMainWindow()
 
 
 if __name__ == "__main__":
-    # 测试 UI
+    # Test UI
     logging.basicConfig(level=logging.INFO)
 
     def test_ui():
-        """测试 UI"""
-        logger.info("测试主窗口 UI")
+        """Test UI"""
+        logger.info("Testing main window UI")
 
         window = create_main_window()
         window.start()
 
-    # 运行测试
+    # Run test
     test_ui()

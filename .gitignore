@@ -34,11 +34,14 @@ env/
 *.swo
 *~
 .DS_Store
+.kiro/
+.hypothesis/
 
 # Claude Code 配置（老王我自己的配置文件）
 .claude/
 .serena/
 .spec-workflow/
+
 
 # 参考项目（linux-voice-assistant 和 HASS.Agent）
 reference/

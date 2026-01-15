@@ -1,186 +1,196 @@
 """
-唤醒词检测模块
-使用 pymicro-wakeword 检测唤醒词
+Wake Word Detection Module
+
+Uses pymicro-wakeword for wake word detection (same as ESPHome microWakeWord).
 """
 
-import asyncio
 import logging
-from typing import Callable, Optional
+from pathlib import Path
+from typing import Callable, Optional, Dict, Any
+import json
 
 import numpy as np
-from pymicro_wakeword import MicroWakeWord
-
-from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
-_i18n = get_i18n())
+
+# Default wake word directory
+DEFAULT_WAKEWORD_DIR = Path("data/wakewords")
+
+# Try to import pymicro-wakeword
+_microwakeword_available = False
+try:
+    from pymicro_wakeword import MicroWakeWord, MicroWakeWordFeatures
+    _microwakeword_available = True
+    logger.info("pymicro-wakeword available for wake word detection")
+except ImportError:
+    logger.warning("pymicro-wakeword not available")
 
 
 class WakeWordDetector:
-    """唤醒词检测器"""
+    """Wake word detector using pymicro-wakeword"""
 
-    # 支持的唤醒词模型
-    AVAILABLE_MODELS = {
-        'hey_jarvis': 'hey_jarvis',
-        'smart_home': 'smart_home',
-        'alexa': 'alexa',
-    }
-
-    def __init__(self, model_name: str = 'hey_jarvis'):
+    def __init__(
+        self,
+        model_name: str = 'hey_jarvis',
+        wakeword_dir: Optional[Path] = None,
+    ):
         """
-        初始化唤醒词检测器
+        Initialize wake word detector
 
         Args:
-            model_name: 唤醒词模型名称
+            model_name: Wake word model name (e.g., 'hey_jarvis', 'okay_nabu')
+            wakeword_dir: Directory containing wake word models
         """
-        if model_name not in self.AVAILABLE_MODELS:
-            logger.warning(f"未知的唤醒词模型: {model_name}，使用默认模型")
-            model_name = 'hey_jarvis'
-
         self.model_name = model_name
-        self.model = MicroWakeWord(model_name)
+        self.wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
+        self._on_wake_word: Optional[Callable[[str], None]] = None
+        self._model: Optional[MicroWakeWord] = None
+        self._features: Optional[MicroWakeWordFeatures] = None
+        self._wake_word_phrase: str = model_name
+        
+        if not _microwakeword_available:
+            logger.warning("pymicro-wakeword not installed, wake word detection disabled")
+            return
+        
+        # Load model
+        config_path = self.wakeword_dir / f"{model_name}.json"
+        if not config_path.exists():
+            logger.error(f"Wake word config not found: {config_path}")
+            return
+        
+        try:
+            # Read config to get wake word phrase
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                self._wake_word_phrase = config.get('wake_word', model_name)
+            
+            # Load model
+            self._model = MicroWakeWord.from_config(config_path)
+            self._features = MicroWakeWordFeatures()
+            
+            logger.info(f"Wake word detector initialized: '{self._wake_word_phrase}' ({model_name})")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize wake word model: {e}")
+            self._model = None
 
-        self._on_wake_word: Optional[Callable] = None
-
-        logger.info(f"唤醒词检测器已初始化（模型: {model_name}）")
-
-    def on_wake_word(self, callback: Callable[[], None]) -> None:
+    def on_wake_word(self, callback: Callable[[str], None]) -> None:
         """
-        注册唤醒词回调
+        Register wake word callback
 
         Args:
-            callback: 唤醒词触发时的回调函数
+            callback: Callback function when wake word is detected, receives wake word phrase
         """
         self._on_wake_word = callback
 
-    def process_audio(self, audio_chunk: np.ndarray) -> bool:
+    def process_audio(self, audio_chunk: bytes) -> bool:
         """
-        处理音频并检测唤醒词
+        Process audio and detect wake word
 
         Args:
-            audio_chunk: 音频数据（numpy 数组，16kHz mono）
+            audio_chunk: Audio data (bytes, 16-bit PCM, 16kHz mono)
 
         Returns:
-            bool: 是否检测到唤醒词
+            bool: Whether wake word was detected
         """
+        if self._model is None or self._features is None:
+            return False
+        
         try:
-            # 使用 pymicro-wakeword 处理音频
-            detected = self.model.process_streaming(audio_chunk)
-
-            if detected and self._on_wake_word:
-                logger.info(f"检测到唤醒词: {self.model_name}")
-                # 调用回调函数
-                self._on_wake_word()
-
-            return detected
+            # Extract features from raw audio bytes
+            features = self._features.process_streaming(audio_chunk)
+            
+            # Process each feature frame
+            for feature in features:
+                if self._model.process_streaming(feature):
+                    logger.info(f"Wake word detected: {self._wake_word_phrase}")
+                    if self._on_wake_word:
+                        self._on_wake_word(self._wake_word_phrase)
+                    return True
+            
+            return False
 
         except Exception as e:
-            logger.error(f"唤醒词检测失败: {e}")
+            logger.error(f"Wake word detection failed: {e}")
             return False
 
+    def reset(self) -> None:
+        """Reset detector state"""
+        # MicroWakeWord doesn't have a reset method, but we can recreate features
+        if _microwakeword_available:
+            self._features = MicroWakeWordFeatures()
 
-class AsyncWakeWordDetector:
-    """异步唤醒词检测器"""
-
-    def __init__(self, model_name: str = 'hey_jarvis'):
-        """
-        初始化异步唤醒词检测器
-
-        Args:
-            model_name: 唤醒词模型名称
-        """
-        self.detector = WakeWordDetector(model_name)
-        self._wake_word_event = asyncio.Event()
-
-        # 设置回调
-        self.detector.on_wake_word(self._on_wake_word)
-
-    def _on_wake_word(self) -> None:
-        """唤醒词回调"""
-        self._wake_word_event.set()
-
-    def process_audio(self, audio_chunk: np.ndarray) -> bool:
-        """
-        处理音频并检测唤醒词
-
-        Args:
-            audio_chunk: 音频数据
-
-        Returns:
-            bool: 是否检测到唤醒词
-        """
-        return self.detector.process_audio(audio_chunk)
-
-    async def wait_for_wake_word(self, timeout: Optional[float] = None) -> bool:
-        """
-        等待唤醒词
-
-        Args:
-            timeout: 超时时间（秒），None 表示无限等待
-
-        Returns:
-            bool: 是否检测到唤醒词
-        """
-        try:
-            await asyncio.wait_for(self._wake_word_event.wait(), timeout)
-            return True
-        except asyncio.TimeoutError:
-            return False
-        finally:
-            self._wake_word_event.clear()
+    @property
+    def wake_word_phrase(self) -> str:
+        """Get the wake word phrase"""
+        return self._wake_word_phrase
 
     @staticmethod
-    def list_available_models() -> list[str]:
+    def list_available_models(wakeword_dir: Optional[Path] = None) -> list:
         """
-        列出可用的唤醒词模型
+        List available wake word models
+
+        Args:
+            wakeword_dir: Directory containing wake word models
 
         Returns:
-            list[str]: 模型名称列表
+            list: List of (model_name, wake_word_phrase) tuples
         """
-        return list(WakeWordDetector.AVAILABLE_MODELS.keys())
+        wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
+        models = []
+        
+        if not wakeword_dir.exists():
+            return models
+        
+        for json_file in wakeword_dir.glob("*.json"):
+            model_name = json_file.stem
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    wake_word = config.get('wake_word', model_name)
+                    models.append((model_name, wake_word))
+            except Exception:
+                models.append((model_name, model_name))
+        
+        return models
 
-
-# 便捷函数
-def create_wake_word_detector(model_name: str = 'hey_jarvis') -> WakeWordDetector:
-    """
-    创建唤醒词检测器
-
-    Args:
-        model_name: 唤醒词模型名称
-
-    Returns:
-        WakeWordDetector: 唤醒词检测器实例
-    """
-    return WakeWordDetector(model_name)
+    @staticmethod
+    def is_available() -> bool:
+        """Check if wake word detection is available"""
+        return _microwakeword_available
 
 
 if __name__ == "__main__":
-    # 测试代码
+    # Test code
     logging.basicConfig(level=logging.INFO)
 
-    async def test_detector():
-        """测试唤醒词检测器"""
-        logger.info("测试唤醒词检测器")
+    def test_detector():
+        """Test wake word detector"""
+        logger.info("Testing wake word detector")
 
-        # 列出可用模型
-        models = AsyncWakeWordDetector.list_available_models()
-        logger.info(f"可用模型 ({len(models)}):")
-        for model in models:
-            logger.info(f"  - {model}")
+        if not WakeWordDetector.is_available():
+            logger.error("pymicro-wakeword not available")
+            return
 
-        logger.info("\n注意: 完整测试需要真实的麦克风输入")
-        logger.info("这里只是演示 API 使用")
+        # List available models
+        models = WakeWordDetector.list_available_models()
+        logger.info(f"Available models ({len(models)}):")
+        for model_name, wake_word in models:
+            logger.info(f"  - {model_name}: '{wake_word}'")
 
-        # 创建检测器
-        detector = AsyncWakeWordDetector('hey_jarvis')
+        # Create detector
+        detector = WakeWordDetector('hey_jarvis')
 
-        # 模拟音频数据处理
-        # 实际使用时应该从麦克风读取真实音频
-        audio_data = np.zeros(16000, dtype=np.float32)  # 1 秒静音
+        def on_detected(wake_word: str):
+            logger.info(f"Callback: Wake word '{wake_word}' detected!")
+
+        detector.on_wake_word(on_detected)
+
+        # Simulate audio data processing
+        logger.info("\nProcessing silence (should not detect)...")
+        audio_data = np.zeros(1024, dtype=np.int16)
         detected = detector.process_audio(audio_data)
+        logger.info(f"Detected: {detected}")
 
-        if not detected:
-            logger.info("未检测到唤醒词（静音）")
-
-    # 运行测试
-    asyncio.run(test_detector())
+    # Run test
+    test_detector()

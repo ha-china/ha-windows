@@ -21,43 +21,43 @@ ha-windows/
 ├── .github/workflows/
 │   └── build-windows.yml       # GitHub Actions CI/CD
 ├── src/
-│   ├── __init__.py              # 主包初始化
-│   ├── main.py                  # 程序入口
-│   ├── i18n.py                  # 国际化支持
-│   ├── core/                    # 核心模块
+│   ├── __init__.py              # Main package init
+│   ├── main.py                  # Program entry
+│   ├── i18n.py                  # Internationalization support
+│   ├── core/                    # Core modules
 │   │   ├── __init__.py
-│   │   ├── mdns_discovery.py    # mDNS 服务发现
-│   │   └── esphome_connection.py # ESPHome 连接
+│   │   ├── mdns_discovery.py    # mDNS service discovery
+│   │   └── esphome_protocol.py  # ESPHome server mode (HA connects to Windows)
 │   ├── voice/                   # Voice Assistant
 │   │   ├── __init__.py
-│   │   ├── audio_recorder.py    # 音频录制
-│   │   ├── mpv_player.py        # MPV 播放器
-│   │   ├── wake_word.py         # 唤醒词检测
-│   │   ├── vad.py               # VAD 语音检测
-│   │   └── voice_assistant.py   # Voice Assistant 集成
-│   ├── commands/                # 命令执行
+│   │   ├── audio_recorder.py    # Audio recording
+│   │   ├── mpv_player.py        # MPV player
+│   │   ├── wake_word.py         # Wake word detection
+│   │   ├── vad.py               # VAD voice detection
+│   │   └── voice_assistant.py   # Voice Assistant integration
+│   ├── commands/                # Command execution
 │   │   ├── __init__.py
-│   │   ├── command_executor.py  # 命令执行器
-│   │   ├── system_commands.py   # 系统命令
-│   │   ├── media_commands.py    # 媒体命令
-│   │   └── audio_commands.py    # 音频命令
-│   ├── sensors/                 # 传感器
+│   │   ├── command_executor.py  # Command executor
+│   │   ├── system_commands.py   # System commands
+│   │   ├── media_commands.py    # Media commands
+│   │   └── audio_commands.py    # Audio commands
+│   ├── sensors/                 # Sensors
 │   │   ├── __init__.py
-│   │   ├── windows_monitor.py   # Windows 监控
-│   │   └── esphome_sensors.py   # ESPHome 传感器上报
-│   ├── notify/                  # 通知
+│   │   ├── windows_monitor.py   # Windows monitoring
+│   │   └── esphome_sensors.py   # ESPHome sensor reporting
+│   ├── notify/                  # Notifications
 │   │   ├── __init__.py
-│   │   └── announcement.py      # ESPHome 通知处理
+│   │   └── announcement.py      # ESPHome notification handling
 │   └── ui/                      # UI
 │       ├── __init__.py
-│       ├── main_window.py       # 主窗口
-│       └── system_tray.py       # 系统托盘
-├── .gitignore                   # Git 忽略规则
-├── PLAN.md                      # 项目计划
-├── README.md                    # 项目说明
-├── PROGRESS.md                  # 开发进度
-├── requirements.txt             # Python 依赖
-└── setup.py                     # PyInstaller 打包配置
+│       ├── main_window.py       # Main window
+│       └── system_tray_icon.py  # System tray icon
+├── .gitignore                   # Git ignore rules
+├── PLAN.md                      # Project plan
+├── README.md                    # Project documentation
+├── PROGRESS.md                  # Development progress
+├── requirements.txt             # Python dependencies
+└── setup.py                     # PyInstaller build config
 ```
 
 ## 🎯 技术栈

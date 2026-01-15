@@ -1,22 +1,132 @@
 """
-Voice Assistant 协议实现
-集成音频录制、VAD、唤醒词检测和 ESPHome 连接
+Voice Assistant Module
+
+Integrates audio recording, VAD, wake word detection, and audio streaming.
+For use with ESPHome server mode (HA connects to Windows).
 """
 
 import asyncio
 import logging
-from typing import Optional, Callable
+import threading
+from typing import Callable, Optional, Dict
 
 from .audio_recorder import AsyncAudioRecorder
-from .mpv_player import AsyncMpvMediaPlayer
 from .wake_word import AsyncWakeWordDetector
 from .vad import StreamingVAD
 
-from src.core.esphome_connection import ESPHomeConnection
 from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()
+
+
+class AudioStreamHandler:
+    """
+    Audio Stream Handler for ESPHome Voice Assistant
+
+    Manages audio recording with VAD and queues audio chunks for HTTP streaming.
+    Used by ESPHome protocol server when HA requests audio.
+    """
+
+    def __init__(self):
+        """Initialize audio stream handler"""
+        self._recording = False
+        self._audio_queue: Optional[asyncio.Queue] = None
+        self._recorder: Optional[AsyncAudioRecorder] = None
+        self._vad: Optional[StreamingVAD] = None
+        self._recording_task: Optional[asyncio.Task] = None
+
+    def get_recorder(self) -> AsyncAudioRecorder:
+        """Get or create audio recorder"""
+        if self._recorder is None:
+            self._recorder = AsyncAudioRecorder()
+            logger.info("Audio recorder initialized")
+        return self._recorder
+
+    def get_vad(self) -> StreamingVAD:
+        """Get or create VAD detector"""
+        if self._vad is None:
+            self._vad = StreamingVAD(aggressiveness=2, silence_threshold=1.0)
+            logger.info("VAD detector initialized")
+        return self._vad
+
+    async def start_recording(self) -> Optional[Callable[[], asyncio.Queue]]:
+        """
+        Start audio recording with VAD
+
+        Returns:
+            Callable that returns the audio queue, or None if already recording
+        """
+        if self._recording:
+            logger.warning("Recording already in progress")
+            return None
+
+        self._recording = True
+        self._audio_queue = asyncio.Queue()
+
+        # Start recording task
+        self._recording_task = asyncio.create_task(self._record_loop())
+
+        logger.info("Audio recording started")
+        return lambda: self._audio_queue
+
+    async def _record_loop(self):
+        """Recording loop with VAD - stops on silence detection"""
+        recorder = self.get_recorder()
+        vad = self.get_vad()
+
+        await recorder.start_recording()
+
+        silence_count = 0
+        max_silence = 30  # 3 seconds of silence (30 chunks)
+
+        try:
+            while self._recording:
+                # Get audio chunk
+                chunk = await recorder.get_audio_chunk()
+                if not chunk:
+                    continue
+
+                # Put in queue for HTTP streaming
+                await self._audio_queue.put(chunk)
+
+                # Check for silence (VAD)
+                is_speech, speech_ended = vad.process_frame(chunk)
+                
+                # If speech ended (detected silence after speech), stop recording
+                if speech_ended:
+                    logger.info("Speech ended, stopping recording")
+                    break
+
+        except asyncio.CancelledError:
+            logger.info("Recording task cancelled")
+        finally:
+            await recorder.stop_recording()
+            self._recording = False
+            # Signal end of recording
+            await self._audio_queue.put(None)
+            logger.info("Audio recording stopped")
+
+    async def stop_recording(self):
+        """Stop audio recording"""
+        if not self._recording:
+            return
+
+        self._recording = False
+
+        if self._recording_task:
+            self._recording_task.cancel()
+            try:
+                await self._recording_task
+            except asyncio.CancelledError:
+                pass
+            self._recording_task = None
+
+        logger.info("Audio recording stopped")
+
+    def is_recording(self) -> bool:
+        """Check if currently recording"""
+        return self._recording
 
 
 class VoiceAssistant:
@@ -24,23 +134,20 @@ class VoiceAssistant:
 
     def __init__(
         self,
-        connection: ESPHomeConnection,
         audio_device: Optional[str] = None,
         wake_word_model: str = 'hey_jarvis',
+        send_audio_callback: Optional[Callable[[bytes], None]] = None,
     ):
         """
-        初始化 Voice Assistant
+        Initialize Voice Assistant
 
         Args:
-            connection: ESPHome 连接
-            audio_device: 音频设备名称
-            wake_word_model: 唤醒词模型
+            audio_device: Audio device name
+            wake_word_model: Wake word model
+            send_audio_callback: Audio data send callback
         """
-        self.connection = connection
-
-        # 音频组件
+        # Audio components
         self.recorder = AsyncAudioRecorder(audio_device)
-        self.player = AsyncMpvMediaPlayer()
         self.wake_word_detector = AsyncWakeWordDetector(wake_word_model)
         self.vad = StreamingVAD(aggressiveness=2, silence_threshold=1.0)
 
@@ -51,6 +158,7 @@ class VoiceAssistant:
 
         # 回调
         self._on_response: Optional[Callable] = None
+        self._send_audio_callback = send_audio_callback
 
         logger.info("Voice Assistant 已初始化")
 
@@ -84,13 +192,12 @@ class VoiceAssistant:
             await self._manual_loop()
 
     async def stop(self) -> None:
-        """停止 Voice Assistant"""
+        """Stop Voice Assistant"""
         self._running = False
         self._listening = False
         self._processing = False
 
         await self.recorder.stop_recording()
-        await self.player.stop()
 
     async def _wake_word_loop(self) -> None:
         """唤醒词循环"""
@@ -191,30 +298,24 @@ class VoiceAssistant:
 
     async def _send_to_assistant(self, audio_data: bytes) -> None:
         """
-        发送音频到 Home Assistant
+        发送音频到 Home Assistant（通过回调函数）
 
         Args:
             audio_data: 音频数据
         """
         try:
-            logger.info("发送音频到 Home Assistant...")
+            logger.info(f"发送音频到 Home Assistant (size={len(audio_data)})...")
 
-            # TODO: 实现 ESPHome Voice Assistant API 调用
-            # 这里需要参考 linux-voice-assistant 的实现
+            # 使用回调函数发送音频数据
+            if self._send_audio_callback:
+                self._send_audio_callback(audio_data)
+            else:
+                logger.warning("未设置音频发送回调，音频数据将被忽略")
 
-            # 模拟等待响应
-            await asyncio.sleep(2)
+            # 等待响应处理由调用者负责
+            # TTS 播放由 esphome_protocol.py 的 _handle_voice_assistant_audio 处理
 
-            # 假设收到 TTS URL
-            tts_url = "https://example.com/tts.mp3"
-
-            # 播放响应
-            await self.player.play_url(tts_url, announcement=True)
-
-            logger.info("响应播放完成")
-
-            if self._on_response:
-                await self._on_response("示例响应")
+            logger.info("音频数据已发送")
 
         except Exception as e:
             logger.error(f"发送到 Assistant 失败: {e}")
@@ -222,28 +323,28 @@ class VoiceAssistant:
             self._processing = False
 
     def cleanup(self) -> None:
-        """清理资源"""
-        self.player.cleanup()
+        """Cleanup resources"""
+        pass  # No resources to cleanup
 
 
 # 便捷函数
 def create_voice_assistant(
-    connection: ESPHomeConnection,
     audio_device: Optional[str] = None,
     wake_word_model: str = 'hey_jarvis',
+    send_audio_callback: Optional[Callable[[bytes], None]] = None,
 ) -> VoiceAssistant:
     """
     创建 Voice Assistant（便捷函数）
 
     Args:
-        connection: ESPHome 连接
         audio_device: 音频设备
         wake_word_model: 唤醒词模型
+        send_audio_callback: 音频数据发送回调函数
 
     Returns:
         VoiceAssistant: Voice Assistant 实例
     """
-    return VoiceAssistant(connection, audio_device, wake_word_model)
+    return VoiceAssistant(audio_device, wake_word_model, send_audio_callback)
 
 
 if __name__ == "__main__":
@@ -256,7 +357,6 @@ if __name__ == "__main__":
 
         # 注意：需要实际的 ESPHome 连接
         logger.info("Voice Assistant 测试需要完整的连接")
-
 
     # 运行测试
     asyncio.run(test_voice_assistant())

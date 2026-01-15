@@ -63,7 +63,7 @@ def build_exe():
         # src 模块隐藏导入（重要！）
         "--hidden-import=i18n",
         "--hidden-import=core.mdns_discovery",
-        "--hidden-import=core.esphome_server",
+        "--hidden-import=core.esphome_protocol",
         "--hidden-import=ui.system_tray_icon",
         "--hidden-import=voice.audio_recorder",
         "--hidden-import=voice.mpv_player",
@@ -75,10 +75,8 @@ def build_exe():
         "--hidden-import=commands.media_commands",
         "--hidden-import=commands.audio_commands",
         "--hidden-import=sensors.windows_monitor",
-        "--hidden-import=sensors.esphome_sensors",
         "--hidden-import=notify.announcement",
         "--hidden-import=ui.main_window",
-        "--hidden-import=ui.system_tray",
         # 收集所有子模块
         "--collect-all=customtkinter",
         "--collect-all=aioesphomeapi",

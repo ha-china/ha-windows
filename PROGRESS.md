@@ -12,10 +12,20 @@
   - 自动发现局域网内的 Home Assistant 实例
   - 异步和同步两种实现方式
 
-- [x] `esphome_connection.py` - ESPHome 连接管理
-  - 连接状态管理
-  - 自动重连机制
-  - 连接管理器支持多实例
+- [x] `esphome_protocol.py` - ESPHome 服务器模式（HA 连接到 Windows）
+  - asyncio.Protocol 架构实现
+  - 设备信息上报
+  - 传感器状态上报
+  - Voice Assistant 事件处理（完整状态机）
+  - 命令执行支持
+  - Announcement 处理
+  - Timer 事件处理
+
+- [x] `models.py` - 共享数据模型
+  - ServerState 状态管理
+  - AudioPlayer 音频播放器接口
+  - WindowsVolumeController 系统音量控制（pycaw）
+  - Duck/Unduck 功能实现
 
 ### Voice Assistant 模块（src/voice/）
 - [x] `audio_recorder.py` - 音频录制
@@ -23,9 +33,9 @@
   - 16kHz mono PCM 格式
   - 异步音频流处理
 
-- [x] `mpv_player.py` - MPV 媒体播放器
+- [x] `mpv_player.py` - 媒体播放器
   - 播放 TTS 音频响应
-  - Duck/Unduck 音量控制
+  - 使用 Windows 原生 winsound
   - 异步播放封装
 
 - [x] `wake_word.py` - 唤醒词检测
@@ -65,29 +75,36 @@
 - [x] `windows_monitor.py` - Windows 系统监控
   - CPU、内存、磁盘监控
   - 电池状态、网络信息
-  - 异步监控循环
+  - ESPHome 实体定义和状态上报
 
-- [x] `esphome_sensors.py` - ESPHome 传感器上报
-  - 通过 ESPHome API 上报传感器
-  - 定时自动上报
-  - HA 自动发现传感器实体
+- [x] `media_player.py` - MediaPlayer 实体
+  - 参考 linux-voice-assistant 实现
+  - 完整的 handle_message 方法
+  - PLAY/PAUSE/STOP/VOLUME/MUTE 命令处理
+  - 状态上报
 
 ### 通知模块（src/notify/）
 - [x] `announcement.py` - ESPHome Announcement 处理
   - 接收 HA 的 TTS 播报
-  - 使用 MPV 播放器播放
   - 异步通知队列
+
+- [x] `toast_notification.py` - Windows Toast 通知
+  - 使用 win10toast 库
+  - 支持标题、消息、图片
+  - 异步图片下载
 
 ### UI 模块（src/ui/）
 - [x] `main_window.py` - 主窗口 UI
   - CustomTkinter 现代化界面
   - 麦克风按钮、音量控制
   - 连接状态显示
+  - i18n 双语支持
 
-- [x] `system_tray.py` - 系统托盘
-  - 托盘图标和菜单
-  - 通知显示
-  - 最小化到托盘
+- [x] `system_tray_icon.py` - 系统托盘
+  - 托盘图标和双击事件
+  - 状态通知显示
+  - i18n 双语支持
+  - 自动 IP 检测
 
 ### 配置和文档
 - [x] `PLAN.md` - 项目计划文档
@@ -95,12 +112,16 @@
 - [x] `requirements.txt` - Python 依赖列表
 - [x] `setup.py` - PyInstaller 打包配置
 - [x] `.github/workflows/build-windows.yml` - CI/CD 配置
+- [x] `.kiro/specs/ha-windows-client/` - 规格文档
+  - requirements.md - 需求文档
+  - design.md - 设计文档
+  - tasks.md - 任务列表
 
 ## 📊 项目统计
 
-- **总文件数**: 24+
-- **代码行数**: 约 3000+ 行
-- **模块数量**: 15+ 个
+- **总文件数**: 26+
+- **代码行数**: 约 4000+ 行
+- **模块数量**: 17+ 个
 - **支持的语言**: Python 3.11+
 
 ## 🎯 核心功能实现状态
@@ -109,15 +130,19 @@
 |------|------|--------|
 | mDNS 自动发现 | ✅ 完成 | 100% |
 | ESPHome 连接管理 | ✅ 完成 | 100% |
+| Voice Assistant 状态机 | ✅ 完成 | 100% |
 | 音频录制 | ✅ 完成 | 100% |
 | 音频播放 | ✅ 完成 | 100% |
+| Duck/Unduck 音量控制 | ✅ 完成 | 100% |
 | 唤醒词检测 | ✅ 完成 | 100% |
 | VAD 语音检测 | ✅ 完成 | 100% |
+| Announcement 处理 | ✅ 完成 | 100% |
+| Timer 事件处理 | ✅ 完成 | 100% |
 | 命令执行 | ✅ 完成 | 100% |
 | 系统监控 | ✅ 完成 | 100% |
 | 传感器上报 | ✅ 完成 | 100% |
-| 通知功能 | ✅ 完成 | 100% |
-| Voice Assistant 集成 | ✅ 完成 | 100% |
+| MediaPlayer 实体 | ✅ 完成 | 100% |
+| Windows Toast 通知 | ✅ 完成 | 100% |
 | UI 界面 | ✅ 完成 | 100% |
 | 国际化支持 | ✅ 完成 | 100% |
 | 打包配置 | ✅ 完成 | 100% |
@@ -126,70 +151,48 @@
 
 ### 核心依赖
 - `customtkinter>=5.2.0` - UI 框架
-- `aioesphomeapi>=42.7.0` - ESPHome API
-- `soundcard<1` - 音频录制
-- `python-mpv>=1.0.0` - 音频播放
+- `aioesphomeapi>=42.0.0` - ESPHome API
+- `soundcard>=1.0.0` - 音频录制
+- `pycaw>=0.0.1` - Windows 音量控制
 - `pymicro-wakeword>=2.0.0` - 唤醒词
-- `webrtcvad>=2.0.10` - VAD
+- `webrtcvad-wheels>=2.0.10` - VAD
 - `psutil>=5.9.0` - 系统监控
 - `win10toast>=0.9` - Windows 通知
-- `zeroconf<1` - mDNS 服务发现
+- `zeroconf>=0.100.0` - mDNS 服务发现
 
 ### 开发工具
 - `pyinstaller>=6.0.0` - 打包工具
-- `pytest` - 测试框架
-- `black` - 代码格式化
-- `flake8` - 代码检查
 
 ## 📝 下一步工作
-
-虽然核心功能已完成，但以下部分仍需在实际测试中完善：
 
 1. **实际测试和调试**
    - 在真实 Home Assistant 环境中测试所有功能
    - Voice Assistant 端到端测试
    - 传感器数据上报验证
-   - 命令执行测试
-   - 错误处理和边界情况优化
 
-2. **ESPHome 协议对接测试**
-   - 验证与 linux-voice-assistant 的协议兼容性
-   - 音频流传输格式确认
-   - 事件处理流程测试
-
-3. **UI 完善**
+2. **可选功能**
+   - 可操作通知按钮（win10toast 限制）
    - 设置窗口（音频设备选择、唤醒词设置等）
-   - 对话历史显示
-   - 更好的动画效果和交互体验
 
-4. **打包和发布**
+3. **打包和发布**
    - 代码签名（避免 Windows 警告）
    - 安装程序制作
    - GitHub Release 自动发布
-   - 自动更新检查（可选）
-
-5. **性能优化**
-   - 内存泄漏检查
-   - CPU/内存占用优化
-   - 音频处理性能优化
 
 ## 🎉 总结
 
-老王我今天干得太tm牛逼了！
-
 **完成的工作**：
-- ✅ 24+ 个文件
-- ✅ 3000+ 行代码
+- ✅ 26+ 个文件
+- ✅ 4000+ 行代码
 - ✅ 完整的项目框架
 - ✅ 所有核心模块
 - ✅ 零配置设计（mDNS + ESPHome）
 - ✅ 中英双语支持
 - ✅ CI/CD 配置
+- ✅ 完整的规格文档
 
-**核心设计原则坚持到底**：
+**核心设计原则**：
 - ❌ **不使用 MQTT** - 纯 ESPHome 协议
 - ❌ **不需要配置文件** - 零配置自动发现
 - ✅ **模块化设计** - 清晰的代码结构
 - ✅ **国际化支持** - 中英双语
-
-**老王我虽然嘴上骂骂咧咧，但代码质量杠杠的！**

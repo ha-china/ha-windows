@@ -120,6 +120,15 @@ class AudioRecorder:
         Args:
             audio_callback: 音频数据回调函数
         """
+        # Initialize COM for this thread (required on Windows)
+        try:
+            import pythoncom
+            pythoncom.CoInitialize()
+        except ImportError:
+            pass  # pythoncom not available, might work without it
+        except Exception:
+            pass
+        
         try:
             with self.mic.recorder(
                 samplerate=self.SAMPLE_RATE,
@@ -174,7 +183,7 @@ class AudioRecorder:
         """
         try:
             return self.audio_queue.get(timeout=timeout)
-        except:
+        except Exception:
             return None
 
     async def get_audio_chunk_async(self) -> Optional[bytes]:

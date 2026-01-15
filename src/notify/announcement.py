@@ -1,13 +1,14 @@
 """
-通知处理模块
-处理来自 Home Assistant 的通知（ESPHome Announcement）
+Announcement Handler Module
+
+Handles announcements from Home Assistant (ESPHome Announcement).
 """
 
 import asyncio
 import logging
 from typing import Callable, Optional
 
-from src.voice.mpv_player import AsyncMpvMediaPlayer
+from src.voice.mpv_player import AsyncAudioPlayer
 from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
@@ -15,69 +16,69 @@ _i18n = get_i18n()
 
 
 class AnnouncementHandler:
-    """ESPHome Announcement 处理器"""
+    """ESPHome Announcement Handler"""
 
     def __init__(self):
-        """初始化通知处理器"""
-        self.player: Optional[AsyncMpvMediaPlayer] = None
+        """Initialize announcement handler"""
+        self.player: Optional[AsyncAudioPlayer] = None
         self._on_announcement: Optional[Callable] = None
 
-        logger.info("通知处理器已初始化")
+        logger.info("Announcement handler initialized")
 
     def on_announcement(self, callback: Callable) -> None:
         """
-        注册通知回调
+        Register announcement callback
 
         Args:
-            callback: 通知回调函数
+            callback: Announcement callback function
         """
         self._on_announcement = callback
 
     async def handle_announcement(self, url: str, announcement: bool = True) -> None:
         """
-        处理 ESPHome Announcement（TTS 播报）
+        Handle ESPHome Announcement (TTS playback with streaming)
 
         Args:
-            url: TTS 音频 URL
-            announcement: 是否为通知类型
+            url: TTS audio URL
+            announcement: Whether it's announcement type
         """
         try:
-            logger.info(f"处理播报: {url}")
+            logger.info(f"Handling announcement: {url}")
 
-            # 创建播放器
+            # Create player
             if not self.player:
-                self.player = AsyncMpvMediaPlayer()
+                self.player = AsyncAudioPlayer()
 
-            # 播放 TTS
+            # Use streaming playback - no need to download first
             await self.player.play_url(url, announcement=announcement, wait=True)
 
-            # 调用回调
+            # Call callback
             if self._on_announcement:
                 await self._on_announcement(url)
 
-            logger.info("播报完成")
+            logger.info("Announcement finished")
 
         except Exception as e:
-            logger.error(f"播报失败: {e}")
+            logger.error(f"Announcement failed: {e}")
             raise
 
     async def play_tts(self, text: str, language: str = 'zh-CN') -> None:
         """
-        播放 TTS（需要 HA 生成音频 URL）
+        Play TTS (requires HA to generate audio URL)
 
         Args:
-            text: 要播报的文本
-            language: 语言代码
+            text: Text to speak
+            language: Language code
         """
-        # TODO: 实现 TTS 播放
-        # 这需要调用 Home Assistant 的 TTS 服务生成音频 URL
-        # 然后使用 handle_announcement 播放
+        # TODO: Implement TTS playback
+        # This requires calling Home Assistant's TTS service to generate audio URL
+        # Then use handle_announcement to play
 
-        logger.info(f"TTS 播报: {text} ({language})")
-        logger.warning("TTS 播放功能尚未完全实现")
+        logger.info(f"TTS announcement: {text} ({language})")
+        logger.warning("TTS playback not fully implemented")
 
     def cleanup(self) -> None:
-        """清理资源"""
+        """Cleanup resources"""
         if self.player:
             self.player.cleanup()
             self.player = None

@@ -1,10 +1,10 @@
 """
-系统托盘图标模块
-提供 Windows 系统托盘图标，让用户知道程序在运行并可以退出
+System Tray Icon Module
+Provides Windows system tray icon for the application
 """
 
-import asyncio
 import logging
+import socket
 import threading
 from typing import Optional, Callable
 
@@ -19,51 +19,55 @@ _i18n = get_i18n()
 
 class SystemTrayIcon:
     """
-    系统托盘图标管理器
+    System Tray Icon Manager
 
-    功能：
-    - 显示托盘图标
-    - 右键菜单（退出、查看状态）
-    - 双击事件（可选）
+    Features:
+    - Display tray icon
+    - Click/double-click to open window
+    - Status notifications
     """
 
     def __init__(self):
-        """初始化系统托盘图标"""
+        """Initialize system tray icon"""
         self.icon: Optional[pystray.Icon] = None
         self._running = False
         self._loop_thread: Optional[threading.Thread] = None
         self._icon_ready = threading.Event()
 
-        # 状态信息
+        # Status information
         self._status_info = {
             'name': 'Unknown',
             'ip': 'Unknown',
             'port': 'Unknown',
         }
 
+        # Callbacks
+        self._on_open_window: Optional[Callable] = None
+        self._on_quit: Optional[Callable] = None
+
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
         """
-        创建托盘图标图像
+        Create tray icon image
 
         Args:
-            width: 图标宽度
-            height: 图标高度
+            width: Icon width
+            height: Icon height
 
         Returns:
-            Image: 图标图像
+            Image: Icon image
         """
-        # 创建一个简单的 HA 风格图标
+        # Create a simple HA-style icon
         image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
 
-        # 绘制圆形背景 (HA 蓝色)
+        # Draw circular background (HA blue)
         padding = 4
         draw.ellipse(
             [padding, padding, width - padding, height - padding],
-            fill=(61, 174, 233, 255)  # Home Assistant 蓝
+            fill=(61, 174, 233, 255)  # Home Assistant blue
         )
 
-        # 绘制简单的房子图形
+        # Draw simple house shape
         house_margin = 16
         roof_points = [
             (house_margin, height // 2),
@@ -72,7 +76,7 @@ class SystemTrayIcon:
         ]
         draw.polygon(roof_points, fill=(255, 255, 255, 255))
 
-        # 房子主体
+        # House body
         house_body = [
             (house_margin + 4, height // 2),
             (width - house_margin - 4, height - house_margin),
@@ -81,75 +85,100 @@ class SystemTrayIcon:
 
         return image
 
-    def _create_menu(self) -> pystray.Menu:
+    def _on_icon_clicked(self, icon, item) -> None:
+        """Handle icon click event (open window)"""
+        logger.info("Tray icon clicked - opening window")
+        self._open_window()
+
+    def _open_window(self) -> None:
+        """Open the main window"""
+        if self._on_open_window:
+            try:
+                self._on_open_window()
+            except Exception as e:
+                logger.error(f"Error opening window: {e}")
+        else:
+            # Show status notification as fallback
+            self.show_status()
+
+    def _on_show_status(self, icon, item) -> None:
+        """Handle show status menu item"""
+        logger.info("Show status menu clicked")
+        self.show_status()
+
+    def _on_open_window_menu(self, icon, item) -> None:
+        """Handle open window menu item"""
+        logger.info("Open window menu clicked")
+        self._open_window()
+
+    def _on_quit_menu(self, icon, item) -> None:
+        """Handle quit menu item"""
+        logger.info("Quit menu clicked")
+        if self._on_quit:
+            try:
+                self._on_quit()
+            except Exception as e:
+                logger.error(f"Error in quit callback: {e}")
+        # Stop icon after callback (callback should set running=False)
+        self._running = False
+        icon.stop()
+
+    def _run_icon(self, icon: pystray.Icon) -> None:
         """
-        创建右键菜单
-
-        Returns:
-            pystray.Menu: 菜单对象
-        """
-        def show_status(icon):
-            """显示状态（使用通知方式）"""
-            status_text = (
-                f"🖥️  Home Assistant Windows\n\n"
-                f"设备名称: {self._status_info['name']}\n"
-                f"本机 IP: {self._status_info['ip']}\n"
-                f"监听端口: {self._status_info['port']}\n\n"
-                f"状态: 运行中 ✅"
-            )
-
-            # 使用 pystray 内置通知
-            icon.notify(status_text, title="设备状态")
-
-            # 同时记录到日志
-            logger.info(f"状态查询: {self._status_info}")
-
-        menu = pystray.Menu(
-            pystray.MenuItem("查看状态", show_status, default=True),
-            pystray.MenuItem("退出", self._quit),
-        )
-
-        return menu
-
-    def _run_icon(self, icon: pystray.Icon):
-        """
-        在后台线程运行图标
+        Run icon in background thread
 
         Args:
-            icon: pystray Icon 实例
+            icon: pystray Icon instance
         """
         self._icon_ready.set()
         icon.run()
 
-    def start(self, name: str, ip: str, port: int) -> None:
+    def start(self, name: str = None, ip: str = None, port: int = None) -> None:
         """
-        启动系统托盘图标
+        Start system tray icon
 
         Args:
-            name: 设备名称
-            ip: 本机 IP 地址
-            port: 监听端口
+            name: Device name (default: hostname)
+            ip: Local IP address (default: auto-detect)
+            port: Listening port
         """
         if self._running:
+            logger.warning("Tray icon already running")
             return
+
+        # Auto-detect values if not provided
+        if name is None:
+            name = socket.gethostname()
+        if ip is None:
+            ip = self._get_local_ip()
 
         self._status_info = {
             'name': name,
             'ip': ip,
-            'port': str(port),
+            'port': str(port) if port else 'Unknown',
         }
 
-        # 创建图标
+        # Create icon with menu
+        # The default action (first item or item with default=True) is triggered on click
         self.icon = pystray.Icon(
             name='HomeAssistant Windows',
             icon=self.create_icon_image(),
-            menu=self._create_menu(),
+            menu=pystray.Menu(
+                pystray.MenuItem(
+                    _i18n.t('open_window') if hasattr(_i18n, 't') else "Open Window",
+                    self._on_open_window_menu,
+                    default=True  # This makes it the default action on click
+                ),
+                pystray.MenuItem(_i18n.t('status_running'), self._on_show_status),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(_i18n.t('quit'), self._on_quit_menu),
+            )
         )
 
-        # 设置提示文本
-        self.icon.title = f"HA Windows: {name}\nIP: {ip}:{port}"
+        # Set tooltip
+        self.icon.title = f"HA Windows: {name}\n{_i18n.t('ip_label')}: {ip}:{port if port else 'Unknown'}"
 
-        # 在后台线程运行
+        # Run in background thread
         self._running = True
         self._icon_ready.clear()
         self._loop_thread = threading.Thread(
@@ -159,19 +188,52 @@ class SystemTrayIcon:
         )
         self._loop_thread.start()
 
-        # 等待图标准备好
+        # Wait for icon to be ready
         self._icon_ready.wait(timeout=5)
 
-        logger.info("✅ 系统托盘图标已启动")
+        if not self._icon_ready.is_set():
+            logger.warning("Tray icon may not have started properly")
+        else:
+            logger.info("System tray icon started")
+
+    def _get_local_ip(self) -> str:
+        """
+        Get local LAN IP address (without connecting to external servers)
+
+        Returns:
+            str: Local IP address
+        """
+        try:
+            # Use UDP to local network (doesn't actually send data)
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("10.255.255.255", 1))
+            ip = s.getsockname()[0]
+            s.close()
+
+            if ip and not ip.startswith("127.") and not ip.startswith("169.254."):
+                return ip
+        except Exception:
+            pass
+
+        try:
+            # Fallback: use hostname
+            hostname = socket.gethostname()
+            ip = socket.gethostbyname(hostname)
+            if ip and not ip.startswith("127.") and not ip.startswith("169.254."):
+                return ip
+        except Exception:
+            pass
+
+        return "127.0.0.1"
 
     def update_status(self, name: str = None, ip: str = None, port: int = None) -> None:
         """
-        更新状态信息
+        Update status information
 
         Args:
-            name: 设备名称
-            ip: 本机 IP 地址
-            port: 监听端口
+            name: Device name
+            ip: Local IP address
+            port: Listening port
         """
         if name is not None:
             self._status_info['name'] = name
@@ -180,56 +242,70 @@ class SystemTrayIcon:
         if port is not None:
             self._status_info['port'] = str(port)
 
-        # 更新提示文本
+        # Update tooltip with i18n support
         if self.icon:
             self.icon.title = (
                 f"HA Windows: {self._status_info['name']}\n"
-                f"IP: {self._status_info['ip']}:{self._status_info['port']}"
+                f"{_i18n.t('ip_label')}: {self._status_info['ip']}:{self._status_info['port']}"
             )
 
+    def set_callbacks(self, on_open_window: Callable = None, on_quit: Callable = None) -> None:
+        """
+        Set callback functions
+
+        Args:
+            on_open_window: Called when icon is clicked or "Open Window" menu is selected
+            on_quit: Called when quit is requested
+        """
+        self._on_open_window = on_open_window
+        self._on_quit = on_quit
+
+    def show_status(self) -> None:
+        """Show status notification with i18n support"""
+        if self.icon:
+            status_text = (
+                f"{_i18n.t('app_name')}\n\n"
+                f"{_i18n.t('device_label')}: {self._status_info['name']}\n"
+                f"{_i18n.t('ip_label')}: {self._status_info['ip']}\n"
+                f"{_i18n.t('port_label')}: {self._status_info['port']}\n\n"
+                f"{_i18n.t('status_running')}"
+            )
+            self.icon.notify(status_text, title=_i18n.t('device_status'))
+
     def stop(self) -> None:
-        """停止系统托盘图标"""
+        """Stop system tray icon"""
         if self.icon and self._running:
             self._running = False
-            self.icon.stop()
-            logger.info("系统托盘图标已停止")
+            try:
+                self.icon.stop()
+            except Exception:
+                pass  # May already be stopped
+            logger.info("System tray icon stopped")
 
-    def _quit(self) -> None:
-        """退出程序（通过托盘菜单）"""
-        logger.info("用户通过托盘菜单退出程序")
-        self.stop()
-        # 触发主程序退出
-        import os
-        import signal
-        os.kill(os.getpid(), signal.SIGINT)
+    def notify(self, message: str, title: str = None) -> None:
+        """
+        Show notification
+
+        Args:
+            message: Notification message
+            title: Notification title (default: app_name)
+        """
+        if self.icon:
+            try:
+                if title is None:
+                    title = _i18n.t('app_name')
+                self.icon.notify(message, title=title)
+            except Exception as e:
+                logger.error(f"Failed to show notification: {e}")
 
 
-# 全局单例
+# Global singleton
 _tray_instance: Optional[SystemTrayIcon] = None
 
 
 def get_tray() -> SystemTrayIcon:
-    """获取系统托盘单例实例"""
+    """Get system tray singleton instance"""
     global _tray_instance
     if _tray_instance is None:
         _tray_instance = SystemTrayIcon()
     return _tray_instance
-
-
-if __name__ == "__main__":
-    # 测试代码
-    import time
-
-    logging.basicConfig(level=logging.INFO)
-
-    tray = SystemTrayIcon()
-    tray.start("测试设备", "192.168.1.100", 6053)
-
-    print("托盘图标已启动，查看系统托盘...")
-    print("按 Ctrl+C 退出")
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        tray.stop()

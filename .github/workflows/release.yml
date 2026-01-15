@@ -22,19 +22,15 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Cache pip dependencies
-      uses: actions/cache@v4
-      with:
-        path: ~/AppData/Local/pip/Cache
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
+        # 验证关键依赖已安装
+        python -c "import aioesphomeapi; print(f'aioesphomeapi version: {aioesphomeapi.__version__}')"
+        python -c "import customtkinter; print('customtkinter OK')"
+        python -c "import pymicro_wakeword; print('pymicro_wakeword OK')"
 
     - name: Build EXE
       run: |
@@ -44,7 +40,9 @@ jobs:
       run: |
         if (Test-Path "dist\HomeAssistantWindows.exe") {
           Write-Host "EXE file built successfully!"
-          Get-Item dist\HomeAssistantWindows.exe | Select-Object Name, Length, LastWriteTime
+          $file = Get-Item dist\HomeAssistantWindows.exe
+          Write-Host "Size: $([math]::Round($file.Length / 1MB, 2)) MB"
+          Write-Host "LastWriteTime: $($file.LastWriteTime)"
         } else {
           Write-Host "EXE file build failed!"
           exit 1

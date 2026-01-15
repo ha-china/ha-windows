@@ -6,8 +6,6 @@ name: Build Windows EXE
 on:
   push:
     branches: [main, develop]
-    tags:
-      - 'v*'
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -74,29 +72,3 @@ jobs:
         name: ha-windows-exe-python-${{ matrix.python-version }}
         path: dist/HomeAssistantWindows.exe
         retention-days: 30
-
-  release:
-    name: Create GitHub Release
-    needs: build
-    runs-on: windows-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download build artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: ha-windows-exe-python-3.11
-        path: dist
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: dist/HomeAssistantWindows.exe
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

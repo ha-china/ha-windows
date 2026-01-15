@@ -68,12 +68,12 @@ def _get_mac_address() -> str:
 
 
 def _load_available_wake_words() -> Dict[str, AvailableWakeWord]:
-    """从 data/wakewords 目录加载所有可用的唤醒词"""
+    """从 src/wakewords 目录加载所有可用的唤醒词"""
     import json
     from pathlib import Path
     
     wake_words = {}
-    wakeword_dir = Path("data/wakewords")
+    wakeword_dir = Path(__file__).parent.parent / "wakewords"
     
     if not wakeword_dir.exists():
         logger.warning(f"Wake word directory not found: {wakeword_dir}")
@@ -121,7 +121,7 @@ def create_default_state(name: str) -> ServerState:
         default_active.add(next(iter(available_wake_words.keys())))
     
     # 音效文件路径
-    sounds_dir = Path("data/sounds")
+    sounds_dir = Path(__file__).parent.parent / "sounds"
     wakeup_sound = ""
     timer_finished_sound = ""
     

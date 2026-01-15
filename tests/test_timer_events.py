@@ -63,7 +63,7 @@ def create_test_protocol() -> ESPHomeProtocol:
     state.music_player = MagicMock(spec=AudioPlayer)
     
     # Set timer finished sound
-    state.timer_finished_sound = "data/sounds/timer_finished.flac"
+    state.timer_finished_sound = "src/sounds/timer_finished.flac"
     
     protocol = ESPHomeProtocol(state)
     

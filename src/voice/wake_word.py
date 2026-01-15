@@ -13,8 +13,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Default wake word directory
-DEFAULT_WAKEWORD_DIR = Path("data/wakewords")
+# Default wake word directory (relative to src/)
+DEFAULT_WAKEWORD_DIR = Path(__file__).parent.parent / "wakewords"
 
 # Try to import pymicro-wakeword
 _microwakeword_available = False

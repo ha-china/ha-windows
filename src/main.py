@@ -261,6 +261,18 @@ class HomeAssistantWindows:
         """Request application quit"""
         logger.info("Quit requested from tray")
         self.running = False
+        
+        # 强制退出（因为有多个后台线程可能阻止正常退出）
+        import os
+        import threading
+        
+        def force_exit():
+            import time
+            time.sleep(1)  # 给一点时间让清理工作完成
+            logger.info("Force exiting...")
+            os._exit(0)
+        
+        threading.Thread(target=force_exit, daemon=True).start()
 
     async def _start_wake_word_detection(self):
         """Start wake word detection in background"""
@@ -342,7 +354,7 @@ class HomeAssistantWindows:
         """Get the first active wake word from server state"""
         if self.api_server and self.api_server.state.active_wake_words:
             return next(iter(self.api_server.state.active_wake_words))
-        return 'hey_jarvis'  # Default
+        return 'okay_nabu'  # Default
 
     def _update_wake_word_detector(self):
         """Update wake word detector when active wake word changes"""
@@ -432,6 +444,12 @@ class HomeAssistantWindows:
                 await self.api_server.stop()
             except Exception as e:
                 logger.error(f"Failed to stop API server: {e}")
+        
+        logger.info("Cleanup complete, exiting...")
+        
+        # 强制退出进程（确保所有后台线程都被终止）
+        import os
+        os._exit(0)
 
 
 def main():

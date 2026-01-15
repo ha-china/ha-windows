@@ -39,7 +39,7 @@ def build_exe():
         "--onefile",  # 打包成单个 exe 文件
         "--windowed",  # 无控制台窗口（使用 GUI）
         "--name=" + APP_NAME,  # exe 文件名
-        "--icon=assets/icon.ico" if os.path.exists("assets/icon.ico") else "",
+        "--icon=src/logo.ico" if os.path.exists("src/logo.ico") else "",
         f"--version-file=version_info.txt" if os.path.exists("version_info.txt") else "",
         "--clean",  # 清理临时文件
         "--noconfirm",  # 覆盖输出目录而不询问
@@ -80,6 +80,7 @@ def build_exe():
         # 收集所有子模块
         "--collect-all=customtkinter",
         "--collect-all=aioesphomeapi",
+        "--collect-all=pymicro_wakeword",  # 包含 tensorflowlite_c.dll
         # 添加 src 目录到 Python 路径
         "--add-data=src;src",
         # 排除不需要的模块（减小体积）

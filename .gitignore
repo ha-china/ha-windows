@@ -50,8 +50,7 @@ reference/
 *.log
 ha_windows.log
 
-# PyInstaller
-*.spec
+# PyInstaller 临时文件
 *.exe
 *.dmg
 *.app
@@ -79,9 +78,6 @@ Desktop.ini
 # 打包输出
 dist/
 build/
-
-# 版本信息文件
-version_info.txt
 
 # 用户配置（虽然项目是零配置，但保留此注释以防万一）
 # *.json

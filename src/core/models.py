@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Windows 音量控制
 try:
-    from ctypes import cast, POINTER
-    from comtypes import CLSCTX_ALL
-    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    from pycaw.pycaw import AudioUtilities
     PYCAW_AVAILABLE = True
 except ImportError:
     PYCAW_AVAILABLE = False
@@ -109,10 +107,8 @@ class WindowsVolumeController:
         
         try:
             devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(
-                IAudioEndpointVolume._iid_, CLSCTX_ALL, None
-            )
-            self._volume_interface = cast(interface, POINTER(IAudioEndpointVolume))
+            # 新版 pycaw 使用 EndpointVolume 属性
+            self._volume_interface = devices.EndpointVolume
             logger.info("Windows volume controller initialized")
         except Exception as e:
             logger.error(f"Failed to initialize volume interface: {e}")
@@ -224,8 +220,20 @@ class AudioPlayer:
             if url.startswith(('http://', 'https://')):
                 import urllib.request
                 
+                # 根据 URL 判断文件类型
+                if '.mp3' in url.lower():
+                    suffix = '.mp3'
+                elif '.wav' in url.lower():
+                    suffix = '.wav'
+                elif '.flac' in url.lower():
+                    suffix = '.flac'
+                elif '.ogg' in url.lower():
+                    suffix = '.ogg'
+                else:
+                    suffix = '.mp3'  # 默认 mp3
+                
                 # 下载到临时文件
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as f:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
                     temp_file = f.name
                 
                 logger.info(f"Downloading audio from: {url}")
@@ -234,16 +242,32 @@ class AudioPlayer:
             else:
                 file_to_play = url
             
-            # 使用 winsound 播放
-            import winsound
-            
-            if os.path.exists(file_to_play):
-                logger.info(f"Playing file: {file_to_play}")
-                # 同步播放（阻塞直到完成）
-                winsound.PlaySound(file_to_play, winsound.SND_FILENAME)
-                logger.info("Playback finished")
-            else:
+            if not os.path.exists(file_to_play):
                 logger.error(f"File not found: {file_to_play}")
+                return
+            
+            logger.info(f"Playing file: {file_to_play}")
+            
+            # 尝试用 pygame 播放（支持 mp3/wav/ogg）
+            try:
+                import pygame
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+                pygame.mixer.music.load(file_to_play)
+                pygame.mixer.music.play()
+                # 等待播放完成
+                while pygame.mixer.music.get_busy():
+                    import time
+                    time.sleep(0.1)
+                logger.info("Playback finished")
+            except ImportError:
+                # pygame 不可用，尝试 winsound（仅支持 wav）
+                import winsound
+                if file_to_play.lower().endswith('.wav'):
+                    winsound.PlaySound(file_to_play, winsound.SND_FILENAME)
+                    logger.info("Playback finished")
+                else:
+                    logger.error(f"Cannot play {file_to_play}: pygame not available and winsound only supports WAV")
         
         except Exception as e:
             logger.error(f"Playback error: {e}")

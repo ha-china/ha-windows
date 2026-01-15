@@ -113,10 +113,10 @@ def create_default_state(name: str) -> ServerState:
     
     available_wake_words = _load_available_wake_words()
     
-    # 默认激活 hey_jarvis，如果没有则用第一个
+    # 默认激活 okay_nabu，如果没有则用第一个
     default_active = set()
-    if 'hey_jarvis' in available_wake_words:
-        default_active.add('hey_jarvis')
+    if 'okay_nabu' in available_wake_words:
+        default_active.add('okay_nabu')
     elif available_wake_words:
         default_active.add(next(iter(available_wake_words.keys())))
     
@@ -669,14 +669,12 @@ class ESPHomeProtocol(asyncio.Protocol):
         self.state.tts_player.play(self._tts_url, done_callback=self._tts_finished)
 
     def duck(self) -> None:
-        """降低音量"""
-        logger.debug("Ducking music")
-        self.state.music_player.duck()
+        """降低音量（已禁用）"""
+        pass  # 禁用 duck 功能
 
     def unduck(self) -> None:
-        """恢复音量"""
-        logger.debug("Unducking music")
-        self.state.music_player.unduck()
+        """恢复音量（已禁用）"""
+        pass  # 禁用 unduck 功能
 
     def _tts_finished(self) -> None:
         """TTS 播放完成回调"""

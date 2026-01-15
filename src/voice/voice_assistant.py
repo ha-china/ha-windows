@@ -135,7 +135,7 @@ class VoiceAssistant:
     def __init__(
         self,
         audio_device: Optional[str] = None,
-        wake_word_model: str = 'hey_jarvis',
+        wake_word_model: str = 'okay_nabu',
         send_audio_callback: Optional[Callable[[bytes], None]] = None,
     ):
         """
@@ -330,7 +330,7 @@ class VoiceAssistant:
 # 便捷函数
 def create_voice_assistant(
     audio_device: Optional[str] = None,
-    wake_word_model: str = 'hey_jarvis',
+    wake_word_model: str = 'okay_nabu',
     send_audio_callback: Optional[Callable[[bytes], None]] = None,
 ) -> VoiceAssistant:
     """

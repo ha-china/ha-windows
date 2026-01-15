@@ -31,14 +31,14 @@ class WakeWordDetector:
 
     def __init__(
         self,
-        model_name: str = 'hey_jarvis',
+        model_name: str = 'okay_nabu',
         wakeword_dir: Optional[Path] = None,
     ):
         """
         Initialize wake word detector
 
         Args:
-            model_name: Wake word model name (e.g., 'hey_jarvis', 'okay_nabu')
+            model_name: Wake word model name (e.g., 'okay_nabu', 'hey_jarvis')
             wakeword_dir: Directory containing wake word models
         """
         self.model_name = model_name
@@ -179,7 +179,7 @@ if __name__ == "__main__":
             logger.info(f"  - {model_name}: '{wake_word}'")
 
         # Create detector
-        detector = WakeWordDetector('hey_jarvis')
+        detector = WakeWordDetector('okay_nabu')
 
         def on_detected(wake_word: str):
             logger.info(f"Callback: Wake word '{wake_word}' detected!")

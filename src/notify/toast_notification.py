@@ -46,7 +46,7 @@ class Notification:
 
 class NotificationHandler:
     """Windows Toast notification handler"""
-    
+
     def __init__(self, app_name: str = "Home Assistant"):
         self.app_name = app_name
         self._toaster: Optional["ToastNotifier"] = None
@@ -54,7 +54,7 @@ class NotificationHandler:
         self._temp_dir.mkdir(parents=True, exist_ok=True)
         self._init_toaster()
         logger.info(f"NotificationHandler initialized: {app_name}")
-    
+
     def _init_toaster(self) -> None:
         if not WIN10TOAST_AVAILABLE:
             return
@@ -62,7 +62,7 @@ class NotificationHandler:
             self._toaster = ToastNotifier()
         except Exception as e:
             logger.error(f"Failed to initialize toast notifier: {e}")
-    
+
     def show(self, notification: Notification) -> bool:
         if self._toaster is None:
             return False
@@ -79,10 +79,10 @@ class NotificationHandler:
         except Exception as e:
             logger.error(f"Failed to show notification: {e}")
             return False
-    
+
     def show_simple(self, title: str, message: str, duration: int = 5) -> bool:
         return self.show(Notification(title=title, message=message, duration=duration))
-    
+
     async def show_async(self, notification: Notification) -> bool:
         if notification.image_url:
             local_path = await self._download_image(notification.image_url)
@@ -90,7 +90,7 @@ class NotificationHandler:
                 notification.icon_path = local_path
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.show, notification)
-    
+
     async def _download_image(self, url: str) -> Optional[str]:
         try:
             import aiohttp
@@ -109,7 +109,7 @@ class NotificationHandler:
         except Exception as e:
             logger.error(f"Failed to download image: {e}")
         return None
-    
+
     def cleanup(self) -> None:
         """Cleanup temp files"""
         try:

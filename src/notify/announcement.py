@@ -157,7 +157,7 @@ if __name__ == "__main__":
         """Test announcement handler"""
         logger.info("Testing announcement handler")
 
-        handler = AnnouncementHandler()
+        _ = AnnouncementHandler()
 
         # Test announcement (using local audio file)
         # If you have a test audio file, uncomment the code below

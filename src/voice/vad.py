@@ -4,7 +4,6 @@ Uses webrtcvad to detect speech and silence
 """
 
 import logging
-from typing import Optional
 
 import webrtcvad
 import numpy as np

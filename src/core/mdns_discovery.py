@@ -6,10 +6,10 @@ Broadcasts ESPHome device to LAN for Home Assistant discovery
 import asyncio
 import logging
 import socket
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 from dataclasses import dataclass
 
-from zeroconf import ServiceInfo, Zeroconf
+from zeroconf import ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
 from src.i18n import get_i18n
@@ -55,7 +55,7 @@ class DeviceInfo:
             # Get MAC address of first non-loopback interface
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
+            s.getsockname()[0]  # Trigger connection
             s.close()
 
             # Get MAC from IP
@@ -133,16 +133,16 @@ class MDNSBroadcaster:
             await self.aiozc.async_register_service(self.service_info)
             self._is_registered = True
 
-            logger.info(f"✅ mDNS service registered successfully!")
-            logger.info(f"   Device name: {self.device_info.name}")
-            logger.info(f"   Local IP: {local_ip}")
-            logger.info(f"   Listening port: {port}")
-            logger.info(f"   MAC address: {self.device_info.mac_address}")
+            logger.info("mDNS service registered successfully!")
+            logger.info(f"Device name: {self.device_info.name}")
+            logger.info(f"Local IP: {local_ip}")
+            logger.info(f"Listening port: {port}")
+            logger.info(f"MAC address: {self.device_info.mac_address}")
 
             return True
 
         except Exception as e:
-            logger.error(f"❌ mDNS service registration failed: {e}")
+            logger.error(f"mDNS service registration failed: {e}")
             return False
 
     def _build_txt_record(self) -> Dict[str, str]:
@@ -245,7 +245,7 @@ async def register_device(
 
 if __name__ == "__main__":
     # Test code - broadcast device for 30 seconds
-    import asyncio
+    import asyncio as aio
 
     logging.basicConfig(
         level=logging.INFO,
@@ -259,12 +259,12 @@ if __name__ == "__main__":
         success = await broadcaster.register_service()
 
         if success:
-            print(f"\n✅ Device broadcasted to network!")
-            print(f"   Add ESPHome device in Home Assistant to discover")
-            print(f"\nWaiting 30 seconds before auto-exit...")
+            print("\nDevice broadcasted to network!")
+            print("Add ESPHome device in Home Assistant to discover")
+            print("\nWaiting 30 seconds before auto-exit...")
 
-            await asyncio.sleep(30)
+            await aio.sleep(30)
 
             await broadcaster.unregister_service()
 
-    asyncio.run(test())
+    aio.run(test())

@@ -267,7 +267,8 @@ class SystemTrayIcon:
                 f"{_i18n.t('ip_label')}: {self._status_info['ip']}:{self._status_info['port']}"
             )
 
-    def set_callbacks(self, on_show_floating: Callable = None, on_hide_floating: Callable = None, on_quit: Callable = None) -> None:
+    def set_callbacks(self, on_show_floating: Callable = None,
+                      on_hide_floating: Callable = None, on_quit: Callable = None) -> None:
         """
         Set callback functions
 

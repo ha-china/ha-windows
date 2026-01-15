@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class ButtonEntity:
     """Single button entity"""
-    
+
     def __init__(
         self,
         key: int,
@@ -35,7 +35,7 @@ class ButtonEntity:
         self.icon = icon
         self.command = command
         self.handler = handler
-    
+
     def get_entity_definition(self) -> ListEntitiesButtonResponse:
         """Get entity definition"""
         return ListEntitiesButtonResponse(
@@ -45,7 +45,7 @@ class ButtonEntity:
             icon=self.icon,
             disabled_by_default=False,
         )
-    
+
     def press(self) -> Dict:
         """Press button"""
         if self.handler:
@@ -55,28 +55,28 @@ class ButtonEntity:
 
 class ButtonEntityManager:
     """Button entity manager"""
-    
+
     # Button definitions (key starts from 100 to avoid conflict with sensors)
     # Media control is handled by MediaPlayer entity, only system control buttons here
     BUTTON_DEFINITIONS = [
         # System control buttons
         {'key': 100, 'name': 'Shutdown', 'object_id': 'shutdown', 'icon': 'mdi:power', 'command': 'shutdown'},
         {'key': 101, 'name': 'Restart', 'object_id': 'restart', 'icon': 'mdi:restart', 'command': 'restart'},
-        
+
         # Utility buttons
         {'key': 120, 'name': 'Screenshot', 'object_id': 'screenshot', 'icon': 'mdi:camera', 'command': 'screenshot'},
     ]
-    
+
     def __init__(self, command_executor=None):
         """Initialize button manager"""
         self._buttons: Dict[int, ButtonEntity] = {}
         self._command_executor = command_executor
-        
+
         # Create button entities
         self._create_buttons()
-        
+
         logger.info(f"Button entity manager initialized, {len(self._buttons)} buttons total")
-    
+
     def _create_buttons(self) -> None:
         """Create all button entities"""
         for btn_def in self.BUTTON_DEFINITIONS:
@@ -89,7 +89,7 @@ class ButtonEntityManager:
                 handler=lambda cmd=btn_def['command']: self._execute_command(cmd),
             )
             self._buttons[btn_def['key']] = button
-    
+
     def _execute_command(self, command: str) -> Dict:
         """Execute command"""
         if self._command_executor:
@@ -99,11 +99,11 @@ class ButtonEntityManager:
             from .command_executor import CommandExecutor
             self._command_executor = CommandExecutor()
             return self._command_executor.execute(command)
-    
+
     def get_entity_definitions(self) -> List[ListEntitiesButtonResponse]:
         """Get all button entity definitions"""
         return [btn.get_entity_definition() for btn in self._buttons.values()]
-    
+
     def handle_message(self, msg: message.Message) -> Iterable[message.Message]:
         """Handle button command message"""
         if isinstance(msg, ButtonCommandRequest):
@@ -114,6 +114,6 @@ class ButtonEntityManager:
                 logger.info(f"Command execution result: {result}")
             else:
                 logger.warning(f"Unknown button key: {msg.key}")
-        
+
         # Button commands don't need to return messages
         return []

@@ -128,7 +128,7 @@ class AudioRecorder:
             pass  # pythoncom not available, might work without it
         except Exception:
             pass
-        
+
         try:
             with self.mic.recorder(
                 samplerate=self.SAMPLE_RATE,
@@ -265,8 +265,6 @@ if __name__ == "__main__":
     # Test code
     logging.basicConfig(level=logging.INFO)
 
-    import tempfile
-
     async def test_recording():
         """Test recording"""
         logger.info("Testing audio recorder")
@@ -304,7 +302,7 @@ if __name__ == "__main__":
         # Statistics
         total_bytes = sum(len(chunk) for chunk in chunks)
         total_seconds = total_bytes / 2 / 16000  # 16-bit, 16kHz
-        logger.info(f"\nRecording complete:")
+        logger.info("Recording complete:")
         logger.info(f"  Total bytes: {total_bytes}")
         logger.info(f"  Total duration: {total_seconds:.2f} seconds")
         logger.info(f"  Chunk count: {len(chunks)}")

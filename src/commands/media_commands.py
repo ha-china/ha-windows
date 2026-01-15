@@ -169,7 +169,7 @@ class MediaCommands:
                 'action': 'set_volume',
                 'volume': volume
             }
-        except ValueError as e:
+        except ValueError:
             logger.error(f"Invalid volume value: {volume_str}")
             return {
                 'success': False,

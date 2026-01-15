@@ -5,7 +5,6 @@ References linux-voice-assistant's entity.py implementation
 Provides MediaPlayer entity for Home Assistant
 """
 
-import asyncio
 import logging
 from typing import Callable, Iterable, List, Optional, Union, TYPE_CHECKING
 
@@ -28,7 +27,7 @@ logger = logging.getLogger(__name__)
 class MediaPlayerEntity:
     """
     MediaPlayer Entity
-    
+
     References linux-voice-assistant's MediaPlayerEntity implementation
     """
 
@@ -41,7 +40,7 @@ class MediaPlayerEntity:
     ):
         """
         Initialize MediaPlayer entity
-        
+
         Args:
             server: ESPHome protocol server
             key: Entity key
@@ -52,16 +51,16 @@ class MediaPlayerEntity:
         self.key = key
         self.name = name
         self.object_id = object_id
-        
+
         # State
         self.state = MediaPlayerState.IDLE
         self.volume = 1.0
         self.muted = False
-        
+
         # Player (uses player from server.state)
         self._playlist: List[str] = []
         self._done_callback: Optional[Callable] = None
-        
+
         logger.info(f"MediaPlayer entity initialized: {name}")
 
     def play(
@@ -72,12 +71,12 @@ class MediaPlayerEntity:
     ) -> Iterable[message.Message]:
         """
         Play audio
-        
+
         Args:
             url: Audio URL or URL list
             announcement: Whether it's an announcement
             done_callback: Playback completion callback
-            
+
         Yields:
             State update messages
         """
@@ -85,9 +84,9 @@ class MediaPlayerEntity:
             self._playlist = [url]
         else:
             self._playlist = list(url)
-        
+
         self._done_callback = done_callback
-        
+
         if announcement:
             # Announcement mode
             if self.server.state.music_player.is_playing:
@@ -115,7 +114,7 @@ class MediaPlayerEntity:
                     done_callback
                 )
             )
-        
+
         yield self._update_state(MediaPlayerState.PLAYING)
 
     def _play_next(self, done_callback: Optional[Callable] = None) -> None:
@@ -124,16 +123,16 @@ class MediaPlayerEntity:
             if done_callback:
                 done_callback()
             return
-        
+
         url = self._playlist.pop(0)
         logger.info(f"Playing: {url}")
-        
+
         def on_done():
             if self._playlist:
                 self._play_next(done_callback)
             elif done_callback:
                 done_callback()
-        
+
         self.server.state.tts_player.play(url, done_callback=on_done)
 
     def _call_all(self, *funcs) -> None:
@@ -153,10 +152,10 @@ class MediaPlayerEntity:
     def handle_message(self, msg: message.Message) -> Iterable[message.Message]:
         """
         Handle message
-        
+
         Args:
             msg: Message
-            
+
         Yields:
             Response messages
         """
@@ -186,10 +185,10 @@ class MediaPlayerEntity:
                 self.muted = msg.mute
                 # TODO: Implement mute
                 yield self._update_state(self.state)
-                
+
         elif isinstance(msg, ListEntitiesRequest):
             yield self.get_entity_definition()
-            
+
         elif isinstance(msg, SubscribeHomeAssistantStatesRequest):
             yield self._get_state_message()
 

@@ -3,8 +3,6 @@
 支持中英双语切换
 """
 
-import locale
-import os
 from typing import Dict
 
 

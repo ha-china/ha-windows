@@ -5,13 +5,18 @@ Simulates ESPHome device for Home Assistant integration.
 Uses Windows native APIs - no external DLL dependencies required.
 """
 
+from src.i18n import set_language
+from src.voice.audio_recorder import AudioRecorder
+from src.ui.main_window import MainWindow
+from src.ui.system_tray_icon import get_tray
+from src.core.esphome_protocol import ESPHomeServer
+from src.core.mdns_discovery import MDNSBroadcaster, DeviceInfo
 import sys
 import logging
 import asyncio
 import argparse
 import socket
 import threading
-from pathlib import Path
 
 # PyInstaller path setup
 if getattr(sys, 'frozen', False):
@@ -63,12 +68,6 @@ def check_dependencies():
     logger.info("All dependencies OK!")
     return True
 
-from src.i18n import get_i18n, set_language
-from src.core.mdns_discovery import MDNSBroadcaster, DeviceInfo
-from src.core.esphome_protocol import ESPHomeServer
-from src.ui.system_tray_icon import get_tray
-from src.ui.main_window import MainWindow
-from src.voice.audio_recorder import AudioRecorder
 
 # Configure logging
 logging.basicConfig(
@@ -124,7 +123,7 @@ class HomeAssistantWindows:
         self.tray = get_tray()
         self.main_window: MainWindow = None
         self._local_ip = None  # Save local IP for tray display
-        
+
         # Wake word detection
         self._wake_word_detector = None
         self._audio_recorder: AudioRecorder = None
@@ -138,7 +137,7 @@ class HomeAssistantWindows:
         try:
             logger.info("=" * 60)
             logger.info(f"Device: {self.device_name}")
-            logger.info(f"Version: 1.0.0")
+            logger.info("Version: 1.0.0")
             logger.info("=" * 60)
 
             # Step 1: Start ESPHome API server
@@ -213,7 +212,7 @@ class HomeAssistantWindows:
             ip=self._local_ip or "Unknown",
             port=self.port
         )
-        
+
         # Auto-show floating button on startup
         self._show_floating_button()
 
@@ -251,7 +250,7 @@ class HomeAssistantWindows:
     def _on_mic_button_press(self) -> None:
         """Handle microphone button press - trigger voice assistant"""
         logger.info("🎤 Manual voice assistant trigger (push-to-talk)")
-        
+
         # Get the protocol instance
         if self.api_server and self.api_server.protocol:
             protocol = self.api_server.protocol
@@ -269,45 +268,45 @@ class HomeAssistantWindows:
         """Request application quit"""
         logger.info("Quit requested from tray")
         self.running = False
-        
+
         # Force exit (multiple background threads may prevent normal exit)
         import os
         import threading
-        
+
         def force_exit():
             import time
             time.sleep(1)  # Give some time for cleanup to complete
             logger.info("Force exiting...")
             os._exit(0)
-        
+
         threading.Thread(target=force_exit, daemon=True).start()
 
     async def _start_wake_word_detection(self):
         """Start wake word detection in background"""
         try:
             from src.voice.wake_word import WakeWordDetector
-            
+
             if not WakeWordDetector.is_available():
                 logger.warning("Wake word detection not available (pymicro-wakeword not installed)")
                 logger.info("Install with: pip install pymicro-wakeword")
                 logger.info("Manual trigger via mic button still works")
                 return
-            
+
             # List available models
             models = WakeWordDetector.list_available_models()
             if models:
                 logger.info(f"Available wake words: {[m[1] for m in models]}")
-            
+
             # Get active wake word from server state
             active_wake_word = self._get_active_wake_word()
-            
+
             # Initialize wake word detector
             self._wake_word_detector = WakeWordDetector(active_wake_word)
-            
+
             # Save the event loop reference for use in callback
             self._event_loop = asyncio.get_running_loop()
             self._last_wakeup_time = 0  # For debouncing
-            
+
             # Set callback
             def on_wake_word(wake_word_phrase: str):
                 import time
@@ -316,7 +315,7 @@ class HomeAssistantWindows:
                 if now - self._last_wakeup_time < 2.0:
                     return
                 self._last_wakeup_time = now
-                
+
                 logger.info(f"🎤 Wake word detected: {wake_word_phrase}")
                 if self.api_server and self.api_server.protocol and self._event_loop:
                     try:
@@ -325,33 +324,33 @@ class HomeAssistantWindows:
                         )
                     except Exception as e:
                         logger.error(f"Failed to trigger wakeup: {e}")
-            
+
             self._wake_word_detector.on_wake_word(on_wake_word)
-            
+
             # Initialize audio recorder
             self._audio_recorder = AudioRecorder()
-            
+
             # Audio callback for wake word detection
             def on_audio_chunk(audio_data: bytes):
                 if not self._wake_word_listening:
                     return
-                
+
                 # Check if wake word changed
                 if self.api_server and self.api_server.state.wake_words_changed:
                     self.api_server.state.wake_words_changed = False
                     self._update_wake_word_detector()
-                
+
                 # Pass raw bytes directly to wake word detector
                 if self._wake_word_detector:
                     self._wake_word_detector.process_audio(audio_data)
-            
+
             # Start recording
             self._wake_word_listening = True
             self._audio_recorder.start_recording(audio_callback=on_audio_chunk)
-            
+
             wake_phrase = self._wake_word_detector.wake_word_phrase
             logger.info(f"🎤 Wake word detection started (say '{wake_phrase}')")
-            
+
         except ImportError as e:
             logger.warning(f"Wake word detection not available: {e}")
             logger.info("Manual trigger via mic button still works")
@@ -367,24 +366,24 @@ class HomeAssistantWindows:
     def _update_wake_word_detector(self):
         """Update wake word detector when active wake word changes"""
         from src.voice.wake_word import WakeWordDetector
-        
+
         new_wake_word = self._get_active_wake_word()
-        
+
         if self._wake_word_detector and self._wake_word_detector.model_name == new_wake_word:
             return  # No change
-        
+
         logger.info(f"🔄 Switching wake word to: {new_wake_word}")
-        
+
         # Save callback
         old_callback = self._wake_word_detector._on_wake_word if self._wake_word_detector else None
-        
+
         # Create new detector
         self._wake_word_detector = WakeWordDetector(new_wake_word)
-        
+
         # Restore callback
         if old_callback:
             self._wake_word_detector.on_wake_word(old_callback)
-        
+
         wake_phrase = self._wake_word_detector.wake_word_phrase
         logger.info(f"🎤 Now listening for: '{wake_phrase}'")
 
@@ -452,9 +451,9 @@ class HomeAssistantWindows:
                 await self.api_server.stop()
             except Exception as e:
                 logger.error(f"Failed to stop API server: {e}")
-        
+
         logger.info("Cleanup complete, exiting...")
-        
+
         # Force exit process (ensure all background threads are terminated)
         import os
         os._exit(0)

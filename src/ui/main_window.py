@@ -27,16 +27,16 @@ class FloatingMicButton(tk.Tk):
         super().__init__()
 
         self._button_size = 70
-        
+
         # Calculate position (bottom-right, above taskbar)
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         margin = 20
         taskbar_height = 50
-        
+
         x = screen_width - self._button_size - margin
         y = screen_height - self._button_size - margin - taskbar_height
-        
+
         # Window setup
         self.title("")
         self.geometry(f"{self._button_size}x{self._button_size}+{x}+{y}")
@@ -45,7 +45,7 @@ class FloatingMicButton(tk.Tk):
         self.wm_attributes("-topmost", True)
         self.wm_attributes("-toolwindow", True)
         self.wm_attributes("-alpha", 0.9)
-        
+
         # Dark background
         self.config(bg="#1a1a1a")
 
@@ -75,30 +75,30 @@ class FloatingMicButton(tk.Tk):
             size = self._button_size
             bg_color = (26, 26, 26, 255)  # #1a1a1a
             bg_color_active = (139, 0, 0, 255)  # Dark red
-            
+
             if MIC_ICON_PATH.exists():
                 # Load icon
                 icon = Image.open(MIC_ICON_PATH).convert("RGBA")
                 icon_size = int(size * 0.7)
                 icon = icon.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
-                
+
                 # Create circular background - normal
                 bg = Image.new("RGBA", (size, size), (0, 0, 0, 0))
                 draw = ImageDraw.Draw(bg)
-                draw.ellipse([0, 0, size-1, size-1], fill=bg_color)
-                
+                draw.ellipse([0, 0, size - 1, size - 1], fill=bg_color)
+
                 # Paste icon centered
                 offset = (size - icon_size) // 2
                 bg.paste(icon, (offset, offset), icon)
                 self._mic_photo = ImageTk.PhotoImage(bg)
-                
+
                 # Create circular background - active (red)
                 bg_active = Image.new("RGBA", (size, size), (0, 0, 0, 0))
                 draw_active = ImageDraw.Draw(bg_active)
-                draw_active.ellipse([0, 0, size-1, size-1], fill=bg_color_active)
+                draw_active.ellipse([0, 0, size - 1, size - 1], fill=bg_color_active)
                 bg_active.paste(icon, (offset, offset), icon)
                 self._mic_photo_active = ImageTk.PhotoImage(bg_active)
-                
+
                 logger.info(f"Loaded mic icon: {MIC_ICON_PATH}")
             else:
                 logger.warning(f"Mic icon not found: {MIC_ICON_PATH}")
@@ -110,17 +110,17 @@ class FloatingMicButton(tk.Tk):
     def _create_fallback_icons(self):
         """Create fallback icons without external file"""
         size = self._button_size
-        
+
         # Normal - dark circle
         bg = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(bg)
-        draw.ellipse([0, 0, size-1, size-1], fill=(26, 26, 26, 255))
+        draw.ellipse([0, 0, size - 1, size - 1], fill=(26, 26, 26, 255))
         self._mic_photo = ImageTk.PhotoImage(bg)
-        
+
         # Active - red circle
         bg_active = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         draw_active = ImageDraw.Draw(bg_active)
-        draw_active.ellipse([0, 0, size-1, size-1], fill=(139, 0, 0, 255))
+        draw_active.ellipse([0, 0, size - 1, size - 1], fill=(139, 0, 0, 255))
         self._mic_photo_active = ImageTk.PhotoImage(bg_active)
 
     def _create_widgets(self):
@@ -133,7 +133,7 @@ class FloatingMicButton(tk.Tk):
             highlightthickness=0
         )
         self.label.pack(fill="both", expand=True)
-        
+
         # Bind events
         self.label.bind("<ButtonPress-1>", self._on_button_press)
         self.label.bind("<ButtonRelease-1>", self._on_button_release)
@@ -157,10 +157,10 @@ class FloatingMicButton(tk.Tk):
         self._drag_start_y = event.y_root
         self._is_dragging = False
         self._is_pressed = True
-        
+
         logger.info("Mic pressed - start listening")
         self.set_listening_state(True)
-        
+
         if self._on_mic_press:
             try:
                 self._on_mic_press()
@@ -170,15 +170,15 @@ class FloatingMicButton(tk.Tk):
     def _on_button_release(self, event):
         """Button released"""
         self._is_pressed = False
-        
+
         if self._is_dragging:
             self._is_dragging = False
             self.set_listening_state(False)
             return
-        
+
         logger.info("Mic released - stop listening")
         self.set_listening_state(False)
-        
+
         if self._on_mic_release:
             try:
                 self._on_mic_release()
@@ -189,29 +189,29 @@ class FloatingMicButton(tk.Tk):
         """Handle drag"""
         dx = abs(event.x_root - self._drag_start_x)
         dy = abs(event.y_root - self._drag_start_y)
-        
+
         if dx > self._drag_threshold or dy > self._drag_threshold:
             self._is_dragging = True
             if self._is_listening:
                 self.set_listening_state(False)
-            
+
             x = self.winfo_x() + (event.x_root - self._drag_start_x)
             y = self.winfo_y() + (event.y_root - self._drag_start_y)
             self.geometry(f"+{x}+{y}")
             self._drag_start_x = event.x_root
             self._drag_start_y = event.y_root
-        
+
     def set_mic_callback(self, callback: Callable):
         """Set callback (backward compatibility)"""
         self._on_mic_press = callback
-        
+
     def set_callbacks(self, on_press: Callable = None, on_release: Callable = None):
         """Set callbacks"""
         if on_press:
             self._on_mic_press = on_press
         if on_release:
             self._on_mic_release = on_release
-        
+
     def set_listening_state(self, is_listening: bool):
         """Update listening state"""
         self._is_listening = is_listening
@@ -221,7 +221,7 @@ class FloatingMicButton(tk.Tk):
 
     def show(self):
         self.deiconify()
-        
+
     def hide(self):
         self.withdraw()
 
@@ -232,12 +232,12 @@ MainWindow = FloatingMicButton
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
+
     def on_press():
         print("Listening...")
-    
+
     def on_release():
         print("Stopped.")
-    
+
     button = FloatingMicButton(on_mic_press=on_press, on_mic_release=on_release)
     button.mainloop()

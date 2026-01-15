@@ -6,7 +6,7 @@ Uses pymicro-wakeword for wake word detection (same as ESPHome microWakeWord).
 
 import logging
 from pathlib import Path
-from typing import Callable, Optional, Dict, Any
+from typing import Callable, Optional
 import json
 
 import numpy as np
@@ -47,29 +47,29 @@ class WakeWordDetector:
         self._model: Optional[MicroWakeWord] = None
         self._features: Optional[MicroWakeWordFeatures] = None
         self._wake_word_phrase: str = model_name
-        
+
         if not _microwakeword_available:
             logger.warning("pymicro-wakeword not installed, wake word detection disabled")
             return
-        
+
         # Load model
         config_path = self.wakeword_dir / f"{model_name}.json"
         if not config_path.exists():
             logger.error(f"Wake word config not found: {config_path}")
             return
-        
+
         try:
             # Read config to get wake word phrase
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 self._wake_word_phrase = config.get('wake_word', model_name)
-            
+
             # Load model
             self._model = MicroWakeWord.from_config(config_path)
             self._features = MicroWakeWordFeatures()
-            
+
             logger.info(f"Wake word detector initialized: '{self._wake_word_phrase}' ({model_name})")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize wake word model: {e}")
             self._model = None
@@ -95,11 +95,11 @@ class WakeWordDetector:
         """
         if self._model is None or self._features is None:
             return False
-        
+
         try:
             # Extract features from raw audio bytes
             features = self._features.process_streaming(audio_chunk)
-            
+
             # Process each feature frame
             for feature in features:
                 if self._model.process_streaming(feature):
@@ -107,7 +107,7 @@ class WakeWordDetector:
                     if self._on_wake_word:
                         self._on_wake_word(self._wake_word_phrase)
                     return True
-            
+
             return False
 
         except Exception as e:
@@ -138,10 +138,10 @@ class WakeWordDetector:
         """
         wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
         models = []
-        
+
         if not wakeword_dir.exists():
             return models
-        
+
         for json_file in wakeword_dir.glob("*.json"):
             model_name = json_file.stem
             try:
@@ -151,7 +151,7 @@ class WakeWordDetector:
                     models.append((model_name, wake_word))
             except Exception:
                 models.append((model_name, model_name))
-        
+
         return models
 
     @staticmethod

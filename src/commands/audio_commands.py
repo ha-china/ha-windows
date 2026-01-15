@@ -4,7 +4,6 @@ Implements audio input/output device switching
 """
 
 import logging
-from typing import List
 
 from src.i18n import get_i18n
 

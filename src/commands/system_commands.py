@@ -5,7 +5,6 @@ Implements Windows system control commands (shutdown, restart, lock screen, etc.
 
 import logging
 import subprocess
-import platform
 
 from src.i18n import get_i18n
 
@@ -171,7 +170,7 @@ if __name__ == "__main__":
         logger.info("Testing system commands (demo only, dangerous commands will not be executed)")
 
         # Only test lock screen (relatively safe)
-        commands = SystemCommands()
+        _ = SystemCommands()
 
         logger.info("Available system commands:")
         logger.info("  - shutdown: Shutdown")

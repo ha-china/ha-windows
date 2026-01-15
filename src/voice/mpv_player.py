@@ -5,6 +5,7 @@ Uses pygame for streaming audio playback from URLs.
 Supports direct URL streaming without downloading first.
 """
 
+from src.core.models import get_volume_controller
 import asyncio
 import io
 import logging
@@ -28,7 +29,6 @@ logger = logging.getLogger(__name__)
 _i18n = get_i18n()
 
 # Import volume controller from models
-from src.core.models import get_volume_controller
 
 # Try to import pygame for streaming playback
 _pygame_available = False
@@ -123,8 +123,6 @@ class AudioPlayer:
             return
 
         try:
-            import urllib.request
-
             # pygame.mixer.music can stream from URL
             # Use urllib to create a streaming connection
             logger.info(f"Streaming audio from URL: {url}")
@@ -212,7 +210,7 @@ class AudioPlayer:
                 time.sleep(0.5)
                 try:
                     os.unlink(tmp_path)
-                except:
+                except BaseException:
                     pass
 
             threading.Thread(target=cleanup, daemon=True).start()
@@ -242,7 +240,7 @@ class AudioPlayer:
             time.sleep(3)
             try:
                 os.unlink(tmp_path)
-            except:
+            except BaseException:
                 pass
 
         threading.Thread(target=cleanup, daemon=True).start()
@@ -312,7 +310,7 @@ class AudioPlayer:
                     time.sleep(2)
                     try:
                         os.unlink(tmp_path)
-                    except:
+                    except BaseException:
                         pass
 
                 threading.Thread(target=cleanup, daemon=True).start()
@@ -369,7 +367,7 @@ class AudioPlayer:
             done_callback: Callback to invoke when playback finishes
         """
         self._done_callback = done_callback
-        
+
         # Play in background thread to support callback
         self._play_thread = threading.Thread(
             target=self._play_with_callback,
@@ -382,14 +380,14 @@ class AudioPlayer:
         """Play audio and invoke callback when done"""
         try:
             self.play_url(url)
-            
+
             # Wait for playback to complete
             if _pygame_available:
                 while pygame.mixer.music.get_busy():
                     time.sleep(0.1)
             else:
                 time.sleep(2)  # Estimate for winsound
-            
+
         except Exception as e:
             logger.error(f"Playback error: {e}")
         finally:

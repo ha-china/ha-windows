@@ -7,8 +7,7 @@ For use with ESPHome server mode (HA connects to Windows).
 
 import asyncio
 import logging
-import threading
-from typing import Callable, Optional, Dict
+from typing import Callable, Optional
 
 from .audio_recorder import AsyncAudioRecorder
 from .wake_word import AsyncWakeWordDetector
@@ -77,9 +76,6 @@ class AudioStreamHandler:
 
         await recorder.start_recording()
 
-        silence_count = 0
-        max_silence = 30  # 3 seconds of silence (30 chunks)
-
         try:
             while self._recording:
                 # Get audio chunk
@@ -92,7 +88,7 @@ class AudioStreamHandler:
 
                 # Check for silence (VAD)
                 is_speech, speech_ended = vad.process_frame(chunk)
-                
+
                 # If speech ended (detected silence after speech), stop recording
                 if speech_ended:
                     logger.info("Speech ended, stopping recording")

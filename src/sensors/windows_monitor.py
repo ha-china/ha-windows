@@ -23,6 +23,8 @@ from aioesphomeapi.api_pb2 import (
 from src.i18n import get_i18n
 
 # Lazy import for media player to avoid circular dependency
+
+
 def _get_media_player_module():
     """Lazy import media player module"""
     try:
@@ -30,6 +32,7 @@ def _get_media_player_module():
         return mpv_player
     except ImportError:
         return None
+
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()
@@ -128,7 +131,7 @@ class WindowsMonitor:
                 # Skip cdrom and empty filesystem
                 if 'cdrom' in partition.opts or partition.fstype == '':
                     continue
-                
+
                 # Skip removable drives if fixed_only
                 if fixed_only and 'removable' in partition.opts:
                     continue
@@ -261,12 +264,12 @@ class WindowsMonitor:
         for mount_point in sorted(disk_info.keys()):
             # Get drive letter (e.g., "C" from "C:\")
             drive_letter = mount_point.rstrip(':\\')
-            
+
             # Disk usage %
             usage_id = f"disk_{drive_letter.lower()}_usage"
             available.append((usage_id, f"Disk {drive_letter} Usage", "mdi:harddisk", disk_key))
             disk_key += 1
-            
+
             # Disk free GB
             free_id = f"disk_{drive_letter.lower()}_free"
             available.append((free_id, f"Disk {drive_letter} Free", "mdi:harddisk", disk_key))
@@ -335,7 +338,7 @@ class WindowsMonitor:
                     icon=icon,
                 )
             entities.append(sensor)
-        
+
         entities.append(ListEntitiesDoneResponse())
         return entities
 
@@ -381,13 +384,13 @@ class WindowsMonitor:
         disk_info = info.get('disk', {})
         for mount_point, disk_data in disk_info.items():
             drive_letter = mount_point.rstrip(':\\').lower()
-            
+
             # Disk usage %
             usage_id = f"disk_{drive_letter}_usage"
             if usage_id in self._entity_map:
                 _, _, key = self._entity_map[usage_id]
                 states.append(SensorStateResponse(key=key, state=float(disk_data.get('percent', 0))))
-            
+
             # Disk free GB
             free_id = f"disk_{drive_letter}_free"
             if free_id in self._entity_map:

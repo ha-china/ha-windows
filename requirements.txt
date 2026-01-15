@@ -1,37 +1,18 @@
-# Home Assistant Windows Client Dependencies
-
-# UI Framework
 customtkinter>=5.2.0
-
-# Home Assistant Connection
 aioesphomeapi>=42.0.0
-
-# HTTP Server (for audio streaming)
 aiohttp>=3.8.0
-
-# Audio Processing
 soundcard>=1.0.0
 numpy>=1.24.0
-pygame>=2.5.0  # For streaming audio playback
-
-# Wake Word and VAD
+pygame>=2.5.0
 pymicro-wakeword>=2.0.0
 webrtcvad-wheels>=2.0.10
-
-# System Monitoring and Service Discovery
 psutil>=5.9.0
 zeroconf>=0.100.0
-
-# Windows Specific
 win10toast>=0.9
 pycaw>=0.0.1
 Pillow>=10.0.0
 pystray>=0.19.0
-
-# Packaging Tools (dev dependencies)
 pyinstaller>=6.0.0
-
-# Testing (dev dependencies)
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
 hypothesis>=6.0.0

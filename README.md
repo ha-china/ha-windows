@@ -7,9 +7,9 @@ A Windows client that emulates an ESPHome device for Home Assistant integration.
 - **Voice Assistant**: Wake word detection (Okay Nabu, Hey Jarvis, etc.)
 - **Floating Mic Button**: Push-to-talk with draggable floating button
 - **System Monitoring**: CPU, memory, disk usage sensors
-- **Media Player**: Play audio announcements and TTS
-- **Remote Control**: Shutdown, restart, screenshot via Home Assistant
-- **Notifications**: Windows toast notifications from Home Assistant
+- **Media Player**: Play TTS and audio announcements from Home Assistant
+- **Remote Control**: Shutdown, restart, screenshot buttons via Home Assistant
+- **Windows Notifications**: Display toast notifications from Home Assistant
 - **System Tray**: Runs in background with tray icon
 
 ## Installation
@@ -55,10 +55,29 @@ Say the wake word (default: "Okay Nabu") to activate voice assistant, or use the
 - Battery Level/Status (if available)
 - Network Status
 
-### Available Controls
-- Shutdown
-- Restart
-- Screenshot
+### Available Controls (Buttons)
+- Shutdown - Shutdown the computer
+- Restart - Restart the computer
+- Screenshot - Take a screenshot
+
+### Media Player
+The client exposes a media player entity that can:
+- Play TTS (Text-to-Speech) announcements
+- Play audio from URLs
+- Control playback (play/pause/stop)
+
+Use Home Assistant's `media_player.play_media` or `tts.speak` service to play audio.
+
+### Notifications
+Send Windows toast notifications from Home Assistant using the `esphome.xxx_notify` service (where `xxx` is your device name).
+
+Example automation:
+```yaml
+service: esphome.my_pc_notify
+data:
+  title: "Hello"
+  message: "This is a notification from Home Assistant"
+```
 
 ## Wake Words
 

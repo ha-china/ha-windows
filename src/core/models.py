@@ -19,13 +19,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Windows volume control
-try:
-    from pycaw.pycaw import AudioUtilities
-    PYCAW_AVAILABLE = True
-except ImportError:
-    PYCAW_AVAILABLE = False
-    logger.warning("pycaw not available, duck/unduck will be disabled")
+# pycaw availability flag (lazy import to avoid COM conflicts)
+PYCAW_AVAILABLE = None  # Will be set on first use
+
+
+def _check_pycaw():
+    """Check pycaw availability (lazy import)"""
+    global PYCAW_AVAILABLE
+    if PYCAW_AVAILABLE is None:
+        try:
+            from pycaw.pycaw import AudioUtilities  # noqa: F401
+            PYCAW_AVAILABLE = True
+        except (ImportError, OSError):
+            PYCAW_AVAILABLE = False
+            logger.warning("pycaw not available, duck/unduck will be disabled")
+    return PYCAW_AVAILABLE
 
 
 class WakeWordType(str, Enum):
@@ -101,11 +109,12 @@ class WindowsVolumeController:
 
     def _init_volume_interface(self) -> None:
         """Initialize volume interface"""
-        if not PYCAW_AVAILABLE:
+        if not _check_pycaw():
             logger.warning("pycaw not available, volume control disabled")
             return
 
         try:
+            from pycaw.pycaw import AudioUtilities
             devices = AudioUtilities.GetSpeakers()
             # New pycaw uses EndpointVolume property
             self._volume_interface = devices.EndpointVolume

@@ -179,93 +179,131 @@ def get_volume_controller() -> WindowsVolumeController:
 
 
 class AudioPlayer:
-    """Audio player interface with streaming URL support"""
+    """Audio player with true streaming support using VLC"""
     
     def __init__(self):
         self._volume = 100
-        self._duck_volume = 50
         self._is_playing = False
         self._done_callback: Optional[Callable] = None
         self._volume_controller = get_volume_controller()
         self._play_thread: Optional[Any] = None
         
-        # Initialize pygame mixer
-        self._pygame_available = False
+        # Try VLC first (best for streaming)
+        self._vlc_instance: Optional[Any] = None
+        self._vlc_player: Optional[Any] = None
+        self._vlc_available = False
+        
         try:
-            import pygame
-            if not pygame.mixer.get_init():
-                pygame.mixer.init()
-            self._pygame_available = True
+            import vlc
+            self._vlc_instance = vlc.Instance('--no-xlib')
+            self._vlc_player = self._vlc_instance.media_player_new()
+            self._vlc_available = True
+            logger.info("VLC player initialized (streaming supported)")
         except Exception as e:
-            logger.warning(f"pygame not available: {e}")
+            logger.warning(f"VLC not available: {e}, falling back to pygame")
+        
+        # Fallback to pygame
+        self._pygame_available = False
+        if not self._vlc_available:
+            try:
+                import pygame
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+                self._pygame_available = True
+                logger.info("pygame mixer initialized")
+            except Exception as e:
+                logger.warning(f"pygame not available: {e}")
     
     @property
     def is_playing(self) -> bool:
+        if self._vlc_available and self._vlc_player:
+            import vlc
+            state = self._vlc_player.get_state()
+            return state in (vlc.State.Playing, vlc.State.Buffering)
         return self._is_playing
     
     def play(self, url: str, done_callback: Optional[Callable] = None) -> None:
-        """Play audio (supports streaming URLs directly)"""
+        """Play audio (true streaming for URLs)"""
         import threading
         
         logger.info(f"Playing: {url}")
         self._is_playing = True
         self._done_callback = done_callback
         
-        # Play in background thread
-        self._play_thread = threading.Thread(
-            target=self._play_audio,
-            args=(url,),
-            daemon=True
-        )
-        self._play_thread.start()
+        if self._vlc_available:
+            # VLC handles streaming natively
+            self._play_vlc(url)
+        else:
+            # Fallback to pygame in background thread
+            self._play_thread = threading.Thread(
+                target=self._play_pygame,
+                args=(url,),
+                daemon=True
+            )
+            self._play_thread.start()
     
-    def _play_audio(self, url: str) -> None:
-        """Play audio (supports streaming URLs)"""
+    def _play_vlc(self, url: str) -> None:
+        """Play with VLC (true streaming)"""
+        import threading
+        
+        try:
+            import vlc
+            
+            media = self._vlc_instance.media_new(url)
+            self._vlc_player.set_media(media)
+            self._vlc_player.audio_set_volume(self._volume)
+            self._vlc_player.play()
+            
+            logger.info("VLC streaming started")
+            
+            # Monitor playback in background
+            def monitor():
+                import time
+                time.sleep(0.5)  # Wait for playback to start
+                while True:
+                    state = self._vlc_player.get_state()
+                    if state in (vlc.State.Ended, vlc.State.Stopped, vlc.State.Error):
+                        break
+                    time.sleep(0.1)
+                logger.info("VLC playback finished")
+                self._on_playback_finished()
+            
+            threading.Thread(target=monitor, daemon=True).start()
+            
+        except Exception as e:
+            logger.error(f"VLC playback error: {e}")
+            self._on_playback_finished()
+    
+    def _play_pygame(self, url: str) -> None:
+        """Play with pygame (downloads to memory first)"""
         import io
         import time
         
         try:
-            if self._pygame_available:
-                import pygame
+            import pygame
+            
+            if url.startswith(('http://', 'https://')):
+                import urllib.request
+                logger.info(f"Downloading audio: {url}")
                 
-                if url.startswith(('http://', 'https://')):
-                    # Stream URL to memory and play
-                    import urllib.request
-                    logger.info(f"Streaming from URL: {url}")
-                    
-                    with urllib.request.urlopen(url, timeout=30) as response:
-                        audio_data = response.read()
-                    
-                    # Play from memory
-                    audio_io = io.BytesIO(audio_data)
-                    pygame.mixer.music.load(audio_io)
-                    pygame.mixer.music.play()
-                else:
-                    # Local file
-                    logger.info(f"Playing local file: {url}")
-                    pygame.mixer.music.load(url)
-                    pygame.mixer.music.play()
+                with urllib.request.urlopen(url, timeout=30) as response:
+                    audio_data = response.read()
                 
-                # Wait for playback to complete
-                while pygame.mixer.music.get_busy():
-                    time.sleep(0.1)
-                
-                logger.info("Playback finished")
+                audio_io = io.BytesIO(audio_data)
+                pygame.mixer.music.load(audio_io)
             else:
-                # Fallback: winsound for local WAV files only
-                if url.startswith(('http://', 'https://')):
-                    logger.error("Cannot stream URL without pygame")
-                    return
-                
-                import winsound
-                if url.lower().endswith('.wav'):
-                    winsound.PlaySound(url, winsound.SND_FILENAME)
-                    logger.info("Playback finished")
-                else:
-                    logger.error(f"winsound only supports WAV files: {url}")
+                pygame.mixer.music.load(url)
+            
+            pygame.mixer.music.set_volume(self._volume / 100)
+            pygame.mixer.music.play()
+            
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.1)
+            
+            logger.info("pygame playback finished")
         
         except Exception as e:
-            logger.error(f"Playback error: {e}")
+            logger.error(f"pygame playback error: {e}")
         
         finally:
             self._on_playback_finished()
@@ -274,12 +312,11 @@ class AudioPlayer:
         """Stop playback"""
         logger.info("Stopping playback")
         try:
-            if self._pygame_available:
+            if self._vlc_available and self._vlc_player:
+                self._vlc_player.stop()
+            elif self._pygame_available:
                 import pygame
                 pygame.mixer.music.stop()
-            else:
-                import winsound
-                winsound.PlaySound(None, winsound.SND_PURGE)
         except Exception as e:
             logger.error(f"Stop error: {e}")
         self._is_playing = False
@@ -287,17 +324,27 @@ class AudioPlayer:
     def pause(self) -> None:
         """Pause playback"""
         logger.info("Pausing playback")
-        if self._pygame_available:
-            import pygame
-            pygame.mixer.music.pause()
+        try:
+            if self._vlc_available and self._vlc_player:
+                self._vlc_player.pause()
+            elif self._pygame_available:
+                import pygame
+                pygame.mixer.music.pause()
+        except Exception as e:
+            logger.error(f"Pause error: {e}")
         self._is_playing = False
     
     def resume(self) -> None:
         """Resume playback"""
         logger.info("Resuming playback")
-        if self._pygame_available:
-            import pygame
-            pygame.mixer.music.unpause()
+        try:
+            if self._vlc_available and self._vlc_player:
+                self._vlc_player.pause()  # VLC toggle pause
+            elif self._pygame_available:
+                import pygame
+                pygame.mixer.music.unpause()
+        except Exception as e:
+            logger.error(f"Resume error: {e}")
         self._is_playing = True
     
     def duck(self) -> None:
@@ -311,7 +358,14 @@ class AudioPlayer:
     def set_volume(self, volume: int) -> None:
         """Set volume (0-100)"""
         self._volume = max(0, min(100, volume))
-        self._duck_volume = self._volume // 2
+        try:
+            if self._vlc_available and self._vlc_player:
+                self._vlc_player.audio_set_volume(self._volume)
+            elif self._pygame_available:
+                import pygame
+                pygame.mixer.music.set_volume(self._volume / 100)
+        except Exception as e:
+            logger.error(f"Set volume error: {e}")
         logger.debug(f"Volume set to {self._volume}")
     
     def _on_playback_finished(self) -> None:

@@ -26,8 +26,10 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
-        # 验证关键依赖已安装
+        pip list
+
+    - name: Verify dependencies
+      run: |
         python -c "import aioesphomeapi; print(f'aioesphomeapi version: {aioesphomeapi.__version__}')"
         python -c "import customtkinter; print('customtkinter OK')"
         python -c "import pymicro_wakeword; print('pymicro_wakeword OK')"

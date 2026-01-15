@@ -68,6 +68,10 @@ The client exposes a media player entity that can:
 
 Use Home Assistant's `media_player.play_media` or `tts.speak` service to play audio.
 
+**Optional: Install VLC for streaming support**
+
+For long audio (music), install [VLC media player](https://www.videolan.org/vlc/) to enable true streaming playback. Without VLC, audio is downloaded to memory first (fine for short TTS).
+
 ### Notifications
 Send Windows toast notifications from Home Assistant using the `esphome.xxx_notify` service (where `xxx` is your device name).
 

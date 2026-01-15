@@ -179,7 +179,7 @@ def get_volume_controller() -> WindowsVolumeController:
 
 
 class AudioPlayer:
-    """Audio player with true streaming support using VLC"""
+    """Audio player with optional VLC streaming support"""
     
     def __init__(self):
         self._volume = 100
@@ -188,7 +188,7 @@ class AudioPlayer:
         self._volume_controller = get_volume_controller()
         self._play_thread: Optional[Any] = None
         
-        # Try VLC first (best for streaming)
+        # Try VLC first (best for streaming, requires VLC installed)
         self._vlc_instance: Optional[Any] = None
         self._vlc_player: Optional[Any] = None
         self._vlc_available = False
@@ -200,19 +200,19 @@ class AudioPlayer:
             self._vlc_available = True
             logger.info("VLC player initialized (streaming supported)")
         except Exception as e:
-            logger.warning(f"VLC not available: {e}, falling back to pygame")
+            logger.info(f"VLC not available (install VLC for streaming): {e}")
         
         # Fallback to pygame
         self._pygame_available = False
-        if not self._vlc_available:
-            try:
-                import pygame
-                if not pygame.mixer.get_init():
-                    pygame.mixer.init()
-                self._pygame_available = True
-                logger.info("pygame mixer initialized")
-            except Exception as e:
-                logger.warning(f"pygame not available: {e}")
+        try:
+            import pygame
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            self._pygame_available = True
+            if not self._vlc_available:
+                logger.info("Using pygame for audio (no streaming)")
+        except Exception as e:
+            logger.warning(f"pygame not available: {e}")
     
     @property
     def is_playing(self) -> bool:

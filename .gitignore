@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.kiro/
+.hypothesis/
+
+# Claude Code 配置（老王我自己的配置文件）
+.claude/
+.serena/
+.spec-workflow/
+
+
+# 参考项目（linux-voice-assistant 和 HASS.Agent）
+reference/
+
+# 日志文件
+*.log
+ha_windows.log
+
+# PyInstaller 临时文件
+*.exe
+*.dmg
+*.app
+
+# 测试和覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.backup
+nul
+commit_v022.py
+commit_workflow.py
+do_tag.py
+
+# 系统文件
+Thumbs.db
+Desktop.ini
+
+# 打包输出
+dist/
+build/
+
+# 用户配置（虽然项目是零配置，但保留此注释以防万一）
+# *.json
+# *.yaml
+# *.yml
+
+# 开发工具
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyreplay
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# 环境变量
+.env
+.env.local

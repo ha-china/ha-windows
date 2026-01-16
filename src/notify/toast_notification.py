@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Try to import windows-toasts
 try:
-    from windows_toasts import Toast, ToastDisplayImage, InteractableWindowsToaster, ToastImagePosition
+    from windows_toasts import Toast, ToastDisplayImage, WindowsToaster, ToastImagePosition
     WINDOWS_TOASTS_AVAILABLE = True
 except ImportError:
     WINDOWS_TOASTS_AVAILABLE = False
@@ -46,9 +46,9 @@ class Notification:
 class NotificationHandler:
     """Windows Toast notification handler"""
 
-    def __init__(self, app_name: str = "Home Assistant"):
+    def __init__(self, app_name: str = "Home Assistant Windows"):
         self.app_name = app_name
-        self._toaster: Optional["InteractableWindowsToaster"] = None
+        self._toaster: Optional["WindowsToaster"] = None
         self._temp_dir = Path(tempfile.gettempdir()) / "ha_windows_notifications"
         self._temp_dir.mkdir(parents=True, exist_ok=True)
         self._init_toaster()
@@ -58,7 +58,7 @@ class NotificationHandler:
         if not WINDOWS_TOASTS_AVAILABLE:
             return
         try:
-            self._toaster = InteractableWindowsToaster(self.app_name)
+            self._toaster = WindowsToaster(self.app_name)
         except Exception as e:
             logger.error(f"Failed to initialize toaster: {e}")
 
@@ -71,13 +71,13 @@ class NotificationHandler:
             toast = Toast()
             toast.text_fields = [notification.title, notification.message]
 
-            # Add hero image if available
+            # Add hero image if available (inline for WindowsToaster)
             if notification.icon_path:
                 image_path = Path(notification.icon_path)
                 if image_path.exists():
                     toast.AddImage(ToastDisplayImage.fromPath(
                         str(image_path.absolute()),
-                        position=ToastImagePosition.Hero
+                        position=ToastImagePosition.Inline
                     ))
 
             self._toaster.show_toast(toast)

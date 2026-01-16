@@ -6,6 +6,7 @@ Uses soundcard library to record microphone audio
 import asyncio
 import logging
 import threading
+import warnings
 from typing import Optional, Callable
 from queue import Queue
 
@@ -14,6 +15,9 @@ import numpy as np
 # Fix numpy.fromstring deprecation for soundcard compatibility
 if not hasattr(np, 'fromstring'):
     np.fromstring = lambda s, dtype=None, count=-1, sep='': np.frombuffer(s, dtype=dtype, count=count)
+
+# Suppress soundcard data discontinuity warnings
+warnings.filterwarnings("ignore", message="data discontinuity in recording")
 
 import soundcard
 

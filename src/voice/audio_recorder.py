@@ -10,6 +10,11 @@ from typing import Optional, Callable
 from queue import Queue
 
 import numpy as np
+
+# Fix numpy.fromstring deprecation for soundcard compatibility
+if not hasattr(np, 'fromstring'):
+    np.fromstring = lambda s, dtype=None, count=-1, sep='': np.frombuffer(s, dtype=dtype, count=count)
+
 import soundcard
 
 from src.i18n import get_i18n

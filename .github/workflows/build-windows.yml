@@ -34,9 +34,10 @@ jobs:
 
     - name: Verify dependencies
       run: |
-        python -c "import aioesphomeapi; print(f'aioesphomeapi version: {aioesphomeapi.__version__}')"
+        python -c "import aioesphomeapi; print('aioesphomeapi OK')"
         python -c "import customtkinter; print('customtkinter OK')"
         python -c "import pymicro_wakeword; print('pymicro_wakeword OK')"
+        python -c "import soundcard; print('soundcard OK')"
 
     - name: Build EXE
       run: |

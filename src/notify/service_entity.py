@@ -45,9 +45,9 @@ class ServiceEntityManager:
         },
         {
             'key': 202,
-            'name': 'launch_app',
+            'name': 'run_command',
             'args': [
-                {'name': 'app_name', 'type': UserServiceArgType.STRING},
+                {'name': 'command', 'type': UserServiceArgType.STRING},
             ],
         },
         {
@@ -149,8 +149,8 @@ class ServiceEntityManager:
                 self._handle_notify(args)
             elif msg.key == 201:  # notify_with_image
                 self._handle_notify_with_image(args)
-            elif msg.key == 202:  # launch_app
-                self._handle_launch_app(args)
+            elif msg.key == 202:  # run_command
+                self._handle_run_command(args)
             elif msg.key == 203:  # open_url
                 self._handle_open_url(args)
             elif msg.key == 204:  # set_volume
@@ -199,19 +199,19 @@ class ServiceEntityManager:
 
         logger.info(f"Showing notification (with image): {title} - {message}")
 
-    def _handle_launch_app(self, args: Dict) -> None:
-        """Handle launch app service"""
-        app_name = args.get('app_name', '')
-        if not app_name:
-            logger.warning("Launch app service missing app_name parameter")
+    def _handle_run_command(self, args: Dict) -> None:
+        """Handle run command service"""
+        import subprocess
+        command = args.get('command', '')
+        if not command:
+            logger.warning("run_command service missing command parameter")
             return
 
-        if self._command_executor is None:
-            from src.commands.command_executor import CommandExecutor
-            self._command_executor = CommandExecutor()
-
-        result = self._command_executor.execute(f"launch:{app_name}")
-        logger.info(f"Launch app: {app_name}, result: {result}")
+        try:
+            subprocess.Popen(command, shell=True)
+            logger.info(f"Run command: {command}")
+        except Exception as e:
+            logger.error(f"Failed to run command: {e}")
 
     def _handle_open_url(self, args: Dict) -> None:
         """Handle open URL service"""

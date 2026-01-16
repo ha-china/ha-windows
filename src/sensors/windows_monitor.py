@@ -42,10 +42,15 @@ _i18n = get_i18n()
 SENSOR_KEYS = {
     "cpu_usage": 1,
     "memory_usage": 2,
-    "memory_free": 7,  # Changed from 3 to avoid conflict with old disk_usage
+    "memory_free": 7,
     "battery_status": 4,
     "battery_level": 5,
-    "network_status": 6,
+    "ip_address": 6,
+    "boot_time": 8,
+    "uptime": 9,
+    "process_count": 10,
+    "network_upload": 11,
+    "network_download": 12,
 }
 
 # Dynamic key offset for disk sensors (each disk uses 2 keys: usage% and free GB)
@@ -189,12 +194,26 @@ class WindowsMonitor:
             net_io = psutil.net_io_counters()
             net_connections = len(psutil.net_connections())
 
+            # Get IP address
+            ip_address = ""
+            for iface, addrs in psutil.net_if_addrs().items():
+                for addr in addrs:
+                    # IPv4 address, not loopback
+                    if addr.family == 2 and not addr.address.startswith("127."):
+                        ip_address = addr.address
+                        break
+                if ip_address:
+                    break
+
             return {
                 'bytes_sent': net_io.bytes_sent,
                 'bytes_recv': net_io.bytes_recv,
+                'bytes_sent_gb': round(net_io.bytes_sent / (1024**3), 2),
+                'bytes_recv_gb': round(net_io.bytes_recv / (1024**3), 2),
                 'packets_sent': net_io.packets_sent,
                 'packets_recv': net_io.packets_recv,
                 'connections': net_connections,
+                'ip_address': ip_address,
             }
         except Exception as e:
             logger.error(f"Failed to get network info: {e}")
@@ -208,6 +227,13 @@ class WindowsMonitor:
             Dict: System information
         """
         try:
+            import time
+            from datetime import datetime
+
+            uptime_seconds = time.time() - self._boot_time
+            uptime_hours = round(uptime_seconds / 3600, 1)
+            boot_datetime = datetime.fromtimestamp(self._boot_time)
+
             return {
                 'system': platform.system(),
                 'release': platform.release(),
@@ -216,6 +242,10 @@ class WindowsMonitor:
                 'processor': platform.processor(),
                 'hostname': platform.node(),
                 'boot_time': self._boot_time,
+                'boot_time_iso': boot_datetime.isoformat(),
+                'uptime_seconds': uptime_seconds,
+                'uptime_hours': uptime_hours,
+                'process_count': len(psutil.pids()),
             }
         except Exception as e:
             logger.error(f"Failed to get system info: {e}")
@@ -281,7 +311,14 @@ class WindowsMonitor:
             available.append(("battery_level", "Battery Level", "mdi:battery-90", SENSOR_KEYS["battery_level"]))
 
         # Network - always available
-        available.append(("network_status", "Network Status", "mdi:network", SENSOR_KEYS["network_status"]))
+        available.append(("ip_address", "IP Address", "mdi:ip-network", SENSOR_KEYS["ip_address"]))
+        available.append(("network_upload", "Network Upload", "mdi:upload", SENSOR_KEYS["network_upload"]))
+        available.append(("network_download", "Network Download", "mdi:download", SENSOR_KEYS["network_download"]))
+
+        # System info - always available
+        available.append(("boot_time", "Boot Time", "mdi:clock-start", SENSOR_KEYS["boot_time"]))
+        available.append(("uptime", "Uptime", "mdi:timer-outline", SENSOR_KEYS["uptime"]))
+        available.append(("process_count", "Process Count", "mdi:application-cog", SENSOR_KEYS["process_count"]))
 
         self._available_entities = available
         self._entity_map = {obj_id: (name, icon, key) for obj_id, name, icon, key in available}
@@ -318,19 +355,44 @@ class WindowsMonitor:
                     accuracy_decimals=1,
                     state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
                 )
-            # GB sensors (memory free, disk free)
-            elif object_id == "memory_free" or object_id.endswith("_free"):
+            # GB sensors (memory free, disk free, network upload/download)
+            elif object_id in ("memory_free", "network_upload", "network_download") or object_id.endswith("_free"):
                 sensor = ListEntitiesSensorResponse(
                     object_id=object_id,
                     key=key,
                     name=name,
                     icon=icon,
                     unit_of_measurement="GB",
+                    accuracy_decimals=2,
+                    state_class=(
+                        SensorStateClass.STATE_CLASS_TOTAL_INCREASING
+                        if object_id.startswith("network_")
+                        else SensorStateClass.STATE_CLASS_MEASUREMENT
+                    ),
+                )
+            # Hours sensor (uptime)
+            elif object_id == "uptime":
+                sensor = ListEntitiesSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                    unit_of_measurement="h",
                     accuracy_decimals=1,
+                    state_class=SensorStateClass.STATE_CLASS_TOTAL_INCREASING,
+                )
+            # Count sensor (process_count)
+            elif object_id == "process_count":
+                sensor = ListEntitiesSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                    accuracy_decimals=0,
                     state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
                 )
             else:
-                # Text sensor for status values
+                # Text sensor for status values (network_status, battery_status, boot_time)
                 sensor = ListEntitiesTextSensorResponse(
                     object_id=object_id,
                     key=key,
@@ -412,12 +474,42 @@ class WindowsMonitor:
                 _, _, key = self._entity_map["battery_level"]
                 states.append(SensorStateResponse(key=key, state=float(battery_info.get('percent', 0))))
 
-        # Network status
-        if "network_status" in self._entity_map:
+        # IP Address
+        if "ip_address" in self._entity_map:
             net_info = info.get('network', {})
-            online = "Online" if net_info.get('bytes_sent', 0) > 0 or net_info.get('bytes_recv', 0) > 0 else "Offline"
-            _, _, key = self._entity_map["network_status"]
-            states.append(TextSensorStateResponse(key=key, state=online))
+            ip = net_info.get('ip_address', '')
+            _, _, key = self._entity_map["ip_address"]
+            states.append(TextSensorStateResponse(key=key, state=ip))
+
+        # Network upload (GB)
+        if "network_upload" in self._entity_map:
+            net_info = info.get('network', {})
+            _, _, key = self._entity_map["network_upload"]
+            states.append(SensorStateResponse(key=key, state=float(net_info.get('bytes_sent_gb', 0))))
+
+        # Network download (GB)
+        if "network_download" in self._entity_map:
+            net_info = info.get('network', {})
+            _, _, key = self._entity_map["network_download"]
+            states.append(SensorStateResponse(key=key, state=float(net_info.get('bytes_recv_gb', 0))))
+
+        # Boot time (ISO format)
+        if "boot_time" in self._entity_map:
+            sys_info = info.get('system', {})
+            _, _, key = self._entity_map["boot_time"]
+            states.append(TextSensorStateResponse(key=key, state=sys_info.get('boot_time_iso', '')))
+
+        # Uptime (hours)
+        if "uptime" in self._entity_map:
+            sys_info = info.get('system', {})
+            _, _, key = self._entity_map["uptime"]
+            states.append(SensorStateResponse(key=key, state=float(sys_info.get('uptime_hours', 0))))
+
+        # Process count
+        if "process_count" in self._entity_map:
+            sys_info = info.get('system', {})
+            _, _, key = self._entity_map["process_count"]
+            states.append(SensorStateResponse(key=key, state=float(sys_info.get('process_count', 0))))
 
         # Extra states (command_result, voice_status, etc.)
         for entity_name, state_value in extra_states.items():

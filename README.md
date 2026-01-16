@@ -2,7 +2,7 @@
 
 A Windows client that emulates an ESPHome device for Home Assistant integration. Enables voice assistant, system monitoring, and remote control capabilities.
 
-> **🐍 Built with Python** - This project is developed entirely in Python, making it easy to port to macOS or Linux. Most of the code is cross-platform, only a few Windows-specific modules (like `pycaw` for audio control) need to be replaced with platform-specific alternatives.
+> **🐍 Built with Python** - This project is developed entirely in Python, making it easy to migrate to macOS or Linux. Most of the code is cross-platform, only a few Windows-specific modules (like `pycaw` for audio control) need to be replaced with platform-specific alternatives.
 
 ## Features
 

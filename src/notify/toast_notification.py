@@ -1,8 +1,7 @@
 """
 Windows Toast Notification Handler
 
-Uses win10toast library to display Windows Toast notifications
-Supports title, message, image and action buttons
+Uses windows-toasts library to display Windows Toast notifications with hero images
 """
 
 import asyncio
@@ -14,13 +13,13 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# Try to import Toast library
+# Try to import windows-toasts
 try:
-    from win10toast import ToastNotifier
-    WIN10TOAST_AVAILABLE = True
+    from windows_toasts import Toast, ToastDisplayImage, InteractableWindowsToaster, ToastImagePosition
+    WINDOWS_TOASTS_AVAILABLE = True
 except ImportError:
-    WIN10TOAST_AVAILABLE = False
-    logger.warning("win10toast not available")
+    WINDOWS_TOASTS_AVAILABLE = False
+    logger.warning("windows-toasts not available")
 
 
 @dataclass
@@ -49,33 +48,42 @@ class NotificationHandler:
 
     def __init__(self, app_name: str = "Home Assistant"):
         self.app_name = app_name
-        self._toaster: Optional["ToastNotifier"] = None
+        self._toaster: Optional["InteractableWindowsToaster"] = None
         self._temp_dir = Path(tempfile.gettempdir()) / "ha_windows_notifications"
         self._temp_dir.mkdir(parents=True, exist_ok=True)
         self._init_toaster()
         logger.info(f"NotificationHandler initialized: {app_name}")
 
     def _init_toaster(self) -> None:
-        if not WIN10TOAST_AVAILABLE:
+        if not WINDOWS_TOASTS_AVAILABLE:
             return
         try:
-            self._toaster = ToastNotifier()
+            self._toaster = InteractableWindowsToaster(self.app_name)
         except Exception as e:
-            logger.error(f"Failed to initialize toast notifier: {e}")
+            logger.error(f"Failed to initialize toaster: {e}")
 
     def show(self, notification: Notification) -> bool:
-        if self._toaster is None:
+        if not WINDOWS_TOASTS_AVAILABLE or self._toaster is None:
+            logger.error("windows-toasts not available")
             return False
+
         try:
-            self._toaster.show_toast(
-                title=notification.title,
-                msg=notification.message,
-                icon_path=notification.icon_path,
-                duration=notification.duration,
-                threaded=True,
-            )
+            toast = Toast()
+            toast.text_fields = [notification.title, notification.message]
+
+            # Add hero image if available
+            if notification.icon_path:
+                image_path = Path(notification.icon_path)
+                if image_path.exists():
+                    toast.AddImage(ToastDisplayImage.fromPath(
+                        str(image_path.absolute()),
+                        position=ToastImagePosition.Hero
+                    ))
+
+            self._toaster.show_toast(toast)
             logger.info(f"Notification shown: {notification.title}")
             return True
+
         except Exception as e:
             logger.error(f"Failed to show notification: {e}")
             return False
@@ -88,6 +96,7 @@ class NotificationHandler:
             local_path = await self._download_image(notification.image_url)
             if local_path:
                 notification.icon_path = local_path
+                logger.info(f"Image downloaded to: {local_path}")
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.show, notification)
 
@@ -95,23 +104,35 @@ class NotificationHandler:
         try:
             import aiohttp
             import hashlib
+
             url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
-            ext = Path(url).suffix or ".png"
+            url_path = url.split('?')[0]
+            ext = Path(url_path).suffix.lower()
+            if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
+                ext = ".png"
+
             local_path = self._temp_dir / f"img_{url_hash}{ext}"
+
             if local_path.exists():
+                logger.info(f"Using cached image: {local_path}")
                 return str(local_path)
+
+            logger.info(f"Downloading image from: {url}")
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status == 200:
+                        content = await response.read()
                         with open(local_path, "wb") as f:
-                            f.write(await response.read())
+                            f.write(content)
+                        logger.info(f"Image saved: {local_path} ({len(content)} bytes)")
                         return str(local_path)
+                    else:
+                        logger.error(f"Failed to download image: HTTP {response.status}")
         except Exception as e:
             logger.error(f"Failed to download image: {e}")
         return None
 
     def cleanup(self) -> None:
-        """Cleanup temp files"""
         try:
             for f in self._temp_dir.glob("img_*"):
                 f.unlink()
@@ -119,7 +140,6 @@ class NotificationHandler:
             pass
 
 
-# Global instance
 _handler: Optional[NotificationHandler] = None
 
 

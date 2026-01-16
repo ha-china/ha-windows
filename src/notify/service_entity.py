@@ -177,11 +177,26 @@ class ServiceEntityManager:
 
     def _handle_notify_with_image(self, args: Dict) -> None:
         """Handle notification with image service"""
+        import asyncio
+        from .toast_notification import Notification
+
         title = args.get('title', 'Home Assistant')
         message = args.get('message', '')
         image_url = args.get('image_url', '')
 
-        self._notification_handler.show(title, message, image_url=image_url)
+        notification = Notification(title=title, message=message, image_url=image_url)
+
+        # Run async download and show in event loop
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self._notification_handler.show_async(notification))
+            else:
+                loop.run_until_complete(self._notification_handler.show_async(notification))
+        except RuntimeError:
+            # No event loop, create new one
+            asyncio.run(self._notification_handler.show_async(notification))
+
         logger.info(f"Showing notification (with image): {title} - {message}")
 
     def _handle_launch_app(self, args: Dict) -> None:

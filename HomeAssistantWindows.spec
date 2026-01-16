@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('src', 'src')]
 binaries = []
-hiddenimports = ['customtkinter', 'aioesphomeapi', 'soundcard', 'mpv', 'numpy', 'psutil', 'win10toast', 'pymicro_wakeword', 'webrtcvad', 'zeroconf', 'pycaw', 'PIL', 'pystray', 'i18n', 'core.mdns_discovery', 'core.esphome_protocol', 'ui.system_tray_icon', 'voice.audio_recorder', 'voice.mpv_player', 'voice.wake_word', 'voice.vad', 'voice.voice_assistant', 'commands.command_executor', 'commands.system_commands', 'commands.media_commands', 'commands.audio_commands', 'sensors.windows_monitor', 'notify.announcement', 'ui.main_window']
+hiddenimports = ['customtkinter', 'aioesphomeapi', 'soundcard', 'mpv', 'numpy', 'psutil', 'win10toast', 'pymicro_wakeword', 'webrtcvad', 'zeroconf', 'pycaw', 'PIL', 'pystray', 'src.i18n', 'src.core.mdns_discovery', 'src.core.esphome_protocol', 'src.ui.system_tray_icon', 'src.voice.audio_recorder', 'src.voice.mpv_player', 'src.voice.wake_word', 'src.voice.vad', 'src.voice.voice_assistant', 'src.commands.command_executor', 'src.commands.system_commands', 'src.commands.media_commands', 'src.commands.audio_commands', 'src.sensors.windows_monitor', 'src.notify.announcement', 'src.notify.toast_notification', 'src.notify.service_entity', 'src.ui.main_window', 'windows_toasts']
 tmp_ret = collect_all('customtkinter')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('aioesphomeapi')

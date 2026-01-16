@@ -216,8 +216,8 @@ class StreamingVAD:
         silence_frames_needed = int(self.silence_threshold / frame_duration)
 
         speech_ended = (
-            self._is_speaking and
-            self._silence_frames >= silence_frames_needed
+            self._is_speaking
+            and self._silence_frames >= silence_frames_needed
         )
 
         if speech_ended:

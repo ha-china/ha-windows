@@ -4,6 +4,8 @@ A Windows client that emulates an ESPHome device for Home Assistant integration.
 
 > **🐍 Built with Python** - This project is developed entirely in Python, making it easy to migrate to macOS or Linux. Most of the code is cross-platform, only a few Windows-specific modules (like `pycaw` for audio control) need to be replaced with platform-specific alternatives.
 
+> **📝 Early Stage** - This is still an early version. If you have feature requests, please submit them in the [Issues](https://github.com/ha-china/ha-windows/issues). I will evaluate each request based on exe size impact and system performance, and gradually add features.
+
 ## Features
 
 - **Voice Assistant**: Wake word detection (Okay Nabu, Hey Jarvis, etc.)

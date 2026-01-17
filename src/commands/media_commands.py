@@ -156,12 +156,39 @@ class MediaCommands:
             self._volume = volume
             logger.info(f"Set volume: {volume}")
 
-            # TODO: Actual volume control
-            # from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-            # devices = AudioUtilities.GetSpeakers()
-            # interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            # volume = interface.QueryInterface(IAudioEndpointVolume)
-            # volume.SetMasterVolumeLevelScalar(volume / 100.0, None)
+            # Use threading to avoid COM threading issues
+            import threading
+
+            success = [False]  # Use list to allow modification in thread
+            error_msg = [None]
+
+            def set_volume_in_thread():
+                try:
+                    import comtypes
+                    # Initialize COM in this thread
+                    comtypes.CoInitialize()
+
+                    from pycaw.pycaw import AudioUtilities
+                    devices = AudioUtilities.GetSpeakers()
+                    interface = devices.EndpointVolume
+                    interface.SetMasterVolumeLevelScalar(volume / 100.0, None)
+
+                    success[0] = True
+                    logger.info(f"System volume set to {volume}%")
+
+                    # Uninitialize COM
+                    comtypes.CoUninitialize()
+                except Exception as e:
+                    error_msg[0] = str(e)
+                    logger.error(f"Failed to set system volume: {e}")
+
+            # Run in separate thread
+            thread = threading.Thread(target=set_volume_in_thread, daemon=True)
+            thread.start()
+            thread.join(timeout=5)
+
+            if not success[0] and error_msg[0]:
+                logger.warning(f"Volume control error: {error_msg[0]}")
 
             return {
                 'success': True,

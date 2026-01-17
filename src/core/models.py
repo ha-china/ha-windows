@@ -137,12 +137,15 @@ class WindowsVolumeController:
     def set_volume(self, volume: float) -> None:
         """Set volume (0.0-1.0)"""
         if self._volume_interface is None:
+            logger.warning("Volume interface not initialized")
             return
 
         try:
             volume = max(0.0, min(1.0, volume))
+            old_volume = self.get_volume()
             self._volume_interface.SetMasterVolumeLevelScalar(volume, None)
-            logger.debug(f"Volume set to {volume:.2f}")
+            new_volume = self.get_volume()
+            logger.info(f"Volume changed: {old_volume:.2f} -> {new_volume:.2f} (requested: {volume:.2f})")
         except Exception as e:
             logger.error(f"Failed to set volume: {e}")
 

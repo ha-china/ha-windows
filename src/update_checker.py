@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 LATEST_VERSION_URL = "https://github.com/ha-china/ha-windows/releases/latest/download/latest.json"
 RELEASES_URL = "https://github.com/ha-china/ha-windows/releases"
+LATEST_EXE_URL = "https://github.com/ha-china/ha-windows/releases/latest/download/HomeAssistantWindows.exe"
 
 
 def get_current_version() -> str:
@@ -104,7 +105,7 @@ def show_update_notification(current_version: str, latest_version: str) -> None:
         latest_version: Latest version
     """
     try:
-        from windows_toasts import Toast, InteractableWindowsToaster
+        from windows_toasts import Toast, InteractableWindowsToaster, ToastButton
         import webbrowser
 
         toaster = InteractableWindowsToaster('Home Assistant Windows')
@@ -116,8 +117,14 @@ def show_update_notification(current_version: str, latest_version: str) -> None:
             f'Current version: v{current_version}'
         ]
 
-        # Set click action to open releases page
-        toast.on_activated = lambda _: webbrowser.open(RELEASES_URL)
+        # Add download button
+        toast.AddAction(ToastButton('Download', arguments='download'))
+
+        # Set click action to open download link
+        def on_activated(args):
+            webbrowser.open(LATEST_EXE_URL)
+
+        toast.on_activated = on_activated
 
         # Show toast
         toaster.show_toast(toast)

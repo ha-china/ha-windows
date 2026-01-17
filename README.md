@@ -141,34 +141,6 @@ Or add manually:
 ### Voice Assistant
 Say the wake word (default: "Okay Nabu") to activate voice assistant, or use the floating mic button for push-to-talk.
 
-### Available Sensors
-- CPU Usage (%)
-- Memory Usage (%)
-- Memory Free (GB)
-- Disk Usage (%) - per drive
-- Disk Free (GB) - per drive
-- Battery Level/Status (if available)
-- Network Status
-
-### Available Controls (Buttons)
-- Shutdown - Shutdown the computer
-- Restart - Restart the computer
-- Screenshot - Take a screenshot
-
-### Media Player
-The client exposes a media player entity that can:
-- Play TTS (Text-to-Speech) announcements
-- Play audio from URLs
-- Control playback (play/pause/stop)
-
-Use Home Assistant's `media_player.play_media` or `tts.speak` service to play audio.
-
-**Optional: Install VLC for streaming support**
-
-For long audio (music), install [VLC media player](https://www.videolan.org/vlc/) to enable true streaming playback. Without VLC, audio is downloaded to memory first (fine for short TTS).
-
-
-
 ## 🎯 Wake Words
 
 Available wake words:
@@ -212,7 +184,7 @@ automation:
         data:
           title: "Motion Detected"
           message: "Front door camera"
-          image_url: "http://www.example.com/example.jpg"
+          image_url: "http://homeassistant.local:8123/api/camera_proxy/camera.front_door"
 ```
 
 ### Remote Shutdown
@@ -284,7 +256,7 @@ pytest tests/
 
 Contributions are welcome! Feel free to submit a Pull Request.
 
-## 📄 License
+## � License
 
 MIT License
 

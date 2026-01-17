@@ -135,9 +135,10 @@ class HomeAssistantWindows:
     async def run(self):
         """Run main program"""
         try:
+            from src import __version__
             logger.info("=" * 60)
             logger.info(f"Device: {self.device_name}")
-            logger.info("Version: 1.0.0")
+            logger.info(f"Version: {__version__}")
             logger.info("=" * 60)
 
             # Step 1: Start ESPHome API server
@@ -502,6 +503,25 @@ def main():
     if not check_dependencies():
         logger.error("Dependency check failed. Please install missing dependencies.")
         sys.exit(1)
+
+    # Check for updates
+    try:
+        from src.update_checker import check_for_updates_async, show_update_notification
+        import asyncio
+
+        async def check_updates():
+            result = await check_for_updates_async(timeout=5)
+            if result:
+                has_update, current, latest = result
+                if has_update:
+                    logger.info(f"Update available: {current} -> {latest}")
+                    show_update_notification(current, latest)
+                else:
+                    logger.info(f"Already on latest version: {current}")
+
+        asyncio.run(check_updates())
+    except Exception as e:
+        logger.warning(f"Failed to check for updates: {e}")
 
     # Create and run client
     client = HomeAssistantWindows(

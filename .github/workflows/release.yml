@@ -53,10 +53,22 @@ jobs:
           exit 1
         }
 
+    - name: Generate latest.json
+      run: |
+        $tag = "${{ github.ref_name }}"
+        $version = $tag -replace '^v', ''
+        $json = @{version = $version} | ConvertTo-Json
+        $json | Out-File -FilePath "dist\latest.json" -Encoding utf8
+        Write-Host "Generated latest.json with version: $version"
+        Get-Content "dist\latest.json"
+      shell: pwsh
+
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        files: dist/HomeAssistantWindows.exe
+        files: |
+          dist/HomeAssistantWindows.exe
+          dist/latest.json
         draft: false
         prerelease: false
         generate_release_notes: true

@@ -14,9 +14,14 @@ if sys.platform == 'win32':
 
 from PyInstaller.__main__ import run
 
+# 导入版本号
+try:
+    from src import __version__ as APP_VERSION
+except ImportError:
+    APP_VERSION = "0.0.0"
+
 # 项目信息
 APP_NAME = "HomeAssistantWindows"
-APP_VERSION = "0.1.0"
 APP_AUTHOR = "老王"
 APP_DESCRIPTION = "零配置 Home Assistant Windows 原生客户端"
 

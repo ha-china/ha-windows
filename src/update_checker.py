@@ -97,23 +97,30 @@ def _compare_versions(current: str, latest: str) -> bool:
 
 def show_update_notification(current_version: str, latest_version: str) -> None:
     """
-    Show update notification
+    Show update notification using Windows toast
 
     Args:
         current_version: Current version
         latest_version: Latest version
     """
     try:
-        from src.notify.toast_notification import get_notification_handler, Notification
+        from windows_toasts import Toast, InteractableWindowsToaster
+        import webbrowser
 
-        handler = get_notification_handler()
-        notification = Notification(
-            title="Update Available",
-            message=f"New version {latest_version} is available!\nCurrent: {current_version}\n\nClick to download.",
-            duration=10,
-        )
+        toaster = InteractableWindowsToaster('Home Assistant Windows')
 
-        handler.show(notification)
+        # Create toast
+        toast = Toast()
+        toast.text_fields = [
+            f'New Version Available: v{latest_version}',
+            f'Current version: v{current_version}'
+        ]
+
+        # Set click action to open releases page
+        toast.on_activated = lambda _: webbrowser.open(RELEASES_URL)
+
+        # Show toast
+        toaster.show_toast(toast)
         logger.info(f"Update notification shown: {current_version} -> {latest_version}")
 
     except Exception as e:

@@ -10,7 +10,6 @@ from typing import Optional, Tuple
 logger = logging.getLogger(__name__)
 
 LATEST_VERSION_URL = "https://github.com/ha-china/ha-windows/releases/latest/download/latest.json"
-RELEASES_URL = "https://github.com/ha-china/ha-windows/releases"
 LATEST_EXE_URL = "https://github.com/ha-china/ha-windows/releases/latest/download/HomeAssistantWindows.exe"
 
 

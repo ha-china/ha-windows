@@ -118,7 +118,7 @@ class WindowsVolumeController:
             devices = AudioUtilities.GetSpeakers()
             # New pycaw uses EndpointVolume property
             self._volume_interface = devices.EndpointVolume
-            logger.info("Windows volume controller initialized")
+            logger.debug("Windows volume controller initialized")
         except Exception as e:
             logger.error(f"Failed to initialize volume interface: {e}")
             self._volume_interface = None
@@ -145,7 +145,7 @@ class WindowsVolumeController:
             old_volume = self.get_volume()
             self._volume_interface.SetMasterVolumeLevelScalar(volume, None)
             new_volume = self.get_volume()
-            logger.info(f"Volume changed: {old_volume:.2f} -> {new_volume:.2f} (requested: {volume:.2f})")
+            logger.debug(f"Volume changed: {old_volume:.2f} -> {new_volume:.2f} (requested: {volume:.2f})")
         except Exception as e:
             logger.error(f"Failed to set volume: {e}")
 
@@ -160,7 +160,7 @@ class WindowsVolumeController:
             duck_volume = self._original_volume * self._duck_ratio
             self.set_volume(duck_volume)
             self._is_ducked = True
-            logger.info(f"Ducked: {self._original_volume:.2f} -> {duck_volume:.2f}")
+            logger.debug(f"Ducked: {self._original_volume:.2f} -> {duck_volume:.2f}")
 
     def unduck(self) -> None:
         """Restore system volume (Unduck)"""
@@ -171,7 +171,7 @@ class WindowsVolumeController:
 
             self.set_volume(self._original_volume)
             self._is_ducked = False
-            logger.info(f"Unducked: restored to {self._original_volume:.2f}")
+            logger.debug(f"Unducked: restored to {self._original_volume:.2f}")
 
     @property
     def is_ducked(self) -> bool:
@@ -210,9 +210,9 @@ class AudioPlayer:
             self._vlc_instance = vlc.Instance('--no-xlib')
             self._vlc_player = self._vlc_instance.media_player_new()
             self._vlc_available = True
-            logger.info("VLC player initialized (streaming supported)")
+            logger.debug("VLC player initialized (streaming supported)")
         except Exception as e:
-            logger.info(f"VLC not available (install VLC for streaming): {e}")
+            logger.debug(f"VLC not available (install VLC for streaming): {e}")
 
         # Fallback to pygame
         self._pygame_available = False
@@ -222,7 +222,7 @@ class AudioPlayer:
                 pygame.mixer.init()
             self._pygame_available = True
             if not self._vlc_available:
-                logger.info("Using pygame for audio (no streaming)")
+                logger.debug("Using pygame for audio (no streaming)")
         except Exception as e:
             logger.warning(f"pygame not available: {e}")
 
@@ -238,7 +238,7 @@ class AudioPlayer:
         """Play audio (true streaming for URLs)"""
         import threading
 
-        logger.info(f"Playing: {url}")
+        logger.debug(f"Playing: {url}")
         self._is_playing = True
         self._done_callback = done_callback
 
@@ -296,7 +296,7 @@ class AudioPlayer:
 
             if url.startswith(('http://', 'https://')):
                 import urllib.request
-                logger.info(f"Downloading audio: {url}")
+                logger.debug(f"Downloading audio: {url}")
 
                 with urllib.request.urlopen(url, timeout=30) as response:
                     audio_data = response.read()
@@ -312,7 +312,7 @@ class AudioPlayer:
             while pygame.mixer.music.get_busy():
                 time.sleep(0.1)
 
-            logger.info("pygame playback finished")
+            logger.debug("pygame playback finished")
 
         except Exception as e:
             logger.error(f"pygame playback error: {e}")
@@ -322,7 +322,7 @@ class AudioPlayer:
 
     def stop(self) -> None:
         """Stop playback"""
-        logger.info("Stopping playback")
+        logger.debug("Stopping playback")
         try:
             if self._vlc_available and self._vlc_player:
                 self._vlc_player.stop()
@@ -335,7 +335,7 @@ class AudioPlayer:
 
     def pause(self) -> None:
         """Pause playback"""
-        logger.info("Pausing playback")
+        logger.debug("Pausing playback")
         try:
             if self._vlc_available and self._vlc_player:
                 self._vlc_player.pause()
@@ -348,7 +348,7 @@ class AudioPlayer:
 
     def resume(self) -> None:
         """Resume playback"""
-        logger.info("Resuming playback")
+        logger.debug("Resuming playback")
         try:
             if self._vlc_available and self._vlc_player:
                 self._vlc_player.pause()  # VLC toggle pause

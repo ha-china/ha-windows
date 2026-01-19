@@ -37,7 +37,7 @@ def check_for_updates(timeout: int = 5) -> Optional[Tuple[bool, str, str]]:
         import ssl
 
         current_version = get_current_version()
-        logger.info(f"Current version: {current_version}")
+        logger.debug(f"Current version: {current_version}")
 
         # Create SSL context that doesn't verify (for compatibility)
         ssl_context = ssl.create_default_context()
@@ -54,7 +54,7 @@ def check_for_updates(timeout: int = 5) -> Optional[Tuple[bool, str, str]]:
             data = json.loads(response.read().decode('utf-8'))
             latest_version = data.get('version', '0.0.0')
 
-        logger.info(f"Latest version: {latest_version}")
+        logger.debug(f"Latest version: {latest_version}")
 
         # Compare versions
         has_update = _compare_versions(current_version, latest_version)

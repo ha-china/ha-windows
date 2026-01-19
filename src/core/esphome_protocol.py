@@ -200,7 +200,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._button_manager = None
         self._service_manager = None
 
-        logger.info(f"ESPHome protocol initialized: {self.state.name}")
+        logger.debug(f"ESPHome protocol initialized: {self.state.name}")
 
     # ========== Connection Lifecycle ==========
 
@@ -214,7 +214,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc) -> None:
         """Connection lost"""
-        logger.info("Client disconnected")
+        logger.debug("Client disconnected")
         self._transport = None
         self._writelines = None
 
@@ -340,7 +340,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
     def _handle_hello(self, msg: HelloRequest) -> None:
         """Handle Hello request"""
-        logger.info(f"Client Hello: {msg.client_info}, API {msg.api_version_major}.{msg.api_version_minor}")
+        logger.debug(f"Client Hello: {msg.client_info}, API {msg.api_version_major}.{msg.api_version_minor}")
         self.send_messages([
             HelloResponse(
                 api_version_major=1,
@@ -351,12 +351,12 @@ class ESPHomeProtocol(asyncio.Protocol):
 
     def _handle_auth(self, msg: AuthenticationRequest) -> None:
         """Handle authentication request"""
-        logger.info("Client authentication")
+        logger.debug("Client authentication")
         self.send_messages([AuthenticationResponse()])
 
     def _handle_disconnect(self, msg: DisconnectRequest) -> None:
         """Handle disconnect request"""
-        logger.info("Client requested disconnect")
+        logger.debug("Client requested disconnect")
         self.send_messages([DisconnectResponse()])
         if self._transport:
             self._transport.close()
@@ -394,7 +394,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Speech recognition ended, stop audio stream and recording
             self._is_streaming_audio = False
             self._stop_audio_streaming()
-            logger.info("🎤 Speech recognition ended, stopping recording")
+            logger.debug("🎤 Speech recognition ended, stopping recording")
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_PROGRESS:
             # Intent processing progress
@@ -491,7 +491,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
             model_info = self.state.available_wake_words.get(wake_word_id)
             if model_info:
-                logger.info(f"Setting wake word: {wake_word_id}")
+                logger.debug(f"Setting wake word: {wake_word_id}")
                 active_wake_words.add(wake_word_id)
                 break
 
@@ -560,7 +560,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         if self._audio_recorder is None:
             from src.voice.audio_recorder import AudioRecorder
             self._audio_recorder = AudioRecorder()
-            logger.info("🎤 Audio recorder initialized")
+            logger.debug("🎤 Audio recorder initialized")
         return self._audio_recorder
 
     def _start_audio_streaming(self) -> None:
@@ -582,7 +582,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         # Start recording
         try:
             recorder.start_recording(audio_callback=on_audio_chunk)
-            logger.info("🎤 Started recording microphone audio")
+            logger.debug("🎤 Started recording microphone audio")
         except Exception as e:
             logger.error(f"Failed to start recording: {e}")
 
@@ -590,7 +590,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         """Stop audio streaming"""
         if self._audio_recorder and self._audio_recorder.is_recording:
             self._audio_recorder.stop_recording()
-            logger.info("🎤 Stopped recording microphone audio")
+            logger.debug("🎤 Stopped recording microphone audio")
 
     def handle_audio(self, audio_chunk: bytes) -> None:
         """
@@ -619,7 +619,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         logger.info(f"🎤 Wake word triggered: {wake_word_phrase}")
 
         # Send voice assistant request
-        logger.info("Sending VoiceAssistantRequest(start=True)")
+        logger.debug("Sending VoiceAssistantRequest(start=True)")
         self.send_messages([
             VoiceAssistantRequest(start=True, wake_word_phrase=wake_word_phrase)
         ])
@@ -635,7 +635,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         # Play wakeup sound
         if self.state.wakeup_sound:
-            logger.info(f"Playing wakeup sound: {self.state.wakeup_sound}")
+            logger.debug(f"Playing wakeup sound: {self.state.wakeup_sound}")
             self.state.tts_player.play(self.state.wakeup_sound)
         else:
             logger.warning("Wakeup sound not set")

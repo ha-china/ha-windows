@@ -89,7 +89,7 @@ class AudioRecorder:
 
         try:
             self.mic = self._get_microphone()
-            logger.info(f"Using microphone: {self.mic.name}")
+            logger.debug(f"Using microphone: {self.mic.name}")
 
             self.is_recording = True
 
@@ -101,7 +101,7 @@ class AudioRecorder:
             )
             self.recording_thread.start()
 
-            logger.info("Recording started")
+            logger.debug("Recording started")
 
         except Exception as e:
             logger.error(f"Failed to start recording: {e}")
@@ -120,7 +120,7 @@ class AudioRecorder:
             self.recording_thread.join(timeout=2.0)
             self.recording_thread = None
 
-        logger.info("Recording stopped")
+        logger.debug("Recording stopped")
 
     def _record_loop(self, audio_callback: Optional[Callable[[bytes], None]]):
         """

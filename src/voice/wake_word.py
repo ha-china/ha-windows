@@ -69,7 +69,7 @@ class WakeWordDetector:
             self._model = MicroWakeWord.from_config(config_path)
             self._features = MicroWakeWordFeatures()
 
-            logger.info(f"Wake word detector initialized: '{self._wake_word_phrase}' ({model_name})")
+            logger.debug(f"Wake word detector initialized: '{self._wake_word_phrase}' ({model_name})")
 
         except Exception as e:
             logger.error(f"Failed to initialize wake word model: {e}")

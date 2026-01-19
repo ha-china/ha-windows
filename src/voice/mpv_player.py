@@ -36,7 +36,7 @@ try:
     import pygame
     pygame.mixer.init()
     _pygame_available = True
-    logger.info("pygame available for streaming audio playback")
+    logger.debug("pygame available for streaming audio playback")
 except ImportError:
     logger.warning("pygame not available, falling back to winsound (no streaming)")
 except Exception as e:

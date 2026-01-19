@@ -47,7 +47,7 @@ class VAD:
         self.vad = webrtcvad.Vad(aggressiveness)
         self.silence_threshold = 1.0  # Silence threshold (seconds)
 
-        logger.info(f"VAD initialized (aggressiveness: {aggressiveness})")
+        logger.debug(f"VAD initialized (aggressiveness: {aggressiveness})")
 
     def is_speech(self, audio_frame: bytes) -> bool:
         """

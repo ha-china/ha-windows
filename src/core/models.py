@@ -266,7 +266,7 @@ class AudioPlayer:
             self._vlc_player.audio_set_volume(self._volume)
             self._vlc_player.play()
 
-            logger.info("VLC streaming started")
+            logger.debug("VLC streaming started")
 
             # Monitor playback in background
             def monitor():
@@ -277,7 +277,7 @@ class AudioPlayer:
                     if state in (vlc.State.Ended, vlc.State.Stopped, vlc.State.Error):
                         break
                     time.sleep(0.1)
-                logger.info("VLC playback finished")
+                logger.debug("VLC playback finished")
                 self._on_playback_finished()
 
             threading.Thread(target=monitor, daemon=True).start()

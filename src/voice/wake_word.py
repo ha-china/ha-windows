@@ -47,6 +47,7 @@ class WakeWordDetector:
         self._model: Optional[MicroWakeWord] = None
         self._features: Optional[MicroWakeWordFeatures] = None
         self._wake_word_phrase: str = model_name
+        self._last_detection_logged = False  # Track if we already logged this detection
 
         if not _microwakeword_available:
             logger.warning("pymicro-wakeword not installed, wake word detection disabled")
@@ -101,14 +102,23 @@ class WakeWordDetector:
             features = self._features.process_streaming(audio_chunk)
 
             # Process each feature frame
+            detected = False
             for feature in features:
                 if self._model.process_streaming(feature):
-                    logger.info(f"Wake word detected: {self._wake_word_phrase}")
+                    detected = True
+                    # Only log once per detection sequence
+                    if not self._last_detection_logged:
+                        logger.info(f"Wake word detected: {self._wake_word_phrase}")
+                        self._last_detection_logged = True
                     if self._on_wake_word:
                         self._on_wake_word(self._wake_word_phrase)
-                    return True
+                    break  # Stop processing after first detection
 
-            return False
+            # Reset flag if no detection (allows next detection to be logged)
+            if not detected and self._last_detection_logged:
+                self._last_detection_logged = False
+
+            return detected
 
         except Exception as e:
             logger.error(f"Wake word detection failed: {e}")
@@ -119,6 +129,7 @@ class WakeWordDetector:
         # MicroWakeWord doesn't have a reset method, but we can recreate features
         if _microwakeword_available:
             self._features = MicroWakeWordFeatures()
+        self._last_detection_logged = False
 
     @property
     def wake_word_phrase(self) -> str:

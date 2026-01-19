@@ -8,7 +8,6 @@ Uses asyncio.Protocol architecture, implements complete Voice Assistant state ma
 import asyncio
 import logging
 import socket
-import uuid
 from collections.abc import Iterable
 from typing import Dict, List, Optional, Set
 
@@ -49,113 +48,12 @@ from aioesphomeapi.model import (
 )
 from google.protobuf import message
 
-from .models import ServerState, AvailableWakeWord, WakeWordType
+from .models import ServerState, create_default_state
 
 # Message type mapping
 PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
 
 logger = logging.getLogger(__name__)
-
-
-def _get_mac_address() -> str:
-    """Get MAC address (with colons format)"""
-    try:
-        mac = uuid.getnode()
-        return ":".join(f"{(mac >> i) & 0xff:02x}" for i in range(40, -1, -8))
-    except Exception:
-        return "00:00:00:00:00:01"
-
-
-def _load_available_wake_words() -> Dict[str, AvailableWakeWord]:
-    """Load all available wake words from src/wakewords directory"""
-    import json
-    from pathlib import Path
-
-    wake_words = {}
-    wakeword_dir = Path(__file__).parent.parent / "wakewords"
-
-    if not wakeword_dir.exists():
-        logger.warning(f"Wake word directory not found: {wakeword_dir}")
-        return wake_words
-
-    for json_file in wakeword_dir.glob("*.json"):
-        try:
-            with open(json_file, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-
-            model_id = json_file.stem
-            wake_word = config.get('wake_word', model_id)
-            trained_languages = config.get('trained_languages', ['en'])
-            model_type = config.get('type', 'micro')
-
-            ww_type = WakeWordType.MICRO_WAKE_WORD if model_type == 'micro' else WakeWordType.OPEN_WAKE_WORD
-
-            wake_words[model_id] = AvailableWakeWord(
-                id=model_id,
-                type=ww_type,
-                wake_word=wake_word,
-                trained_languages=trained_languages,
-                wake_word_path=json_file,
-            )
-            logger.debug(f"Loaded wake word: {model_id} -> '{wake_word}'")
-
-        except Exception as e:
-            logger.error(f"Failed to load wake word config {json_file}: {e}")
-
-    logger.info(f"Loaded {len(wake_words)} wake word models")
-    return wake_words
-
-
-def create_default_state(name: str) -> ServerState:
-    """Create default server state"""
-    from pathlib import Path
-
-    available_wake_words = _load_available_wake_words()
-
-    # Default activate okay_nabu, if not available use the first one
-    default_active = set()
-    if 'okay_nabu' in available_wake_words:
-        default_active.add('okay_nabu')
-    elif available_wake_words:
-        default_active.add(next(iter(available_wake_words.keys())))
-
-    # Sound file paths
-    sounds_dir = Path(__file__).parent.parent / "sounds"
-    wakeup_sound = ""
-    timer_finished_sound = ""
-
-    wakeup_file = sounds_dir / "wake_word_triggered.flac"
-    if wakeup_file.exists():
-        wakeup_sound = str(wakeup_file)
-        logger.info(f"Loaded wakeup sound: {wakeup_sound}")
-    else:
-        logger.warning(f"Wakeup sound not found: {wakeup_file}")
-
-    timer_file = sounds_dir / "timer_finished.flac"
-    if timer_file.exists():
-        timer_finished_sound = str(timer_file)
-
-    state = ServerState(
-        name=name,
-        mac_address=_get_mac_address(),
-        available_wake_words=available_wake_words,
-        active_wake_words=default_active,
-        wakeup_sound=wakeup_sound,
-        timer_finished_sound=timer_finished_sound,
-    )
-
-    # Load saved preferences
-    state.load_preferences()
-    if state.preferences.active_wake_words:
-        # Use saved wake word settings
-        saved_active = set(state.preferences.active_wake_words)
-        # Only keep wake words that are still available
-        valid_active = saved_active & set(available_wake_words.keys())
-        if valid_active:
-            state.active_wake_words = valid_active
-            logger.info(f"Loaded saved wake word preference: {valid_active}")
-
-    return state
 
 
 class ESPHomeProtocol(asyncio.Protocol):

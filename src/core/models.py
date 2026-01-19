@@ -6,6 +6,7 @@ References linux-voice-assistant's models.py
 
 import json
 import logging
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -17,6 +18,15 @@ if TYPE_CHECKING:
     from .esphome_protocol import ESPHomeProtocol
 
 logger = logging.getLogger(__name__)
+
+
+def get_mac_address() -> str:
+    """Get MAC address (with colons format)"""
+    try:
+        mac = uuid.getnode()
+        return ":".join(f"{(mac >> i) & 0xff:02x}" for i in range(40, -1, -8))
+    except Exception:
+        return "00:00:00:00:00:01"
 
 
 # pycaw availability flag (lazy import to avoid COM conflicts)
@@ -458,3 +468,55 @@ class ServerState:
                 self.preferences.active_wake_words = data.get("active_wake_words", [])
         except Exception as e:
             logger.error(f"Failed to load preferences: {e}")
+
+
+def create_default_state(name: str) -> ServerState:
+    """Create default server state"""
+    from src.voice.wake_word import load_available_wake_words
+
+    available_wake_words = load_available_wake_words()
+
+    # Default activate okay_nabu, if not available use the first one
+    default_active = set()
+    if 'okay_nabu' in available_wake_words:
+        default_active.add('okay_nabu')
+    elif available_wake_words:
+        default_active.add(next(iter(available_wake_words.keys())))
+
+    # Sound file paths
+    sounds_dir = Path(__file__).parent.parent / "sounds"
+    wakeup_sound = ""
+    timer_finished_sound = ""
+
+    wakeup_file = sounds_dir / "wake_word_triggered.flac"
+    if wakeup_file.exists():
+        wakeup_sound = str(wakeup_file)
+        logger.info(f"Loaded wakeup sound: {wakeup_sound}")
+    else:
+        logger.warning(f"Wakeup sound not found: {wakeup_file}")
+
+    timer_file = sounds_dir / "timer_finished.flac"
+    if timer_file.exists():
+        timer_finished_sound = str(timer_file)
+
+    state = ServerState(
+        name=name,
+        mac_address=get_mac_address(),
+        available_wake_words=available_wake_words,
+        active_wake_words=default_active,
+        wakeup_sound=wakeup_sound,
+        timer_finished_sound=timer_finished_sound,
+    )
+
+    # Load saved preferences
+    state.load_preferences()
+    if state.preferences.active_wake_words:
+        # Use saved wake word settings
+        saved_active = set(state.preferences.active_wake_words)
+        # Only keep wake words that are still available
+        valid_active = saved_active & set(available_wake_words.keys())
+        if valid_active:
+            state.active_wake_words = valid_active
+            logger.info(f"Loaded saved wake word preference: {valid_active}")
+
+    return state

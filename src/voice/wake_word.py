@@ -4,10 +4,10 @@ Wake Word Detection Module
 Uses pymicro-wakeword for wake word detection (same as ESPHome microWakeWord).
 """
 
+import json
 import logging
 from pathlib import Path
-from typing import Callable, Optional
-import json
+from typing import Callable, Dict, Optional
 
 import numpy as np
 
@@ -24,6 +24,53 @@ try:
     logger.info("pymicro-wakeword available for wake word detection")
 except ImportError:
     logger.warning("pymicro-wakeword not available")
+
+
+def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, any]:
+    """
+    Load all available wake words from wakewords directory
+
+    Args:
+        wakeword_dir: Directory containing wake word models
+
+    Returns:
+        Dict mapping wake word ID to AvailableWakeWord
+    """
+    from src.core.models import AvailableWakeWord, WakeWordType
+
+    wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
+    wake_words = {}
+
+    if not wakeword_dir.exists():
+        logger.warning(f"Wake word directory not found: {wakeword_dir}")
+        return wake_words
+
+    for json_file in wakeword_dir.glob("*.json"):
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            model_id = json_file.stem
+            wake_word = config.get('wake_word', model_id)
+            trained_languages = config.get('trained_languages', ['en'])
+            model_type = config.get('type', 'micro')
+
+            ww_type = WakeWordType.MICRO_WAKE_WORD if model_type == 'micro' else WakeWordType.OPEN_WAKE_WORD
+
+            wake_words[model_id] = AvailableWakeWord(
+                id=model_id,
+                type=ww_type,
+                wake_word=wake_word,
+                trained_languages=trained_languages,
+                wake_word_path=json_file,
+            )
+            logger.debug(f"Loaded wake word: {model_id} -> '{wake_word}'")
+
+        except Exception as e:
+            logger.error(f"Failed to load wake word config {json_file}: {e}")
+
+    logger.info(f"Loaded {len(wake_words)} wake word models")
+    return wake_words
 
 
 class WakeWordDetector:

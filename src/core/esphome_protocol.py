@@ -586,9 +586,19 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Continue conversation
             self.send_messages([VoiceAssistantRequest(start=True)])
             self._is_streaming_audio = True
-            # Restart microphone recording
-            self._start_audio_streaming()
-            logger.debug("Continuing conversation, restarting recording")
+
+            # Play wakeup sound to prompt user to speak, then start recording
+            if self.state.wakeup_sound:
+                logger.debug("Playing wakeup sound for continue conversation")
+                self.state.tts_player.play(
+                    self.state.wakeup_sound,
+                    done_callback=self._start_audio_streaming
+                )
+            else:
+                # No wakeup sound, start recording directly
+                self._start_audio_streaming()
+
+            logger.debug("Continuing conversation")
         else:
             # Restore volume
             self.unduck()

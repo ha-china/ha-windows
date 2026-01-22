@@ -290,16 +290,84 @@ class SystemTrayIcon:
         self._on_quit = on_quit
 
     def show_status(self) -> None:
-        """Show status notification with i18n support"""
-        if self.icon:
-            status_text = (
-                f"{_i18n.t('app_name')}\n\n"
-                f"{_i18n.t('device_label')}: {self._status_info['name']}\n"
-                f"{_i18n.t('ip_label')}: {self._status_info['ip']}\n"
-                f"{_i18n.t('port_label')}: {self._status_info['port']}\n\n"
-                f"{_i18n.t('status_running')}"
+        """Show status window with i18n support"""
+        try:
+            # Create a simple tkinter window for Status dialog
+            status_window = tk.Toplevel()
+            status_window.title("Status")
+            status_window.geometry("400x250")
+            status_window.resizable(False, False)
+            
+            # Center the window
+            status_window.update_idletasks()
+            width = status_window.winfo_width()
+            height = status_window.winfo_height()
+            x = (status_window.winfo_screenwidth() // 2) - (width // 2)
+            y = (status_window.winfo_screenheight() // 2) - (height // 2)
+            status_window.geometry(f'{width}x{height}+{x}+{y}')
+            
+            # Create main frame
+            main_frame = ttk.Frame(status_window, padding="20")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Title
+            title_label = ttk.Label(
+                main_frame,
+                text="Device Status",
+                font=("Arial", 14, "bold")
             )
-            self.icon.notify(status_text, title=_i18n.t('device_status'))
+            title_label.pack(pady=(0, 20))
+            
+            # Device name
+            device_label = ttk.Label(
+                main_frame,
+                text=f"{_i18n.t('device_label')}: {self._status_info['name']}",
+                font=("Arial", 10)
+            )
+            device_label.pack(pady=5, anchor="w")
+            
+            # IP
+            ip_label = ttk.Label(
+                main_frame,
+                text=f"{_i18n.t('ip_label')}: {self._status_info['ip']}",
+                font=("Arial", 10)
+            )
+            ip_label.pack(pady=5, anchor="w")
+            
+            # Port
+            port_label = ttk.Label(
+                main_frame,
+                text=f"{_i18n.t('port_label')}: {self._status_info['port']}",
+                font=("Arial", 10)
+            )
+            port_label.pack(pady=5, anchor="w")
+            
+            # Status
+            status_text = ttk.Label(
+                main_frame,
+                text=f"{_i18n.t('status_running')}",
+                font=("Arial", 10),
+                foreground="green"
+            )
+            status_text.pack(pady=(20, 0), anchor="w")
+            
+            # Close button
+            close_button = ttk.Button(
+                main_frame,
+                text="Close",
+                command=status_window.destroy,
+                width=15
+            )
+            close_button.pack(pady=20)
+            
+            # Make window modal
+            status_window.transient(status_window.master)
+            status_window.grab_set()
+            status_window.focus_set()
+            
+            logger.info("Status dialog shown")
+        except Exception as e:
+            logger.error(f"Failed to show status: {e}")
 
     def show_about(self) -> None:
         """Show about dialog with version and repository info"""

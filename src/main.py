@@ -304,6 +304,9 @@ class HomeAssistantWindows:
             # Initialize wake word detector
             self._wake_word_detector = WakeWordDetector(active_wake_word)
 
+            # Initialize stop word detector
+            self._stop_word_detector = WakeWordDetector('stop')
+
             # Save the event loop reference for use in callback
             self._event_loop = asyncio.get_running_loop()
             self._last_wakeup_time = 0  # For debouncing
@@ -336,14 +339,29 @@ class HomeAssistantWindows:
                 if not self._wake_word_listening:
                     return
 
+                # Send audio to voice assistant if streaming (like linux-voice-assistant)
+                if self.api_server and self.api_server.protocol and self.api_server.protocol._is_streaming_audio and self._event_loop:
+                    self._event_loop.call_soon_threadsafe(
+                        lambda: self.api_server.protocol.handle_audio(audio_data)
+                    )
+
                 # Check if wake word changed
                 if self.api_server and self.api_server.state.wake_words_changed:
                     self.api_server.state.wake_words_changed = False
                     self._update_wake_word_detector()
 
-                # Pass raw bytes directly to wake word detector
+                # Pass raw bytes to wake word detector
                 if self._wake_word_detector:
                     self._wake_word_detector.process_audio(audio_data)
+
+                # Always process stop word (like linux-voice-assistant)
+                if self._stop_word_detector:
+                    if self._stop_word_detector.process_audio(audio_data):
+                        # Stop word detected
+                        if self.api_server and self.api_server.protocol and self._event_loop:
+                            self._event_loop.call_soon_threadsafe(
+                                lambda: self.api_server.protocol.stop()
+                            )
 
             # Start recording
             self._wake_word_listening = True
@@ -398,6 +416,7 @@ class HomeAssistantWindows:
                 logger.error(f"Failed to stop audio recorder: {e}")
             self._audio_recorder = None
         self._wake_word_detector = None
+        self._stop_word_detector = None
 
     async def _main_loop(self):
         """Main loop"""

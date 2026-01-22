@@ -116,10 +116,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._transport = None
         self._writelines = None
 
-        # Stop audio stream
-        self._stop_audio_streaming()
-
-        # Reset state
+        # Reset streaming state (main recorder continues)
         self._is_streaming_audio = False
         self._tts_url = None
         self._tts_played = False
@@ -462,33 +459,14 @@ class ESPHomeProtocol(asyncio.Protocol):
         return self._audio_recorder
 
     def _start_audio_streaming(self) -> None:
-        """Start audio streaming"""
-        if self._audio_streaming_task is not None:
-            logger.warning("Audio stream already running")
-            return
-
-        recorder = self._get_audio_recorder()
-
-        # Define audio callback - called in recording thread
-        def on_audio_chunk(audio_data: bytes):
-            if self._is_streaming_audio and self._event_loop:
-                # Send audio in event loop
-                self._event_loop.call_soon_threadsafe(
-                    lambda: self.handle_audio(audio_data)
-                )
-
-        # Start recording
-        try:
-            recorder.start_recording(audio_callback=on_audio_chunk)
-            logger.debug("🎤 Started recording microphone audio")
-        except Exception as e:
-            logger.error(f"Failed to start recording: {e}")
+        """Start audio streaming (audio is handled by main program's recorder)"""
+        # Main program's recorder will send audio when _is_streaming_audio is True
+        logger.debug("🎤 Audio streaming started (main recorder will send audio)")
 
     def _stop_audio_streaming(self) -> None:
         """Stop audio streaming"""
-        if self._audio_recorder and self._audio_recorder.is_recording:
-            self._audio_recorder.stop_recording()
-            logger.debug("🎤 Stopped recording microphone audio")
+        # Main program's recorder continues running, just clear the flag
+        logger.debug("🎤 Audio streaming stopped")
 
     def handle_audio(self, audio_chunk: bytes) -> None:
         """

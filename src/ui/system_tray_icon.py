@@ -142,6 +142,11 @@ class SystemTrayIcon:
         self._running = False
         icon.stop()
 
+    def _on_about_menu(self, icon, item) -> None:
+        """Handle about menu item"""
+        logger.info("About menu clicked")
+        self.show_about()
+
     def _run_icon(self, icon: pystray.Icon) -> None:
         """
         Run icon in background thread
@@ -189,6 +194,7 @@ class SystemTrayIcon:
                 ),
                 pystray.MenuItem(_i18n.t('status_running'), self._on_show_status),
                 pystray.Menu.SEPARATOR,
+                pystray.MenuItem('About', self._on_about_menu),
                 pystray.MenuItem(_i18n.t('quit'), self._on_quit_menu),
             )
         )
@@ -292,6 +298,32 @@ class SystemTrayIcon:
                 f"{_i18n.t('status_running')}"
             )
             self.icon.notify(status_text, title=_i18n.t('device_status'))
+
+    def show_about(self) -> None:
+        """Show about dialog with version and repository info"""
+        try:
+            from src import __version__
+            import subprocess
+            
+            # Get repository URL
+            try:
+                repo_url = subprocess.check_output(
+                    ['git', 'config', '--get', 'remote.origin.url'],
+                    stderr=subprocess.DEVNULL,
+                    text=True
+                ).strip()
+            except Exception:
+                repo_url = "https://github.com/ha-china/ha-windows"
+            
+            about_text = (
+                f"Home Assistant Windows\n\n"
+                f"Version: {__version__}\n\n"
+                f"Repository:\n{repo_url}\n\n"
+                f"© 2024 ha-china"
+            )
+            self.icon.notify(about_text, title="About")
+        except Exception as e:
+            logger.error(f"Failed to show about: {e}")
 
     def stop(self) -> None:
         """Stop system tray icon"""

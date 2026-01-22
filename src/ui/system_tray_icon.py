@@ -6,6 +6,8 @@ Provides Windows system tray icon for the application
 import logging
 import socket
 import threading
+import tkinter as tk
+from tkinter import messagebox, ttk
 from typing import Optional, Callable
 
 import pystray
@@ -307,13 +309,87 @@ class SystemTrayIcon:
             # Repository URL (hardcoded as it's the official repo)
             repo_url = "https://github.com/ha-china/ha-windows"
             
-            about_text = (
-                f"Home Assistant Windows\n\n"
-                f"Version: {__version__}\n\n"
-                f"Repository:\n{repo_url}\n\n"
-                f"© 2024 ha-china"
+            # Create a simple tkinter window for About dialog
+            about_window = tk.Toplevel()
+            about_window.title("About")
+            about_window.geometry("400x300")
+            about_window.resizable(False, False)
+            
+            # Center the window
+            about_window.update_idletasks()
+            width = about_window.winfo_width()
+            height = about_window.winfo_height()
+            x = (about_window.winfo_screenwidth() // 2) - (width // 2)
+            y = (about_window.winfo_screenheight() // 2) - (height // 2)
+            about_window.geometry(f'{width}x{height}+{x}+{y}')
+            
+            # Create main frame
+            main_frame = ttk.Frame(about_window, padding="20")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Title
+            title_label = ttk.Label(
+                main_frame,
+                text="Home Assistant Windows",
+                font=("Arial", 16, "bold")
             )
-            self.icon.notify(about_text, title="About")
+            title_label.pack(pady=(0, 20))
+            
+            # Version
+            version_label = ttk.Label(
+                main_frame,
+                text=f"Version: {__version__}",
+                font=("Arial", 10)
+            )
+            version_label.pack(pady=5)
+            
+            # Repository
+            repo_label = ttk.Label(
+                main_frame,
+                text="Repository:",
+                font=("Arial", 10, "bold")
+            )
+            repo_label.pack(pady=(20, 5))
+            
+            repo_url_label = ttk.Label(
+                main_frame,
+                text=repo_url,
+                font=("Arial", 9),
+                foreground="blue",
+                cursor="hand2"
+            )
+            repo_url_label.pack(pady=5)
+            
+            # Make repository URL clickable
+            def open_repo(event):
+                import webbrowser
+                webbrowser.open(repo_url)
+            
+            repo_url_label.bind("<Button-1>", open_repo)
+            
+            # Copyright
+            copyright_label = ttk.Label(
+                main_frame,
+                text="© 2024 ha-china",
+                font=("Arial", 9)
+            )
+            copyright_label.pack(pady=(30, 0))
+            
+            # Close button
+            close_button = ttk.Button(
+                main_frame,
+                text="Close",
+                command=about_window.destroy,
+                width=15
+            )
+            close_button.pack(pady=20)
+            
+            # Make window modal
+            about_window.transient(about_window.master)
+            about_window.grab_set()
+            about_window.focus_set()
+            
+            logger.info("About dialog shown")
         except Exception as e:
             logger.error(f"Failed to show about: {e}")
 

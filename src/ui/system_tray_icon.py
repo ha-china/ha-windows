@@ -295,7 +295,9 @@ class SystemTrayIcon:
             # Create a simple tkinter window for Status dialog
             status_window = tk.Toplevel()
             status_window.title("Status")
-            status_window.geometry("400x250")
+            
+            # Use dynamic sizing based on content
+            status_window.geometry("450x280")
             status_window.resizable(False, False)
             
             # Center the window
@@ -307,58 +309,58 @@ class SystemTrayIcon:
             status_window.geometry(f'{width}x{height}+{x}+{y}')
             
             # Create main frame
-            main_frame = ttk.Frame(status_window, padding="20")
+            main_frame = ttk.Frame(status_window, padding="25")
             main_frame.pack(fill=tk.BOTH, expand=True)
             
             # Title
             title_label = ttk.Label(
                 main_frame,
                 text="Device Status",
-                font=("Arial", 14, "bold")
+                font=("Segoe UI", 14, "bold") if self._is_windows() else ("Arial", 14, "bold")
             )
-            title_label.pack(pady=(0, 20))
+            title_label.pack(pady=(0, 25))
             
             # Device name
             device_label = ttk.Label(
                 main_frame,
                 text=f"{_i18n.t('device_label')}: {self._status_info['name']}",
-                font=("Arial", 10)
+                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
             )
-            device_label.pack(pady=5, anchor="w")
+            device_label.pack(pady=8, anchor="w")
             
             # IP
             ip_label = ttk.Label(
                 main_frame,
                 text=f"{_i18n.t('ip_label')}: {self._status_info['ip']}",
-                font=("Arial", 10)
+                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
             )
-            ip_label.pack(pady=5, anchor="w")
+            ip_label.pack(pady=8, anchor="w")
             
             # Port
             port_label = ttk.Label(
                 main_frame,
                 text=f"{_i18n.t('port_label')}: {self._status_info['port']}",
-                font=("Arial", 10)
+                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
             )
-            port_label.pack(pady=5, anchor="w")
+            port_label.pack(pady=8, anchor="w")
             
             # Status
             status_text = ttk.Label(
                 main_frame,
                 text=f"{_i18n.t('status_running')}",
-                font=("Arial", 10),
+                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
                 foreground="green"
             )
-            status_text.pack(pady=(20, 0), anchor="w")
+            status_text.pack(pady=(25, 0), anchor="w")
             
             # Close button
             close_button = ttk.Button(
                 main_frame,
-                text="Close",
+                text=self._get_close_text(),
                 command=status_window.destroy,
-                width=15
+                width=20
             )
-            close_button.pack(pady=20)
+            close_button.pack(pady=(25, 0))
             
             # Make window modal
             status_window.transient(status_window.master)
@@ -380,7 +382,9 @@ class SystemTrayIcon:
             # Create a simple tkinter window for About dialog
             about_window = tk.Toplevel()
             about_window.title("About")
-            about_window.geometry("400x300")
+            
+            # Use dynamic sizing based on content
+            about_window.geometry("450x350")
             about_window.resizable(False, False)
             
             # Center the window
@@ -392,41 +396,41 @@ class SystemTrayIcon:
             about_window.geometry(f'{width}x{height}+{x}+{y}')
             
             # Create main frame
-            main_frame = ttk.Frame(about_window, padding="20")
+            main_frame = ttk.Frame(about_window, padding="25")
             main_frame.pack(fill=tk.BOTH, expand=True)
             
             # Title
             title_label = ttk.Label(
                 main_frame,
                 text="Home Assistant Windows",
-                font=("Arial", 16, "bold")
+                font=("Segoe UI", 16, "bold") if self._is_windows() else ("Arial", 16, "bold")
             )
-            title_label.pack(pady=(0, 20))
+            title_label.pack(pady=(0, 25))
             
             # Version
             version_label = ttk.Label(
                 main_frame,
                 text=f"Version: {__version__}",
-                font=("Arial", 10)
+                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
             )
-            version_label.pack(pady=5)
+            version_label.pack(pady=8)
             
-            # Repository
+            # Repository section
             repo_label = ttk.Label(
                 main_frame,
                 text="Repository:",
-                font=("Arial", 10, "bold")
+                font=("Segoe UI", 10, "bold") if self._is_windows() else ("Arial", 10, "bold")
             )
-            repo_label.pack(pady=(20, 5))
+            repo_label.pack(pady=(25, 8))
             
             repo_url_label = ttk.Label(
                 main_frame,
                 text=repo_url,
-                font=("Arial", 9),
+                font=("Segoe UI", 9) if self._is_windows() else ("Arial", 9),
                 foreground="blue",
                 cursor="hand2"
             )
-            repo_url_label.pack(pady=5)
+            repo_url_label.pack(pady=8)
             
             # Make repository URL clickable
             def open_repo(event):
@@ -439,18 +443,18 @@ class SystemTrayIcon:
             copyright_label = ttk.Label(
                 main_frame,
                 text="© 2024 ha-china",
-                font=("Arial", 9)
+                font=("Segoe UI", 9) if self._is_windows() else ("Arial", 9)
             )
-            copyright_label.pack(pady=(30, 0))
+            copyright_label.pack(pady=(35, 0))
             
             # Close button
             close_button = ttk.Button(
                 main_frame,
-                text="Close",
+                text=self._get_close_text(),
                 command=about_window.destroy,
-                width=15
+                width=20
             )
-            close_button.pack(pady=20)
+            close_button.pack(pady=(25, 0))
             
             # Make window modal
             about_window.transient(about_window.master)
@@ -470,6 +474,20 @@ class SystemTrayIcon:
             except Exception:
                 pass  # May already be stopped
             logger.info("System tray icon stopped")
+
+    def _is_windows(self) -> bool:
+        """Check if running on Windows"""
+        import platform
+        return platform.system() == 'Windows'
+
+    def _get_close_text(self) -> str:
+        """Get localized close button text"""
+        try:
+            # Try to use i18n if available
+            return _i18n.t('close')
+        except Exception:
+            # Fallback to English
+            return "Close"
 
     def notify(self, message: str, title: str = None) -> None:
         """

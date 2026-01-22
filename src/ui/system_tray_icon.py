@@ -303,17 +303,9 @@ class SystemTrayIcon:
         """Show about dialog with version and repository info"""
         try:
             from src import __version__
-            import subprocess
             
-            # Get repository URL
-            try:
-                repo_url = subprocess.check_output(
-                    ['git', 'config', '--get', 'remote.origin.url'],
-                    stderr=subprocess.DEVNULL,
-                    text=True
-                ).strip()
-            except Exception:
-                repo_url = "https://github.com/ha-china/ha-windows"
+            # Repository URL (hardcoded as it's the official repo)
+            repo_url = "https://github.com/ha-china/ha-windows"
             
             about_text = (
                 f"Home Assistant Windows\n\n"

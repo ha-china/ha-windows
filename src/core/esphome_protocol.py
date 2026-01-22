@@ -287,6 +287,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
         ):
             # Speech recognition ended, stop audio stream and recording
+            logger.info(f"🎤 Received {event_type.name}, clearing streaming flag")
             self._is_streaming_audio = False
             self._stop_audio_streaming()
             logger.debug("🎤 Speech recognition ended, stopping recording")
@@ -309,6 +310,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END:
             # Conversation ended
+            logger.info(f"🎤 Received RUN_END, clearing streaming flag")
             self._is_streaming_audio = False
             self._stop_audio_streaming()
             if not self._tts_played:
@@ -477,6 +479,13 @@ class ESPHomeProtocol(asyncio.Protocol):
         if not self._is_streaming_audio:
             return
 
+        # Log first few audio chunks
+        if not hasattr(self, '_audio_chunks_sent'):
+            self._audio_chunks_sent = 0
+        self._audio_chunks_sent += 1
+        if self._audio_chunks_sent <= 5:
+            logger.info(f"🎤 Sending audio chunk #{self._audio_chunks_sent}: {len(audio_chunk)} bytes")
+
         self.send_messages([VoiceAssistantAudio(data=audio_chunk)])
 
     def wakeup(self, wake_word_phrase: str = "") -> None:
@@ -493,6 +502,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             return
 
         logger.info(f"🎤 Wake word triggered: {wake_word_phrase}")
+        logger.info(f"🎤 Current streaming state before wakeup: {self._is_streaming_audio}")
 
         # Send voice assistant request
         logger.debug("Sending VoiceAssistantRequest(start=True)")
@@ -505,6 +515,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         # Start audio stream
         self._is_streaming_audio = True
+        logger.info(f"🎤 Set streaming to True")
 
         # Start microphone recording
         self._start_audio_streaming()

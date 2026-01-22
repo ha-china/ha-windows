@@ -321,11 +321,9 @@ class HomeAssistantWindows:
                 self._last_wakeup_time = now
 
                 logger.info(f"🎤 Wake word detected: {wake_word_phrase}")
-                if self.api_server and self.api_server.protocol and self._event_loop:
+                if self.api_server and self.api_server.protocol:
                     try:
-                        self._event_loop.call_soon_threadsafe(
-                            lambda: self.api_server.protocol.wakeup(wake_word_phrase)
-                        )
+                        self.api_server.protocol.wakeup(wake_word_phrase)
                     except Exception as e:
                         logger.error(f"Failed to trigger wakeup: {e}")
 
@@ -339,11 +337,9 @@ class HomeAssistantWindows:
                 if not self._wake_word_listening:
                     return
 
-                # Send audio to voice assistant if streaming (like linux-voice-assistant)
-                if self.api_server and self.api_server.protocol and self.api_server.protocol._is_streaming_audio and self._event_loop:
-                    self._event_loop.call_soon_threadsafe(
-                        lambda: self.api_server.protocol.handle_audio(audio_data)
-                    )
+                # Always send audio to voice assistant (handle_audio will check _is_streaming_audio internally)
+                if self.api_server and self.api_server.protocol:
+                    self.api_server.protocol.handle_audio(audio_data)
 
                 # Check if wake word changed
                 if self.api_server and self.api_server.state.wake_words_changed:
@@ -358,10 +354,8 @@ class HomeAssistantWindows:
                 if self._stop_word_detector:
                     if self._stop_word_detector.process_audio(audio_data):
                         # Stop word detected
-                        if self.api_server and self.api_server.protocol and self._event_loop:
-                            self._event_loop.call_soon_threadsafe(
-                                lambda: self.api_server.protocol.stop()
-                            )
+                        if self.api_server and self.api_server.protocol:
+                            self.api_server.protocol.stop()
 
             # Start recording
             self._wake_word_listening = True

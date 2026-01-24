@@ -14,14 +14,17 @@ import numpy as np
 
 # Fix numpy.fromstring deprecation for soundcard compatibility
 if not hasattr(np, 'fromstring'):
-    np.fromstring = lambda s, dtype=None, count=-1, sep='': np.frombuffer(s, dtype=dtype, count=count)
+    def _fromstring_wrapper(s, dtype=None, count=-1, sep=''):
+        """Wrapper for np.frombuffer to replace deprecated np.fromstring"""
+        return np.frombuffer(s, dtype=dtype, count=count)
+    np.fromstring = _fromstring_wrapper  # type: ignore[assignment]
 
 # Suppress soundcard data discontinuity warnings
 warnings.filterwarnings("ignore", message="data discontinuity in recording")
 
-import soundcard
+import soundcard  # noqa: E402
 
-from src.i18n import get_i18n
+from src.i18n import get_i18n  # noqa: E402
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()
@@ -89,6 +92,8 @@ class AudioRecorder:
 
         try:
             self.mic = self._get_microphone()
+            if self.mic is None:
+                raise RuntimeError("Failed to get microphone device")
             logger.debug(f"Using microphone: {self.mic.name}")
 
             self.is_recording = True
@@ -139,6 +144,7 @@ class AudioRecorder:
             pass
 
         try:
+            assert self.mic is not None, "Microphone not initialized"
             with self.mic.recorder(
                 samplerate=self.SAMPLE_RATE,
                 channels=self.CHANNELS,

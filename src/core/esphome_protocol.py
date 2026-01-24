@@ -83,6 +83,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._tts_played = False
         self._continue_conversation = False
         self._timer_finished = False
+        self._is_playing_tts = False  # Flag to pause wake word detection during TTS playback
 
         # Audio recorder (lazy load)
         self._audio_recorder = None
@@ -123,7 +124,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._continue_conversation = False
 
         # Restore volume (if previously ducked)
-        self.unduck()
+        # self.unduck()  # Duck feature disabled
 
     def data_received(self, data: bytes) -> None:
         """Receive data"""
@@ -310,7 +311,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END:
             # Conversation ended
-            logger.info(f"🎤 Received RUN_END, clearing streaming flag")
+            logger.info("🎤 Received RUN_END, clearing streaming flag")
             self._is_streaming_audio = False
             self._stop_audio_streaming()
             if not self._tts_played:
@@ -338,7 +339,7 @@ class ESPHomeProtocol(asyncio.Protocol):
                 if self.state.stop_word:
                     self.state.active_wake_words.add(self.state.stop_word.id)
                 self._timer_finished = True
-                self.duck()
+                # self.duck()  # Duck feature disabled
                 self._play_timer_finished()
 
     # ========== Voice Assistant Configuration ==========
@@ -423,7 +424,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             self.state.active_wake_words.add(self.state.stop_word.id)
 
         # Duck volume and play
-        self.duck()
+        # self.duck()  # Duck feature disabled
 
         # Play audio
         if urls:
@@ -511,11 +512,11 @@ class ESPHomeProtocol(asyncio.Protocol):
         ])
 
         # Duck volume
-        self.duck()
+        # self.duck()  # Duck feature disabled
 
         # Start audio stream
         self._is_streaming_audio = True
-        logger.info(f"🎤 Set streaming to True")
+        logger.info("🎤 Set streaming to True")
 
         # Start microphone recording
         self._start_audio_streaming()
@@ -546,6 +547,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             return
 
         self._tts_played = True
+        self._is_playing_tts = True  # Mark that TTS is playing
         logger.info(f"Playing TTS: {self._tts_url}")
 
         # Add stop word
@@ -564,6 +566,8 @@ class ESPHomeProtocol(asyncio.Protocol):
 
     def _tts_finished(self) -> None:
         """TTS playback finished callback"""
+        self._is_playing_tts = False  # Mark that TTS is no longer playing
+
         # Remove stop word
         if self.state.stop_word:
             self.state.active_wake_words.discard(self.state.stop_word.id)
@@ -590,14 +594,15 @@ class ESPHomeProtocol(asyncio.Protocol):
             logger.debug("Continuing conversation")
         else:
             # Restore volume
-            self.unduck()
+            # self.unduck()  # Duck feature disabled
+            pass
 
         logger.debug("TTS playback finished")
 
     def _play_timer_finished(self) -> None:
         """Play timer finished sound"""
         if not self._timer_finished:
-            self.unduck()
+            # self.unduck()  # Duck feature disabled
             return
 
         # Loop play timer sound

@@ -1,0 +1,13 @@
+wake_word_assets:
+  manifest_dirs:
+    - path: "src/wakewords"
+      recursive: false
+      description: "Built-in wake words"
+    - path: "config/custom_wakewords"
+      recursive: true
+      description: "User-provided wake words"
+  default_active:
+    - "okay_nabu"
+    - "hey_jarvis"
+  stop_word: "stop"
+  allow_dynamic_selection: true

@@ -22,7 +22,7 @@ _i18n = get_i18n()
 class DeviceInfo:
     """Device Information"""
 
-    name: str = None  # Default to local machine name
+    name: Optional[str] = None  # Default to local machine name
     version: str = "1.0.0"
     platform: str = "Windows"
     board: str = "PC"
@@ -155,7 +155,8 @@ class MDNSBroadcaster:
             Dict[str, str]: TXT record dictionary
         """
         # MAC address in mDNS uses no-colon format
-        mac_no_colons = self.device_info.mac_address.replace(":", "").lower()
+        mac_address = self.device_info.mac_address or "00:00:00:00:00:01"
+        mac_no_colons = mac_address.replace(":", "").lower()
 
         txt_record = {
             # Reference linux-voice-assistant TXT record format

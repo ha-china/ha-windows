@@ -7,7 +7,7 @@ import logging
 import socket
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 from typing import Optional, Callable
 
 import pystray
@@ -295,11 +295,11 @@ class SystemTrayIcon:
             # Create a simple tkinter window for Status dialog
             status_window = tk.Toplevel()
             status_window.title("Status")
-            
+
             # Use dynamic sizing based on content
             status_window.geometry("450x280")
             status_window.resizable(False, False)
-            
+
             # Center the window
             status_window.update_idletasks()
             width = status_window.winfo_width()
@@ -307,11 +307,11 @@ class SystemTrayIcon:
             x = (status_window.winfo_screenwidth() // 2) - (width // 2)
             y = (status_window.winfo_screenheight() // 2) - (height // 2)
             status_window.geometry(f'{width}x{height}+{x}+{y}')
-            
+
             # Create main frame
             main_frame = ttk.Frame(status_window, padding="25")
             main_frame.pack(fill=tk.BOTH, expand=True)
-            
+
             # Title
             title_label = ttk.Label(
                 main_frame,
@@ -319,7 +319,7 @@ class SystemTrayIcon:
                 font=("Segoe UI", 14, "bold") if self._is_windows() else ("Arial", 14, "bold")
             )
             title_label.pack(pady=(0, 25))
-            
+
             # Device name
             device_label = ttk.Label(
                 main_frame,
@@ -327,7 +327,7 @@ class SystemTrayIcon:
                 font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
             )
             device_label.pack(pady=8, anchor="w")
-            
+
             # IP
             ip_label = ttk.Label(
                 main_frame,
@@ -335,7 +335,7 @@ class SystemTrayIcon:
                 font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
             )
             ip_label.pack(pady=8, anchor="w")
-            
+
             # Port
             port_label = ttk.Label(
                 main_frame,
@@ -343,7 +343,7 @@ class SystemTrayIcon:
                 font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
             )
             port_label.pack(pady=8, anchor="w")
-            
+
             # Status
             status_text = ttk.Label(
                 main_frame,
@@ -352,7 +352,7 @@ class SystemTrayIcon:
                 foreground="green"
             )
             status_text.pack(pady=(25, 0), anchor="w")
-            
+
             # Close button
             close_button = ttk.Button(
                 main_frame,
@@ -361,12 +361,12 @@ class SystemTrayIcon:
                 width=20
             )
             close_button.pack(pady=(25, 0))
-            
+
             # Make window modal
             status_window.transient(status_window.master)
             status_window.grab_set()
             status_window.focus_set()
-            
+
             logger.info("Status dialog shown")
         except Exception as e:
             logger.error(f"Failed to show status: {e}")
@@ -375,18 +375,18 @@ class SystemTrayIcon:
         """Show about dialog with version and repository info"""
         try:
             from src import __version__
-            
+
             # Repository URL (hardcoded as it's the official repo)
             repo_url = "https://github.com/ha-china/ha-windows"
-            
+
             # Create a simple tkinter window for About dialog
             about_window = tk.Toplevel()
             about_window.title("About")
-            
+
             # Use dynamic sizing based on content
             about_window.geometry("450x350")
             about_window.resizable(False, False)
-            
+
             # Center the window
             about_window.update_idletasks()
             width = about_window.winfo_width()
@@ -394,11 +394,11 @@ class SystemTrayIcon:
             x = (about_window.winfo_screenwidth() // 2) - (width // 2)
             y = (about_window.winfo_screenheight() // 2) - (height // 2)
             about_window.geometry(f'{width}x{height}+{x}+{y}')
-            
+
             # Create main frame
             main_frame = ttk.Frame(about_window, padding="25")
             main_frame.pack(fill=tk.BOTH, expand=True)
-            
+
             # Title
             title_label = ttk.Label(
                 main_frame,
@@ -406,7 +406,7 @@ class SystemTrayIcon:
                 font=("Segoe UI", 16, "bold") if self._is_windows() else ("Arial", 16, "bold")
             )
             title_label.pack(pady=(0, 25))
-            
+
             # Version
             version_label = ttk.Label(
                 main_frame,
@@ -414,7 +414,7 @@ class SystemTrayIcon:
                 font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
             )
             version_label.pack(pady=8)
-            
+
             # Repository section
             repo_label = ttk.Label(
                 main_frame,
@@ -422,7 +422,7 @@ class SystemTrayIcon:
                 font=("Segoe UI", 10, "bold") if self._is_windows() else ("Arial", 10, "bold")
             )
             repo_label.pack(pady=(25, 8))
-            
+
             repo_url_label = ttk.Label(
                 main_frame,
                 text=repo_url,
@@ -431,14 +431,14 @@ class SystemTrayIcon:
                 cursor="hand2"
             )
             repo_url_label.pack(pady=8)
-            
+
             # Make repository URL clickable
             def open_repo(event):
                 import webbrowser
                 webbrowser.open(repo_url)
-            
+
             repo_url_label.bind("<Button-1>", open_repo)
-            
+
             # Copyright
             copyright_label = ttk.Label(
                 main_frame,
@@ -446,7 +446,7 @@ class SystemTrayIcon:
                 font=("Segoe UI", 9) if self._is_windows() else ("Arial", 9)
             )
             copyright_label.pack(pady=(35, 0))
-            
+
             # Close button
             close_button = ttk.Button(
                 main_frame,
@@ -455,12 +455,12 @@ class SystemTrayIcon:
                 width=20
             )
             close_button.pack(pady=(25, 0))
-            
+
             # Make window modal
             about_window.transient(about_window.master)
             about_window.grab_set()
             about_window.focus_set()
-            
+
             logger.info("About dialog shown")
         except Exception as e:
             logger.error(f"Failed to show about: {e}")

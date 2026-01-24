@@ -346,9 +346,11 @@ class HomeAssistantWindows:
                     self.api_server.state.wake_words_changed = False
                     self._update_wake_word_detector()
 
-                # Pass raw bytes to wake word detector
-                if self._wake_word_detector:
-                    self._wake_word_detector.process_audio(audio_data)
+                # Skip wake word detection if TTS is playing (to avoid false positives)
+                if self.api_server and self.api_server.protocol and not self.api_server.protocol._is_playing_tts:
+                    # Pass raw bytes to wake word detector
+                    if self._wake_word_detector:
+                        self._wake_word_detector.process_audio(audio_data)
 
                 # Always process stop word (like linux-voice-assistant)
                 if self._stop_word_detector:

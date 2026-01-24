@@ -34,8 +34,11 @@ try:
 except ImportError:
     logger.warning("pyopen-wakeword not available")
 
+# Import models for type hints
+from src.core.models import AvailableWakeWord, WakeWordType
 
-def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, any]:
+
+def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, AvailableWakeWord]:
     """
     Load all available wake words from wakewords directory
 
@@ -45,8 +48,6 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
     Returns:
         Dict mapping wake word ID to AvailableWakeWord
     """
-    from src.core.models import AvailableWakeWord, WakeWordType
-
     wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
     wake_words = {}
 
@@ -97,8 +98,6 @@ class WakeWordDetector:
             model_name: Wake word model name (e.g., 'okay_nabu', 'hey_jarvis')
             wakeword_dir: Directory containing wake word models
         """
-        from src.core.models import AvailableWakeWord, WakeWordType, load_available_wake_words
-
         self.model_name = model_name
         self.wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
         self._on_wake_word: Optional[Callable[[str], None]] = None

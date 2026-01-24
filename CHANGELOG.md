@@ -2,26 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-01-24
+
 ### Added
-- OpenWakeWord support for enhanced wake word detection
-- pyproject.toml with Black, isort, and MyPy configurations
-- Development scripts for formatting, linting, and testing
+- OpenWakeWord support alongside MicroWakeWord
+- Enhanced wake word detection with dual detector support
+- Support for more wake word models and better accuracy
 - CHANGELOG.md for tracking version changes
 
 ### Changed
-- Improved code quality with type hints and linting
-- Fixed duplicate wake word detection during TTS playback
-- Disabled duck/unduck volume control to prevent audio issues
+- Updated dependencies to include pyopen-wakeword>=1.0.0
+- Refactored WakeWordDetector to support both MicroWakeWord and OpenWakeWord
 
-### Fixed
-- Flake8 issues: f-string placeholders, unused imports, whitespace
-- MyPy type issues: Optional types, None checks
-- Type hints in audio_recorder and mdns_discovery modules
+### Technical Details
+- Added OpenWakeWordFeatures extraction and processing
+- Improved wake word detection flexibility and accuracy
 
 ## [0.3.2] - 2026-01-24
 
@@ -31,16 +31,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wake word detection pause during TTS playback
 
 ### Changed
-- Version bump from 0.3.1 to 0.3.2
-- Improved code maintainability and quality
+- Improved code maintainability and quality with type hints and linting
 
 ### Fixed
 - Duplicate wake word detection during TTS playback
 - Duck/unduck volume control causing audio issues
-- Flake8 linting issues
-- MyPy type checking issues
+- Flake8 linting issues: f-string placeholders, unused imports, whitespace
+- MyPy type checking issues: Optional types, None checks
+- Type hints in audio_recorder and mdns_discovery modules
 
-## [0.3.1] - Previous Release
+## [0.3.1] - 2026-01-24
+
+### Added
+- Wakeup sound prompt for continue conversation
+- Version update checker with Windows notification
+
+### Fixed
+- Audio streaming issues with single recorder for wake word and voice assistant
+- Repository URL handling
+
+## [0.3.0] - 2026-01-24
+
+### Changed
+- Refactored: move non-protocol code out of esphome_protocol.py
+- Reduced logging verbosity in models.py
+
+### Fixed
+- Excessive logging output
+- Audio playback logs changed to DEBUG level
+
+## [0.2.9] - 2026-01-24
+
+### Added
+- Version update checker with Windows notification
+- Direct exe file download for updates
+
+### Changed
+- Update notification to directly download exe file
+- Removed unused RELEASES_URL constant
+
+### Fixed
+- Repository URL handling
+
+## [0.2.8] - 2026-01-24
+
+### Added
+- About menu item in system tray
+- About dialog with version and repository information
+
+### Changed
+- Improve dialog windows with better UI and i18n support
+- Use proper windows instead of notifications for dialogs
+
+### Fixed
+- Status dialog implementation
+- About dialog implementation
+
+## [0.2.7] - 2026-01-24
+
+### Fixed
+- Audio streaming issues: remove call_soon_threadsafe for direct calls
+
+## [0.2.6] - 2026-01-24
 
 ### Features
 - Voice Assistant with wake word detection

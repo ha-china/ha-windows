@@ -1,13 +1,13 @@
 """
 Wake Word Detection Module
 
-Uses pymicro-wakeword for wake word detection (same as ESPHome microWakeWord).
+Supports both pymicro-wakeword and pyopen-wakeword for wake word detection.
 """
 
 import json
 import logging
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Union
 
 import numpy as np
 
@@ -24,6 +24,15 @@ try:
     logger.info("pymicro-wakeword available for wake word detection")
 except ImportError:
     logger.warning("pymicro-wakeword not available")
+
+# Try to import pyopen-wakeword
+_openwakeword_available = False
+try:
+    from pyopen_wakeword import OpenWakeWord, OpenWakeWordFeatures
+    _openwakeword_available = True
+    logger.info("pyopen-wakeword available for wake word detection")
+except ImportError:
+    logger.warning("pyopen-wakeword not available")
 
 
 def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, any]:
@@ -74,7 +83,7 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
 
 
 class WakeWordDetector:
-    """Wake word detector using pymicro-wakeword"""
+    """Wake word detector supporting both MicroWakeWord and OpenWakeWord"""
 
     def __init__(
         self,
@@ -88,38 +97,65 @@ class WakeWordDetector:
             model_name: Wake word model name (e.g., 'okay_nabu', 'hey_jarvis')
             wakeword_dir: Directory containing wake word models
         """
+        from src.core.models import AvailableWakeWord, WakeWordType, load_available_wake_words
+
         self.model_name = model_name
         self.wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
         self._on_wake_word: Optional[Callable[[str], None]] = None
-        self._model: Optional[MicroWakeWord] = None
-        self._features: Optional[MicroWakeWordFeatures] = None
         self._wake_word_phrase: str = model_name
         self._last_detection_logged = False  # Track if we already logged this detection
 
-        if not _microwakeword_available:
-            logger.warning("pymicro-wakeword not installed, wake word detection disabled")
+        # Detector type and model
+        self._detector_type: Optional[str] = None
+        self._model: Optional[Union[MicroWakeWord, OpenWakeWord]] = None
+        self._features: Optional[Union[MicroWakeWordFeatures, OpenWakeWordFeatures]] = None
+
+        # Load wake word info
+        wake_words = load_available_wake_words(self.wakeword_dir)
+        if model_name not in wake_words:
+            logger.error(f"Wake word model not found: {model_name}")
             return
 
-        # Load model
-        config_path = self.wakeword_dir / f"{model_name}.json"
-        if not config_path.exists():
-            logger.error(f"Wake word config not found: {config_path}")
+        wake_word_info = wake_words[model_name]
+        self._wake_word_phrase = wake_word_info.wake_word
+        self._detector_type = wake_word_info.type
+
+        # Initialize detector based on type
+        if self._detector_type == WakeWordType.MICRO_WAKE_WORD:
+            self._init_micro_wakeword(wake_word_info)
+        elif self._detector_type == WakeWordType.OPEN_WAKE_WORD:
+            self._init_open_wakeword(wake_word_info)
+        else:
+            logger.error(f"Unknown wake word type: {self._detector_type}")
+
+    def _init_micro_wakeword(self, wake_word_info: AvailableWakeWord) -> None:
+        """Initialize MicroWakeWord detector"""
+        if not _microwakeword_available:
+            logger.warning("pymicro-wakeword not installed")
             return
 
         try:
-            # Read config to get wake word phrase
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                self._wake_word_phrase = config.get('wake_word', model_name)
-
             # Load model
-            self._model = MicroWakeWord.from_config(config_path)
+            self._model = MicroWakeWord.from_config(wake_word_info.wake_word_path)
             self._features = MicroWakeWordFeatures()
-
-            logger.debug(f"Wake word detector initialized: '{self._wake_word_phrase}' ({model_name})")
-
+            logger.debug(f"Wake word detector initialized (MicroWakeWord): '{self._wake_word_phrase}' ({self.model_name})")
         except Exception as e:
-            logger.error(f"Failed to initialize wake word model: {e}")
+            logger.error(f"Failed to initialize MicroWakeWord: {e}")
+            self._model = None
+
+    def _init_open_wakeword(self, wake_word_info: AvailableWakeWord) -> None:
+        """Initialize OpenWakeWord detector"""
+        if not _openwakeword_available:
+            logger.warning("pyopen-wakeword not installed")
+            return
+
+        try:
+            # Load model
+            self._model = OpenWakeWord.from_model(model_path=wake_word_info.wake_word_path)
+            self._features = OpenWakeWordFeatures()
+            logger.debug(f"Wake word detector initialized (OpenWakeWord): '{self._wake_word_phrase}' ({self.model_name})")
+        except Exception as e:
+            logger.error(f"Failed to initialize OpenWakeWord: {e}")
             self._model = None
 
     def on_wake_word(self, callback: Callable[[str], None]) -> None:
@@ -145,37 +181,73 @@ class WakeWordDetector:
             return False
 
         try:
-            # Extract features from raw audio bytes
-            features = self._features.process_streaming(audio_chunk)
-
-            # Process each feature frame
-            detected = False
-            for feature in features:
-                if self._model.process_streaming(feature):
-                    detected = True
-                    # Only log once per detection sequence
-                    if not self._last_detection_logged:
-                        logger.info(f"Wake word detected: {self._wake_word_phrase}")
-                        self._last_detection_logged = True
-                    if self._on_wake_word:
-                        self._on_wake_word(self._wake_word_phrase)
-                    break  # Stop processing after first detection
-
-            # Reset flag if no detection (allows next detection to be logged)
-            if not detected and self._last_detection_logged:
-                self._last_detection_logged = False
-
-            return detected
+            # Process based on detector type
+            if self._detector_type == "micro":
+                return self._process_micro_wakeword(audio_chunk)
+            elif self._detector_type == "openWakeWord":
+                return self._process_open_wakeword(audio_chunk)
+            else:
+                return False
 
         except Exception as e:
             logger.error(f"Wake word detection failed: {e}")
             return False
 
+    def _process_micro_wakeword(self, audio_chunk: bytes) -> bool:
+        """Process audio with MicroWakeWord detector"""
+        # Extract features from raw audio bytes
+        features = self._features.process_streaming(audio_chunk)
+
+        # Process each feature frame
+        detected = False
+        for feature in features:
+            if self._model.process_streaming(feature):
+                detected = True
+                # Only log once per detection sequence
+                if not self._last_detection_logged:
+                    logger.info(f"Wake word detected: {self._wake_word_phrase}")
+                    self._last_detection_logged = True
+                if self._on_wake_word:
+                    self._on_wake_word(self._wake_word_phrase)
+                break  # Stop processing after first detection
+
+        # Reset flag if no detection (allows next detection to be logged)
+        if not detected and self._last_detection_logged:
+            self._last_detection_logged = False
+
+        return detected
+
+    def _process_open_wakeword(self, audio_chunk: bytes) -> bool:
+        """Process audio with OpenWakeWord detector"""
+        # Convert audio bytes to numpy array
+        audio_array = np.frombuffer(audio_chunk, dtype=np.int16).astype(np.float32) / 32768.0
+
+        # Extract features
+        oww_inputs = self._features.process_streaming(audio_array)
+
+        # Process each input
+        for prob in oww_inputs:
+            if prob > 0.5:  # Detection threshold
+                # Only log once per detection sequence
+                if not self._last_detection_logged:
+                    logger.info(f"Wake word detected: {self._wake_word_phrase}")
+                    self._last_detection_logged = True
+                if self._on_wake_word:
+                    self._on_wake_word(self._wake_word_phrase)
+                return True
+
+        # Reset flag if no detection (allows next detection to be logged)
+        if self._last_detection_logged:
+            self._last_detection_logged = False
+
+        return False
+
     def reset(self) -> None:
         """Reset detector state"""
-        # MicroWakeWord doesn't have a reset method, but we can recreate features
-        if _microwakeword_available:
+        if self._detector_type == "micro" and _microwakeword_available:
             self._features = MicroWakeWordFeatures()
+        elif self._detector_type == "openWakeWord" and _openwakeword_available:
+            self._features = OpenWakeWordFeatures()
         self._last_detection_logged = False
 
     @property
@@ -215,7 +287,7 @@ class WakeWordDetector:
     @staticmethod
     def is_available() -> bool:
         """Check if wake word detection is available"""
-        return _microwakeword_available
+        return _microwakeword_available or _openwakeword_available
 
 
 if __name__ == "__main__":

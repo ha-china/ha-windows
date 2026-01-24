@@ -1,6 +1,6 @@
 [project]
 name = "ha-windows"
-version = "0.3.2"
+version = "0.3.3"
 description = "Home Assistant Windows Client - ESPHome Device Simulator"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -28,6 +28,7 @@ dependencies = [
     "pygame>=2.5.0",
     "python-vlc>=3.0.0",
     "pymicro-wakeword>=2.0.0",
+    "pyopen-wakeword>=1.0.0",
     "webrtcvad-wheels>=2.0.10",
     "psutil>=5.9.0",
     "zeroconf>=0.100.0",

@@ -6,6 +6,7 @@ numpy>=1.24.0,<2.0.0
 pygame>=2.5.0
 python-vlc>=3.0.0
 pymicro-wakeword>=2.0.0
+pyopen-wakeword>=1.0.0
 webrtcvad-wheels>=2.0.10
 psutil>=5.9.0
 zeroconf>=0.100.0

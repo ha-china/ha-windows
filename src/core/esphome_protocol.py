@@ -108,7 +108,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._transport = transport
         self._writelines = transport.writelines
         self._event_loop = asyncio.get_event_loop()
-        peername = transport.get_extra_info('peername')
+        peername = transport.get_extra_info("peername")
         logger.info(f"📱 New client connected: {peername}")
 
     def connection_lost(self, exc) -> None:
@@ -237,13 +237,15 @@ class ESPHomeProtocol(asyncio.Protocol):
     def _handle_hello(self, msg: HelloRequest) -> None:
         """Handle Hello request"""
         logger.debug(f"Client Hello: {msg.client_info}, API {msg.api_version_major}.{msg.api_version_minor}")
-        self.send_messages([
-            HelloResponse(
-                api_version_major=1,
-                api_version_minor=10,
-                name=self.state.name,
-            )
-        ])
+        self.send_messages(
+            [
+                HelloResponse(
+                    api_version_major=1,
+                    api_version_minor=10,
+                    name=self.state.name,
+                )
+            ]
+        )
 
     def _handle_auth(self, msg: AuthenticationRequest) -> None:
         """Handle authentication request"""
@@ -457,6 +459,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         """Get or create audio recorder"""
         if self._audio_recorder is None:
             from src.voice.audio_recorder import AudioRecorder
+
             self._audio_recorder = AudioRecorder()
             logger.debug("🎤 Audio recorder initialized")
         return self._audio_recorder
@@ -481,7 +484,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             return
 
         # Log first few audio chunks
-        if not hasattr(self, '_audio_chunks_sent'):
+        if not hasattr(self, "_audio_chunks_sent"):
             self._audio_chunks_sent = 0
         self._audio_chunks_sent += 1
         if self._audio_chunks_sent <= 5:
@@ -507,9 +510,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         # Send voice assistant request
         logger.debug("Sending VoiceAssistantRequest(start=True)")
-        self.send_messages([
-            VoiceAssistantRequest(start=True, wake_word_phrase=wake_word_phrase)
-        ])
+        self.send_messages([VoiceAssistantRequest(start=True, wake_word_phrase=wake_word_phrase)])
 
         # Duck volume
         # self.duck()  # Duck feature disabled
@@ -583,10 +584,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Play wakeup sound to prompt user to speak, then start recording
             if self.state.wakeup_sound:
                 logger.debug("Playing wakeup sound for continue conversation")
-                self.state.tts_player.play(
-                    self.state.wakeup_sound,
-                    done_callback=self._start_audio_streaming
-                )
+                self.state.tts_player.play(self.state.wakeup_sound, done_callback=self._start_audio_streaming)
             else:
                 # No wakeup sound, start recording directly
                 self._start_audio_streaming()
@@ -608,6 +606,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         # Loop play timer sound
         def on_done():
             import time
+
             time.sleep(1.0)
             self._play_timer_finished()
 
@@ -619,10 +618,19 @@ class ESPHomeProtocol(asyncio.Protocol):
     def handle_message(self, msg: message.Message) -> Iterable[message.Message]:
         """Handle entity-related messages"""
         if isinstance(msg, DeviceInfoRequest):
+            # Get version from src.__init__
+            try:
+                from src import __version__
+
+                version = __version__
+            except Exception:
+                version = "unknown"
+
             yield DeviceInfoResponse(
                 uses_password=False,
                 name=self.state.name,
                 mac_address=self.state.mac_address,
+                project_version=version,
                 voice_assistant_feature_flags=(
                     VoiceAssistantFeature.VOICE_ASSISTANT
                     | VoiceAssistantFeature.API_AUDIO
@@ -631,7 +639,16 @@ class ESPHomeProtocol(asyncio.Protocol):
                     | VoiceAssistantFeature.TIMERS
                 ),
             )
-        elif isinstance(msg, (ListEntitiesRequest, SubscribeHomeAssistantStatesRequest, MediaPlayerCommandRequest, ButtonCommandRequest, ExecuteServiceRequest)):
+        elif isinstance(
+            msg,
+            (
+                ListEntitiesRequest,
+                SubscribeHomeAssistantStatesRequest,
+                MediaPlayerCommandRequest,
+                ButtonCommandRequest,
+                ExecuteServiceRequest,
+            ),
+        ):
             # Handle entity messages
             yield from self._handle_entity_message(msg)
 
@@ -643,11 +660,13 @@ class ESPHomeProtocol(asyncio.Protocol):
         # Get Windows Monitor
         if self._monitor is None:
             from src.sensors.windows_monitor import WindowsMonitor
+
             self._monitor = WindowsMonitor()
 
         # Get MediaPlayer entity
         if self._media_player_entity is None:
             from src.sensors.media_player import MediaPlayerEntity
+
             self._media_player_entity = MediaPlayerEntity(
                 server=self,
                 key=10,
@@ -658,11 +677,13 @@ class ESPHomeProtocol(asyncio.Protocol):
         # Get button manager
         if self._button_manager is None:
             from src.commands.button_entity import ButtonEntityManager
+
             self._button_manager = ButtonEntityManager()
 
         # Get service manager
         if self._service_manager is None:
             from src.notify.service_entity import ServiceEntityManager
+
             self._service_manager = ServiceEntityManager()
 
         if isinstance(msg, ListEntitiesRequest):
@@ -707,10 +728,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         from aioesphomeapi._frame_helper.packets import make_plain_text_packets
 
-        packets = [
-            (PROTO_TO_MESSAGE_TYPE[msg.__class__], msg.SerializeToString())
-            for msg in msgs
-        ]
+        packets = [(PROTO_TO_MESSAGE_TYPE[msg.__class__], msg.SerializeToString()) for msg in msgs]
 
         packet_bytes = make_plain_text_packets(packets)
         self._writelines(packet_bytes)
@@ -737,7 +755,7 @@ class ESPHomeServer:
 
         # Create or use provided state
         if device_name is None:
-            device_name = socket.gethostname().split('.')[0]
+            device_name = socket.gethostname().split(".")[0]
 
         if state is None:
             self.state = create_default_state(device_name)

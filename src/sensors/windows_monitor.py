@@ -29,6 +29,7 @@ def _get_media_player_module():
     """Lazy import media player module"""
     try:
         from src.voice import mpv_player
+
         return mpv_player
     except ImportError:
         return None
@@ -40,6 +41,7 @@ _i18n = get_i18n()
 # ESPHome sensor/entity key definitions (server mode)
 # Keys 1-10 reserved for basic sensors, 20+ for dynamic disk sensors
 SENSOR_KEYS = {
+    "version": 0,
     "cpu_usage": 1,
     "memory_usage": 2,
     "memory_free": 7,
@@ -89,10 +91,10 @@ class WindowsMonitor:
             cpu_freq = psutil.cpu_freq()
 
             return {
-                'cpu_percent': cpu_percent,
-                'cpu_count': cpu_count,
-                'cpu_freq_current': cpu_freq.current if cpu_freq else None,
-                'cpu_freq_max': cpu_freq.max if cpu_freq else None,
+                "cpu_percent": cpu_percent,
+                "cpu_count": cpu_count,
+                "cpu_freq_current": cpu_freq.current if cpu_freq else None,
+                "cpu_freq_max": cpu_freq.max if cpu_freq else None,
             }
         except Exception as e:
             logger.error(f"Failed to get CPU info: {e}")
@@ -109,11 +111,11 @@ class WindowsMonitor:
             mem = psutil.virtual_memory()
 
             return {
-                'total': mem.total,
-                'available': mem.available,
-                'used': mem.used,
-                'free': mem.free,
-                'percent': mem.percent,
+                "total": mem.total,
+                "available": mem.available,
+                "used": mem.used,
+                "free": mem.free,
+                "percent": mem.percent,
             }
         except Exception as e:
             logger.error(f"Failed to get memory info: {e}")
@@ -134,24 +136,24 @@ class WindowsMonitor:
 
             for partition in psutil.disk_partitions():
                 # Skip cdrom and empty filesystem
-                if 'cdrom' in partition.opts or partition.fstype == '':
+                if "cdrom" in partition.opts or partition.fstype == "":
                     continue
 
                 # Skip removable drives if fixed_only
-                if fixed_only and 'removable' in partition.opts:
+                if fixed_only and "removable" in partition.opts:
                     continue
 
                 try:
                     usage = psutil.disk_usage(partition.mountpoint)
                     disk_info[partition.mountpoint] = {
-                        'device': partition.device,
-                        'fstype': partition.fstype,
-                        'total': usage.total,
-                        'used': usage.used,
-                        'free': usage.free,
-                        'percent': usage.percent,
-                        'free_gb': round(usage.free / (1024**3), 1),
-                        'total_gb': round(usage.total / (1024**3), 1),
+                        "device": partition.device,
+                        "fstype": partition.fstype,
+                        "total": usage.total,
+                        "used": usage.used,
+                        "free": usage.free,
+                        "percent": usage.percent,
+                        "free_gb": round(usage.free / (1024**3), 1),
+                        "total_gb": round(usage.total / (1024**3), 1),
                     }
                 except PermissionError:
                     continue
@@ -175,9 +177,9 @@ class WindowsMonitor:
                 return None
 
             return {
-                'percent': battery.percent,
-                'power_plugged': battery.power_plugged,
-                'secsleft': battery.secsleft,
+                "percent": battery.percent,
+                "power_plugged": battery.power_plugged,
+                "secsleft": battery.secsleft,
             }
         except Exception as e:
             logger.error(f"Failed to get battery info: {e}")
@@ -206,14 +208,14 @@ class WindowsMonitor:
                     break
 
             return {
-                'bytes_sent': net_io.bytes_sent,
-                'bytes_recv': net_io.bytes_recv,
-                'bytes_sent_gb': round(net_io.bytes_sent / (1024**3), 2),
-                'bytes_recv_gb': round(net_io.bytes_recv / (1024**3), 2),
-                'packets_sent': net_io.packets_sent,
-                'packets_recv': net_io.packets_recv,
-                'connections': net_connections,
-                'ip_address': ip_address,
+                "bytes_sent": net_io.bytes_sent,
+                "bytes_recv": net_io.bytes_recv,
+                "bytes_sent_gb": round(net_io.bytes_sent / (1024**3), 2),
+                "bytes_recv_gb": round(net_io.bytes_recv / (1024**3), 2),
+                "packets_sent": net_io.packets_sent,
+                "packets_recv": net_io.packets_recv,
+                "connections": net_connections,
+                "ip_address": ip_address,
             }
         except Exception as e:
             logger.error(f"Failed to get network info: {e}")
@@ -235,17 +237,17 @@ class WindowsMonitor:
             boot_datetime = datetime.fromtimestamp(self._boot_time)
 
             return {
-                'system': platform.system(),
-                'release': platform.release(),
-                'version': platform.version(),
-                'machine': platform.machine(),
-                'processor': platform.processor(),
-                'hostname': platform.node(),
-                'boot_time': self._boot_time,
-                'boot_time_iso': boot_datetime.isoformat(),
-                'uptime_seconds': uptime_seconds,
-                'uptime_hours': uptime_hours,
-                'process_count': len(psutil.pids()),
+                "system": platform.system(),
+                "release": platform.release(),
+                "version": platform.version(),
+                "machine": platform.machine(),
+                "processor": platform.processor(),
+                "hostname": platform.node(),
+                "boot_time": self._boot_time,
+                "boot_time_iso": boot_datetime.isoformat(),
+                "uptime_seconds": uptime_seconds,
+                "uptime_hours": uptime_hours,
+                "process_count": len(psutil.pids()),
             }
         except Exception as e:
             logger.error(f"Failed to get system info: {e}")
@@ -259,12 +261,12 @@ class WindowsMonitor:
             Dict: All system information
         """
         return {
-            'cpu': self.get_cpu_info(),
-            'memory': self.get_memory_info(),
-            'disk': self.get_disk_info(),
-            'battery': self.get_battery_info(),
-            'network': self.get_network_info(),
-            'system': self.get_system_info(),
+            "cpu": self.get_cpu_info(),
+            "memory": self.get_memory_info(),
+            "disk": self.get_disk_info(),
+            "battery": self.get_battery_info(),
+            "network": self.get_network_info(),
+            "system": self.get_system_info(),
         }
 
     # ========================================================================
@@ -281,6 +283,9 @@ class WindowsMonitor:
         info = self.get_all_info()
         available = []
 
+        # Version - always available (first entity, diagnostic category)
+        available.append(("version", "Version", "mdi:tag", SENSOR_KEYS["version"]))
+
         # CPU - always available
         available.append(("cpu_usage", "CPU Usage", "mdi:cpu-64-bit", SENSOR_KEYS["cpu_usage"]))
 
@@ -289,11 +294,11 @@ class WindowsMonitor:
         available.append(("memory_free", "Memory Free", "mdi:memory", SENSOR_KEYS["memory_free"]))
 
         # Disk sensors - for each fixed drive, add usage% and free GB
-        disk_info = info.get('disk', {})
+        disk_info = info.get("disk", {})
         disk_key = DISK_KEY_OFFSET
         for mount_point in sorted(disk_info.keys()):
             # Get drive letter (e.g., "C" from "C:\")
-            drive_letter = mount_point.rstrip(':\\')
+            drive_letter = mount_point.rstrip(":\\")
 
             # Disk usage %
             usage_id = f"disk_{drive_letter.lower()}_usage"
@@ -306,7 +311,7 @@ class WindowsMonitor:
             disk_key += 1
 
         # Battery - only if battery info available
-        if info.get('battery'):
+        if info.get("battery"):
             available.append(("battery_status", "Battery Status", "mdi:battery", SENSOR_KEYS["battery_status"]))
             available.append(("battery_level", "Battery Level", "mdi:battery-90", SENSOR_KEYS["battery_level"]))
 
@@ -344,8 +349,20 @@ class WindowsMonitor:
 
         entities = []
         for object_id, name, icon, key in self._available_entities:
+            # Import EntityCategory for diagnostic entities
+            from aioesphomeapi.api_pb2 import EntityCategory
+
+            # Version sensor (diagnostic category)
+            if object_id == "version":
+                sensor = ListEntitiesTextSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                    entity_category=EntityCategory.ENTITY_CATEGORY_DIAGNOSTIC,
+                )
             # Percentage sensors
-            if object_id in ("cpu_usage", "memory_usage", "battery_level") or object_id.endswith("_usage"):
+            elif object_id in ("cpu_usage", "memory_usage", "battery_level") or object_id.endswith("_usage"):
                 sensor = ListEntitiesSensorResponse(
                     object_id=object_id,
                     key=key,
@@ -420,96 +437,107 @@ class WindowsMonitor:
         states = []
         info = self.get_all_info()
 
+        # Version
+        if "version" in self._entity_map:
+            try:
+                from src import __version__
+
+                version = __version__
+            except Exception:
+                version = "unknown"
+            _, _, key = self._entity_map["version"]
+            states.append(TextSensorStateResponse(key=key, state=version))
+
         # CPU usage
         if "cpu_usage" in self._entity_map:
-            cpu_info = info.get('cpu', {})
-            cpu_percent = cpu_info.get('cpu_percent', 0)
+            cpu_info = info.get("cpu", {})
+            cpu_percent = cpu_info.get("cpu_percent", 0)
             _, _, key = self._entity_map["cpu_usage"]
             states.append(SensorStateResponse(key=key, state=float(cpu_percent)))
 
         # Memory usage %
         if "memory_usage" in self._entity_map:
-            mem_info = info.get('memory', {})
-            mem_percent = mem_info.get('percent', 0)
+            mem_info = info.get("memory", {})
+            mem_percent = mem_info.get("percent", 0)
             _, _, key = self._entity_map["memory_usage"]
             states.append(SensorStateResponse(key=key, state=float(mem_percent)))
 
         # Memory free GB
         if "memory_free" in self._entity_map:
-            mem_info = info.get('memory', {})
-            mem_available = mem_info.get('available', 0)
+            mem_info = info.get("memory", {})
+            mem_available = mem_info.get("available", 0)
             mem_free_gb = round(mem_available / (1024**3), 1)
             _, _, key = self._entity_map["memory_free"]
             states.append(SensorStateResponse(key=key, state=float(mem_free_gb)))
 
         # Disk sensors - usage% and free GB for each drive
-        disk_info = info.get('disk', {})
+        disk_info = info.get("disk", {})
         for mount_point, disk_data in disk_info.items():
-            drive_letter = mount_point.rstrip(':\\').lower()
+            drive_letter = mount_point.rstrip(":\\").lower()
 
             # Disk usage %
             usage_id = f"disk_{drive_letter}_usage"
             if usage_id in self._entity_map:
                 _, _, key = self._entity_map[usage_id]
-                states.append(SensorStateResponse(key=key, state=float(disk_data.get('percent', 0))))
+                states.append(SensorStateResponse(key=key, state=float(disk_data.get("percent", 0))))
 
             # Disk free GB
             free_id = f"disk_{drive_letter}_free"
             if free_id in self._entity_map:
                 _, _, key = self._entity_map[free_id]
-                states.append(SensorStateResponse(key=key, state=float(disk_data.get('free_gb', 0))))
+                states.append(SensorStateResponse(key=key, state=float(disk_data.get("free_gb", 0))))
 
         # Battery status
         if "battery_status" in self._entity_map:
-            battery_info = info.get('battery')
+            battery_info = info.get("battery")
             if battery_info:
-                status = "Charging" if battery_info.get('power_plugged') else "Discharging"
+                status = "Charging" if battery_info.get("power_plugged") else "Discharging"
                 _, _, key = self._entity_map["battery_status"]
                 states.append(TextSensorStateResponse(key=key, state=status))
 
         # Battery level
         if "battery_level" in self._entity_map:
-            battery_info = info.get('battery')
+            battery_info = info.get("battery")
             if battery_info:
                 _, _, key = self._entity_map["battery_level"]
-                states.append(SensorStateResponse(key=key, state=float(battery_info.get('percent', 0))))
+                states.append(SensorStateResponse(key=key, state=float(battery_info.get("percent", 0))))
 
         # IP Address
         if "ip_address" in self._entity_map:
-            net_info = info.get('network', {})
-            ip = net_info.get('ip_address', '')
+            net_info = info.get("network", {})
+            ip = net_info.get("ip_address", "")
             _, _, key = self._entity_map["ip_address"]
             states.append(TextSensorStateResponse(key=key, state=ip))
 
         # Network upload (GB)
         if "network_upload" in self._entity_map:
-            net_info = info.get('network', {})
+            net_info = info.get("network", {})
             _, _, key = self._entity_map["network_upload"]
-            states.append(SensorStateResponse(key=key, state=float(net_info.get('bytes_sent_gb', 0))))
+            states.append(SensorStateResponse(key=key, state=float(net_info.get("bytes_sent_gb", 0))))
 
         # Network download (GB)
         if "network_download" in self._entity_map:
-            net_info = info.get('network', {})
+            net_info = info.get("network", {})
             _, _, key = self._entity_map["network_download"]
-            states.append(SensorStateResponse(key=key, state=float(net_info.get('bytes_recv_gb', 0))))
+            states.append(SensorStateResponse(key=key, state=float(net_info.get("bytes_recv_gb", 0))))
 
         # Boot time (ISO format)
         if "boot_time" in self._entity_map:
-            sys_info = info.get('system', {})
+            sys_info = info.get("system", {})
             _, _, key = self._entity_map["boot_time"]
-            states.append(TextSensorStateResponse(key=key, state=sys_info.get('boot_time_iso', '')))
+            states.append(TextSensorStateResponse(key=key, state=sys_info.get("boot_time_iso", "")))
 
         # Uptime (hours)
         if "uptime" in self._entity_map:
-            sys_info = info.get('system', {})
+            sys_info = info.get("system", {})
             _, _, key = self._entity_map["uptime"]
-            states.append(SensorStateResponse(key=key, state=float(sys_info.get('uptime_hours', 0))))
+            states.append(SensorStateResponse(key=key, state=float(sys_info.get("uptime_hours", 0))))
 
         # Process count
         if "process_count" in self._entity_map:
-            sys_info = info.get('system', {})
+            sys_info = info.get("system", {})
             _, _, key = self._entity_map["process_count"]
-            states.append(SensorStateResponse(key=key, state=float(sys_info.get('process_count', 0))))
+            states.append(SensorStateResponse(key=key, state=float(sys_info.get("process_count", 0))))
 
         # Extra states (command_result, voice_status, etc.)
         for entity_name, state_value in extra_states.items():
@@ -611,9 +639,11 @@ if __name__ == "__main__":
         async_monitor = AsyncWindowsMonitor(update_interval=2.0)
 
         logger.info("\nAsync monitor test (5 seconds)...")
-        task = asyncio.create_task(async_monitor.start_monitoring(
-            lambda info: logger.info(f"Monitor update: CPU {info['cpu'].get('cpu_percent')}%")
-        ))
+        task = asyncio.create_task(
+            async_monitor.start_monitoring(
+                lambda info: logger.info(f"Monitor update: CPU {info['cpu'].get('cpu_percent')}%")
+            )
+        )
 
         await asyncio.sleep(5)
 

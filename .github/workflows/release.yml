@@ -37,7 +37,7 @@ jobs:
         python -c "import customtkinter; print('customtkinter OK')"
         python -c "import pymicro_wakeword; print('pymicro_wakeword OK')"
 
-    - name: Build EXE
+    - name: Build Single-File EXE
       run: |
         python setup.py --build
 

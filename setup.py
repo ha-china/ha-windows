@@ -1,57 +1,57 @@
 """
-PyInstaller 打包配置
-用于将 Home Assistant Windows 客户端打包成单个 exe 文件
+PyInstaller build configuration
+Used to package Home Assistant Windows client into a single exe file
 """
 
 import os
 import sys
 import io
 
-# 设置标准输出为 UTF-8 编码（修复 Windows 编码问题）
+# Set stdout to UTF-8 encoding (fix Windows encoding issue)
 if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 from PyInstaller.__main__ import run
 
-# 导入版本号
+# Import version number
 try:
     from src import __version__ as APP_VERSION
 except ImportError:
     APP_VERSION = "0.0.0"
 
-# 项目信息
+# Project information
 APP_NAME = "HomeAssistantWindows"
 APP_AUTHOR = "老王"
-APP_DESCRIPTION = "零配置 Home Assistant Windows 原生客户端"
+APP_DESCRIPTION = "Zero-config Home Assistant Windows native client"
 
-# 主程序入口（使用 __main__.py，这样相对导入才能正常工作）
+# Main program entry point (use __main__.py so relative imports work correctly)
 MAIN_SCRIPT = "src/__main__.py"
 
-# 如果主程序不存在，创建一个临时的
+# If main program doesn't exist, create a temporary one
 if not os.path.exists(MAIN_SCRIPT):
-    print(f"警告: {MAIN_SCRIPT} 不存在，请先创建主程序")
+    print(f"Warning: {MAIN_SCRIPT} does not exist, please create the main program first")
     sys.exit(1)
 
 
 def build_exe():
     """
-    使用 PyInstaller 打包成单个 exe 文件
+    Build a single exe file using PyInstaller (one-file mode)
     """
-    # PyInstaller 参数
+    # PyInstaller arguments
     pyinstaller_args = [
         MAIN_SCRIPT,
-        "--onefile",  # 打包成单个 exe 文件
-        "--windowed",  # 无控制台窗口（使用 GUI）
-        "--name=" + APP_NAME,  # exe 文件名
+        "--onefile",  # Package into a single exe file
+        "--windowed",  # No console window (use GUI)
+        "--name=" + APP_NAME,  # exe file name
         "--icon=src/logo.ico" if os.path.exists("src/logo.ico") else "",
         f"--version-file=version_info.txt" if os.path.exists("version_info.txt") else "",
-        "--clean",  # 清理临时文件
-        "--noconfirm",  # 覆盖输出目录而不询问
-        "--distpath=dist",  # 输出目录
-        "--workpath=build",  # 构建目录
-        "--additional-hooks-dir=hooks",  # 自定义 hooks 目录（修复 webrtcvad 问题）
-        # 隐藏导入（这些模块可能无法自动检测）
+        "--clean",  # Clean temporary files
+        "--noconfirm",  # Overwrite output directory without asking
+        "--distpath=dist",  # Output directory
+        "--workpath=build",  # Build directory
+        "--additional-hooks-dir=hooks",  # Custom hooks directory (fix webrtcvad issue)
+        # Hidden imports (these modules may not be automatically detected)
         "--hidden-import=customtkinter",
         "--hidden-import=aioesphomeapi",
         "--hidden-import=soundcard",
@@ -65,7 +65,7 @@ def build_exe():
         "--hidden-import=pycaw",
         "--hidden-import=PIL",
         "--hidden-import=pystray",
-        # src 模块隐藏导入（重要！）
+        # src module hidden imports (important!)
         "--hidden-import=src.i18n",
         "--hidden-import=src.core.mdns_discovery",
         "--hidden-import=src.core.esphome_protocol",
@@ -84,37 +84,116 @@ def build_exe():
         "--hidden-import=src.notify.toast_notification",
         "--hidden-import=src.notify.service_entity",
         "--hidden-import=src.ui.main_window",
+        "--hidden-import=src.autostart",
         "--hidden-import=windows_toasts",
-        # 收集所有子模块
+        # Collect all submodules
         "--collect-all=customtkinter",
         "--collect-all=aioesphomeapi",
-        "--collect-all=pymicro_wakeword",  # 包含 tensorflowlite_c.dll
-        # 添加 src 目录到 Python 路径
+        "--collect-all=pymicro_wakeword",  # Include tensorflowlite_c.dll
+        # Add src directory to Python path
         "--add-data=src;src",
-        # 排除不需要的模块（减小体积）
+        # Exclude unnecessary modules (reduce size)
         "--exclude-module=matplotlib",
         "--exclude-module=pandas",
         "--exclude-module=scipy",
         "--exclude-module=pytest",
     ]
 
-    # 过滤空参数
+    # Filter empty arguments
     pyinstaller_args = [arg for arg in pyinstaller_args if arg]
 
-    print(f"开始打包 {APP_NAME} v{APP_VERSION}...")
-    print(f"PyInstaller 参数: {' '.join(pyinstaller_args)}")
+    print(f"Building {APP_NAME} v{APP_VERSION} (single-file mode)...")
+    print(f"PyInstaller arguments: {' '.join(pyinstaller_args)}")
 
-    # 运行 PyInstaller
+    # Run PyInstaller
     run(pyinstaller_args)
 
-    print(f"\n打包完成！")
-    print(f"输出文件: dist/{APP_NAME}.exe")
+    print(f"\nBuild completed!")
+    print(f"Output file: dist/{APP_NAME}.exe")
+
+
+def build_dir():
+    """
+    Build a directory using PyInstaller (one-dir mode)
+    Used for creating installer packages
+    """
+    # PyInstaller arguments
+    pyinstaller_args = [
+        MAIN_SCRIPT,
+        "--name=" + APP_NAME,  # exe file name
+        "--icon=src/logo.ico" if os.path.exists("src/logo.ico") else "",
+        f"--version-file=version_info.txt" if os.path.exists("version_info.txt") else "",
+        "--clean",  # Clean temporary files
+        "--noconfirm",  # Overwrite output directory without asking
+        "--distpath=dist",  # Output directory
+        "--workpath=build",  # Build directory
+        "--additional-hooks-dir=hooks",  # Custom hooks directory (fix webrtcvad issue)
+        # Hidden imports (these modules may not be automatically detected)
+        "--hidden-import=customtkinter",
+        "--hidden-import=aioesphomeapi",
+        "--hidden-import=soundcard",
+        "--hidden-import=mpv",
+        "--hidden-import=numpy",
+        "--hidden-import=psutil",
+        "--hidden-import=win10toast",
+        "--hidden-import=pymicro_wakeword",
+        "--hidden-import=webrtcvad",
+        "--hidden-import=zeroconf",
+        "--hidden-import=pycaw",
+        "--hidden-import=PIL",
+        "--hidden-import=pystray",
+        # src module hidden imports (important!)
+        "--hidden-import=src.i18n",
+        "--hidden-import=src.core.mdns_discovery",
+        "--hidden-import=src.core.esphome_protocol",
+        "--hidden-import=src.ui.system_tray_icon",
+        "--hidden-import=src.voice.audio_recorder",
+        "--hidden-import=src.voice.mpv_player",
+        "--hidden-import=src.voice.wake_word",
+        "--hidden-import=src.voice.vad",
+        "--hidden-import=src.voice.voice_assistant",
+        "--hidden-import=src.commands.command_executor",
+        "--hidden-import=src.commands.system_commands",
+        "--hidden-import=src.commands.media_commands",
+        "--hidden-import=src.commands.audio_commands",
+        "--hidden-import=src.sensors.windows_monitor",
+        "--hidden-import=src.notify.announcement",
+        "--hidden-import=src.notify.toast_notification",
+        "--hidden-import=src.notify.service_entity",
+        "--hidden-import=src.ui.main_window",
+        "--hidden-import=src.autostart",
+        "--hidden-import=windows_toasts",
+        # Collect all submodules
+        "--collect-all=customtkinter",
+        "--collect-all=aioesphomeapi",
+        "--collect-all=pymicro_wakeword",  # Include tensorflowlite_c.dll
+        # Add src directory to Python path
+        "--add-data=src;src",
+        # Exclude unnecessary modules (reduce size)
+        "--exclude-module=matplotlib",
+        "--exclude-module=pandas",
+        "--exclude-module=scipy",
+        "--exclude-module=pytest",
+    ]
+
+    # Filter empty arguments
+    pyinstaller_args = [arg for arg in pyinstaller_args if arg]
+
+    print(f"Building {APP_NAME} v{APP_VERSION} (directory mode)...")
+    print(f"PyInstaller arguments: {' '.join(pyinstaller_args)}")
+
+    # Run PyInstaller
+    run(pyinstaller_args)
+
+    print(f"\nBuild completed!")
+    print(f"Output directory: dist/{APP_NAME}/")
+    print(f"Executable file: dist/{APP_NAME}/{APP_NAME}.exe")
 
 
 def create_version_info():
     """
-    创建版本信息文件（可选）
-    用于 Windows exe 的版本信息
+    Create version info file (optional)
+    Used for Windows exe version information
     """
     version_info_content = f"""VSVersionInfo(
   ffi=FixedFileInfo(
@@ -149,28 +228,33 @@ def create_version_info():
     with open("version_info.txt", "w", encoding="utf-8") as f:
         f.write(version_info_content)
 
-    print("版本信息文件已创建: version_info.txt")
+    print("Version info file created: version_info.txt")
 
 
 def main():
-    """主函数"""
+    """Main function"""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Home Assistant Windows 客户端打包脚本")
+    parser = argparse.ArgumentParser(description="Home Assistant Windows client build script")
     parser.add_argument(
         "--version-info",
         action="store_true",
-        help="创建版本信息文件",
+        help="Create version info file",
     )
     parser.add_argument(
         "--build",
         action="store_true",
-        help="构建 exe 文件",
+        help="Build single-file exe (one-file mode)",
+    )
+    parser.add_argument(
+        "--build-dir",
+        action="store_true",
+        help="Build directory mode (one-dir mode, for installer)",
     )
     parser.add_argument(
         "--all",
         action="store_true",
-        help="执行所有步骤（创建版本信息 + 构建）",
+        help="Execute all steps (create version info + build single-file)",
     )
 
     args = parser.parse_args()
@@ -181,10 +265,13 @@ def main():
     if args.build or args.all:
         build_exe()
 
-    if not any([args.version_info, args.build, args.all]):
-        # 默认执行构建
+    if args.build_dir:
+        build_dir()
+
+    if not any([args.version_info, args.build, args.build_dir, args.all]):
+        # Default to build (single-file mode)
         parser.print_help()
-        print("\n未指定参数，执行默认构建...")
+        print("\nNo arguments specified, executing default build (single-file mode)...")
         build_exe()
 
 

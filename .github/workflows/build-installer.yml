@@ -1,0 +1,121 @@
+# GitHub Actions Installer Build Workflow
+# Build Windows installer package with NSIS
+
+name: Build Installer
+
+on:
+  push:
+    branches: [main, develop]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-installer:
+    name: Build Windows Installer
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install NSIS
+      run: |
+        # Download NSIS
+        Invoke-WebRequest -Uri "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.10/nsis-3.10-setup.exe" -OutFile "nsis-setup.exe"
+        # Install NSIS silently
+        Start-Process -FilePath "nsis-setup.exe" -ArgumentList "/S /D=C:\NSIS" -Wait
+        # Verify installation
+        if (Test-Path "C:\NSIS\makensis.exe") {
+          Write-Host "NSIS installed successfully"
+        } else {
+          Write-Error "NSIS installation failed"
+          exit 1
+        }
+      shell: pwsh
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install "numpy>=1.24.0,<2.0.0" --only-binary=:all:
+        pip install -r requirements.txt --verbose
+        echo "=== Installed packages ==="
+        pip list
+      shell: pwsh
+
+    - name: Verify dependencies
+      run: |
+        python -c "import aioesphomeapi; print('aioesphomeapi OK')"
+        python -c "import customtkinter; print('customtkinter OK')"
+        python -c "import pymicro_wakeword; print('pymicro_wakeword OK')"
+        python -c "import soundcard; print('soundcard OK')"
+
+    - name: Build Directory Mode
+      run: |
+        python setup.py --build-dir
+
+    - name: Check build output
+      run: |
+        if (Test-Path "dist\HomeAssistantWindows") {
+          Write-Host "Build directory created successfully!"
+          $dir = Get-Item dist\HomeAssistantWindows
+          $files = Get-ChildItem -Path "dist\HomeAssistantWindows" -Recurse -File | Measure-Object
+          Write-Host "Total files: $($files.Count)"
+          Write-Host "Size: $([math]::Round(($dir.GetFiles() | Measure-Object -Property Length -Sum).Sum / 1MB, 2)) MB"
+        } else {
+          Write-Host "Build directory not found!"
+          exit 1
+        }
+
+    - name: Build Installer
+      run: |
+        # Create installer directory
+        New-Item -ItemType Directory -Force -Path "installer" | Out-Null
+        
+        # Build NSIS installer
+        & "C:\NSIS\makensis.exe" "installer\installer.nsi"
+        
+        if ($LASTEXITCODE -eq 0) {
+          Write-Host "Installer built successfully!"
+          if (Test-Path "dist\HomeAssistantWindows_Setup.exe") {
+            $file = Get-Item dist\HomeAssistantWindows_Setup.exe
+            Write-Host "Size: $([math]::Round($file.Length / 1MB, 2)) MB"
+          }
+        } else {
+          Write-Error "Installer build failed!"
+          exit 1
+        }
+      shell: pwsh
+
+    - name: Upload installer artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ha-windows-installer
+        path: dist/HomeAssistantWindows_Setup.exe
+        retention-days: 30
+
+    - name: Upload build directory artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ha-windows-build
+        path: dist/HomeAssistantWindows/
+        retention-days: 30
+
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          dist/HomeAssistantWindows_Setup.exe
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

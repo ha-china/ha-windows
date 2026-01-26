@@ -1,4 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
+# PyInstaller spec file for directory mode (one-dir)
+# Used for creating installer packages
 from PyInstaller.utils.hooks import collect_all
 
 datas = [('src', 'src')]
@@ -30,9 +32,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='HomeAssistantWindows',
     debug=False,
     bootloader_ignore_signals=False,
@@ -48,4 +49,14 @@ exe = EXE(
     entitlements_file=None,
     version='version_info.txt',
     icon=['src\\logo.ico'],
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='HomeAssistantWindows',
 )

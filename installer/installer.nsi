@@ -28,9 +28,11 @@ Var StartMenuFolder
 !define MUI_ABORTWARNING
 !define MUI_ICON "..\src\logo.ico"
 !define MUI_UNICON "..\src\logo.ico"
-!define MUI_HEADERIMAGE
-!define MUI_HEADERIMAGE_BITMAP "header.bmp"
-!define MUI_WELCOMEFINISHPAGE_BITMAP "welcome.bmp"
+; Note: Header and welcome images are optional
+; Uncomment and create these files if you want custom images
+; !define MUI_HEADERIMAGE
+; !define MUI_HEADERIMAGE_BITMAP "header.bmp"
+; !define MUI_WELCOMEFINISHPAGE_BITMAP "welcome.bmp"
 
 ; Pages
 !insertmacro MUI_PAGE_WELCOME

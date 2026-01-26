@@ -1,18 +1,72 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec file for directory mode (one-dir)
 # Used for creating installer packages
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 
-datas = [('src', 'src')]
+# Collect data files from packages
+datas = []
+datas += collect_data_files('customtkinter', include_py_files=False)
+datas += collect_data_files('aioesphomeapi', include_py_files=False)
+datas += collect_data_files('pymicro_wakeword', include_py_files=False)
+datas += collect_data_files('soundcard', include_py_files=False)
+datas += collect_data_files('mpv', include_py_files=False)
+datas += collect_data_files('webrtcvad', include_py_files=False)
+
+# Add source files
+datas += [('src', 'src')]
+
+# Collect binaries
 binaries = []
-hiddenimports = ['customtkinter', 'aioesphomeapi', 'soundcard', 'mpv', 'numpy', 'psutil', 'win10toast', 'pymicro_wakeword', 'webrtcvad', 'zeroconf', 'pycaw', 'PIL', 'pystray', 'src.i18n', 'src.core.mdns_discovery', 'src.core.esphome_protocol', 'src.ui.system_tray_icon', 'src.voice.audio_recorder', 'src.voice.mpv_player', 'src.voice.wake_word', 'src.voice.vad', 'src.voice.voice_assistant', 'src.commands.command_executor', 'src.commands.system_commands', 'src.commands.media_commands', 'src.commands.audio_commands', 'src.sensors.windows_monitor', 'src.notify.announcement', 'src.notify.toast_notification', 'src.notify.service_entity', 'src.ui.main_window', 'src.autostart', 'windows_toasts']
-tmp_ret = collect_all('customtkinter')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('aioesphomeapi')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('pymicro_wakeword')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+binaries += collect_dynamic_libs('customtkinter')
+binaries += collect_dynamic_libs('aioesphomeapi')
+binaries += collect_dynamic_libs('pymicro_wakeword')
+binaries += collect_dynamic_libs('soundcard')
+binaries += collect_dynamic_libs('mpv')
+binaries += collect_dynamic_libs('webrtcvad')
 
+# Hidden imports
+hiddenimports = [
+    'customtkinter',
+    'aioesphomeapi',
+    'soundcard',
+    'mpv',
+    'numpy',
+    'psutil',
+    'win10toast',
+    'pymicro_wakeword',
+    'webrtcvad',
+    'zeroconf',
+    'pycaw',
+    'PIL',
+    'pystray',
+    'windows_toasts',
+    # src modules
+    'src.i18n',
+    'src.core.mdns_discovery',
+    'src.core.esphome_protocol',
+    'src.ui.system_tray_icon',
+    'src.voice.audio_recorder',
+    'src.voice.mpv_player',
+    'src.voice.wake_word',
+    'src.voice.vad',
+    'src.voice.voice_assistant',
+    'src.commands.command_executor',
+    'src.commands.system_commands',
+    'src.commands.media_commands',
+    'src.commands.audio_commands',
+    'src.sensors.windows_monitor',
+    'src.notify.announcement',
+    'src.notify.toast_notification',
+    'src.notify.service_entity',
+    'src.ui.main_window',
+    'src.autostart',
+    # Collect all submodules
+    *collect_submodules('customtkinter'),
+    *collect_submodules('aioesphomeapi'),
+    *collect_submodules('pymicro_wakeword'),
+    *collect_submodules('soundcard'),
+    *collect_submodules('mpv'),
+]
 
 a = Analysis(
     ['src\\__main__.py'],
@@ -23,7 +77,7 @@ a = Analysis(
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['matplotlib', 'pandas', 'scipy', 'pytest'],
+    excludes=['matplotlib', 'pandas', 'scipy', 'pytest', 'tkinter'],
     noarchive=False,
     optimize=0,
 )

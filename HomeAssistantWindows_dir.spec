@@ -1,9 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec file for directory mode (one-dir)
 # Used for creating installer packages
+# Goal: Small exe file with all dependencies in directory
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 
-# Collect data files from packages
+# Collect data files from packages (all dependencies)
 datas = []
 datas += collect_data_files('customtkinter', include_py_files=False)
 datas += collect_data_files('aioesphomeapi', include_py_files=False)
@@ -13,11 +14,20 @@ datas += collect_data_files('pygame', include_py_files=False)
 datas += collect_data_files('vlc', include_py_files=False)
 datas += collect_data_files('webrtcvad', include_py_files=False)
 datas += collect_data_files('zeroconf', include_py_files=False)
+datas += collect_data_files('ifaddr', include_py_files=False)
+datas += collect_data_files('pydantic', include_py_files=False)
+datas += collect_data_files('pydantic_core', include_py_files=False)
+datas += collect_data_files('attrs', include_py_files=False)
+datas += collect_data_files('comtypes', include_py_files=False)
+datas += collect_data_files('PIL', include_py_files=False)
+datas += collect_data_files('pystray', include_py_files=False)
+datas += collect_data_files('win10toast', include_py_files=False)
+datas += collect_data_files('windows_toasts', include_py_files=False)
 
 # Add source files
 datas += [('src', 'src')]
 
-# Collect binaries
+# Collect binaries (all DLLs and libraries)
 binaries = []
 binaries += collect_dynamic_libs('customtkinter')
 binaries += collect_dynamic_libs('aioesphomeapi')
@@ -26,9 +36,18 @@ binaries += collect_dynamic_libs('soundcard')
 binaries += collect_dynamic_libs('pygame')
 binaries += collect_dynamic_libs('vlc')
 binaries += collect_dynamic_libs('webrtcvad')
+binaries += collect_dynamic_libs('zeroconf')
+binaries += collect_dynamic_libs('ifaddr')
+binaries += collect_dynamic_libs('pydantic')
+binaries += collect_dynamic_libs('pydantic_core')
+binaries += collect_dynamic_libs('attrs')
+binaries += collect_dynamic_libs('comtypes')
+binaries += collect_dynamic_libs('PIL')
+binaries += collect_dynamic_libs('pystray')
 
-# Hidden imports
+# Hidden imports (all necessary modules)
 hiddenimports = [
+    # Core dependencies
     'customtkinter',
     'aioesphomeapi',
     'soundcard',
@@ -40,6 +59,11 @@ hiddenimports = [
     'pymicro_wakeword',
     'webrtcvad',
     'zeroconf',
+    'pycaw',
+    'PIL',
+    'pystray',
+    'windows_toasts',
+    # Zeroconf modules
     'zeroconf._dns',
     'zeroconf._services',
     'zeroconf._services.info',
@@ -62,7 +86,138 @@ hiddenimports = [
     'zeroconf._const',
     'zeroconf._asyncio',
     'ifaddr',
+    # Async and networking
     'asyncio',
+    'aiohttp',
+    'aiohttp.client',
+    'aiohttp.connector',
+    'aiohttp.streams',
+    'aiohttp.web',
+    'aiohttp.http',
+    'aiohttp.http_parser',
+    'aiohttp.helpers',
+    'aiohttp.formdata',
+    'aiohttp.multipart',
+    'aiohttp.hdrs',
+    'aiohttp.log',
+    'aiohttp.payload',
+    'aiohttp.payload_stream',
+    'aiohttp.tcp_helpers',
+    'aiohttp.locks',
+    'aiohttp.resolver',
+    'aiohttp.tracing',
+    'aiohttp.web_exceptions',
+    'aiohttp.web_fileresponse',
+    'aiohttp.web_middlewares',
+    'aiohttp.web_protocol',
+    'aiohttp.web_request',
+    'aiohttp.web_response',
+    'aiohttp.web_runner',
+    'aiohttp.web_server',
+    'aiohttp.web_urldispatcher',
+    'aiohttp.web_ws',
+    'yarl',
+    'yarl._url',
+    'yarl._quoting',
+    'yarl._quoting_py',
+    'yarl._path',
+    'yarl._query',
+    'multidict',
+    'multidict._multidict',
+    'multidict._abc',
+    'attr',
+    'attrs',
+    'idna',
+    'idna.core',
+    'idna.idnadata',
+    'idna.intranges',
+    'idna.package_data',
+    'idna.uts46data',
+    # Pydantic
+    'pydantic',
+    'pydantic.fields',
+    'pydantic.main',
+    'pydantic.validators',
+    'pydantic.parse',
+    'pydantic.json',
+    'pydantic.utils',
+    'pydantic.typing',
+    'pydantic.version',
+    'pydantic.errors',
+    'pydantic.exceptions',
+    'pydantic.types',
+    'pydantic.dataclasses',
+    'pydantic.functional_validators',
+    'pydantic.annotated_handlers',
+    'pydantic._internal',
+    'pydantic_core',
+    'pydantic_core.core_schema',
+    'pydantic_core.core_utils',
+    'pydantic_core.types',
+    'pydantic_core.validators',
+    'pydantic_core._pydantic_core',
+    'annotated_types',
+    # COM types
+    'comtypes',
+    'comtypes.client',
+    'comtypes.client._generate',
+    'comtypes.client._events',
+    'comtypes.client.dynamic',
+    'comtypes.client.lazybind',
+    'comtypes.client.wrap',
+    'comtypes.automation',
+    'comtypes.connectionpoints',
+    'comtypes.errorinfo',
+    'comtypes.gen',
+    'comtypes.hresult',
+    'comtypes.persist',
+    'comtypes.server',
+    'comtypes.server.automation',
+    'comtypes.server.connectionpoints',
+    'comtypes.server.register',
+    'comtypes.server.stdmethods',
+    'comtypes.typeinfo',
+    'comtypes.util',
+    # PIL
+    'PIL',
+    'PIL.Image',
+    'PIL.ImageTk',
+    'PIL.ImageDraw',
+    'PIL.ImageFont',
+    'PIL.ImageFilter',
+    'PIL.ImageEnhance',
+    'PIL.ImageOps',
+    'PIL.ImageColor',
+    'PIL.ImageSequence',
+    'PIL.ImageCms',
+    'PIL.ImagePalette',
+    'PIL.ImageMode',
+    'PIL.ImageStat',
+    'PIL.ImageWin',
+    # Pystray
+    'pystray',
+    'pystray._util',
+    'pystray._base',
+    'pystray._win32',
+    'pystray.icons',
+    # Win10toast
+    'win10toast',
+    'win10toast.toast',
+    'win10toast.toastWindows',
+    # Windows toasts
+    'windows_toasts',
+    'windows_toasts.windows_toasts',
+    'windows_toasts.interop',
+    'windows_toasts.audios',
+    'windows_toasts.events',
+    'windows_toasts.adapters',
+    'windows_toasts.sources',
+    # PyCaw
+    'pycaw',
+    'pycaw.pycaw',
+    'pycaw.utils',
+    'pycaw.constants',
+    # Standard library modules
     'ipaddress',
     'socket',
     'selectors',
@@ -109,147 +264,6 @@ hiddenimports = [
     'types',
     'typing_extensions',
     'typing_inspect',
-    'pydantic',
-    'pydantic_core',
-    'pydantic.fields',
-    'pydantic.main',
-    'pydantic.validators',
-    'pydantic.parse',
-    'pydantic.json',
-    'pydantic.utils',
-    'pydantic.typing',
-    'pydantic.version',
-    'pydantic.errors',
-    'pydantic.exceptions',
-    'pydantic.types',
-    'pydantic.dataclasses',
-    'pydantic.functional_validators',
-    'pydantic.annotated_handlers',
-    'pydantic._internal',
-    'pydantic._internal._config',
-    'pydantic._internal._fields',
-    'pydantic._internal._model_construction',
-    'pydantic._internal._model_serialization',
-    'pydantic._internal._repr',
-    'pydantic._internal._utils',
-    'pydantic._internal._validation_serialization',
-    'pydantic._internal._std_types_schema',
-    'pydantic._internal._dataclasses',
-    'pydantic._internal._generate_schema',
-    'pydantic._internal._core_utils',
-    'pydantic._internal._core_metadata',
-    'pydantic._internal._core_validation',
-    'pydantic._internal._core_serialization',
-    'pydantic._internal._decorators',
-    'pydantic._internal._config',
-    'pydantic._internal._model_construction',
-    'pydantic._internal._model_serialization',
-    'pydantic._internal._repr',
-    'pydantic._internal._utils',
-    'pydantic._internal._validation_serialization',
-    'pydantic._internal._std_types_schema',
-    'pydantic._internal._dataclasses',
-    'pydantic._internal._generate_schema',
-    'pydantic._internal._core_utils',
-    'pydantic._internal._core_metadata',
-    'pydantic._internal._core_validation',
-    'pydantic._internal._core_serialization',
-    'pydantic._internal._decorators',
-    'pydantic_core._pydantic_core',
-    'pydantic_core.core_schema',
-    'pydantic_core.core_utils',
-    'pydantic_core.types',
-    'pydantic_core.validators',
-    'pydantic_core._pydantic_core',
-    'annotated_types',
-    'attrs',
-    'attrs._cmp',
-    'attrs._config',
-    'attrs._funcs',
-    'attrs._make',
-    'attrs._version_info',
-    'attrs._next_gen',
-    'attrs.converters',
-    'attrs.exceptions',
-    'attrs.fields',
-    'attrs.filters',
-    'attr',
-    'attr._cmp',
-    'attr._config',
-    'attr._funcs',
-    'attr._make',
-    'attr._version_info',
-    'attr._next_gen',
-    'attr.converters',
-    'attr.exceptions',
-    'attr.filters',
-    'attr.validators',
-    'attr._validators',
-    'pycaw',
-    'pycaw.pycaw',
-    'pycaw.utils',
-    'pycaw.constants',
-    'comtypes',
-    'comtypes.client',
-    'comtypes.client._generate',
-    'comtypes.client._events',
-    'comtypes.client.dynamic',
-    'comtypes.client.lazybind',
-    'comtypes.client.wrap',
-    'comtypes.automation',
-    'comtypes.connectionpoints',
-    'comtypes.errorinfo',
-    'comtypes.gen',
-    'comtypes.hresult',
-    'comtypes.persist',
-    'comtypes.server',
-    'comtypes.server.automation',
-    'comtypes.server.connectionpoints',
-    'comtypes.server.register',
-    'comtypes.server.stdmethods',
-    'comtypes.typeinfo',
-    'comtypes.util',
-    'PIL',
-    'PIL.Image',
-    'PIL.ImageTk',
-    'PIL.ImageDraw',
-    'PIL.ImageFont',
-    'PIL.ImageFilter',
-    'PIL.ImageEnhance',
-    'PIL.ImageOps',
-    'PIL.ImageColor',
-    'PIL.ImageSequence',
-    'PIL.ImageCms',
-    'PIL.ImagePalette',
-    'PIL.ImageMode',
-    'PIL.ImageStat',
-    'PIL.ImageWin',
-    'PIL.GifImagePlugin',
-    'PIL.JpegImagePlugin',
-    'PIL.PngImagePlugin',
-    'PIL.BmpImagePlugin',
-    'PIL.TiffImagePlugin',
-    'PIL.WebPImagePlugin',
-    'PIL.IcoImagePlugin',
-    'pystray',
-    'pystray._util',
-    'pystray._base',
-    'pystray._win32',
-    'pystray._appindicator',
-    'pystray._darwin',
-    'pystray._gtk',
-    'pystray._dummy',
-    'pystray.icons',
-    'win10toast',
-    'win10toast.toast',
-    'win10toast.toastWindows',
-    'windows_toasts',
-    'windows_toasts.windows_toasts',
-    'windows_toasts.interop',
-    'windows_toasts.audios',
-    'windows_toasts.events',
-    'windows_toasts.adapters',
-    'windows_toasts.sources',
     # src modules
     'src.i18n',
     'src.core.mdns_discovery',
@@ -270,24 +284,31 @@ hiddenimports = [
     'src.notify.service_entity',
     'src.ui.main_window',
     'src.autostart',
-    # Collect all submodules
-    *collect_submodules('customtkinter'),
-    *collect_submodules('aioesphomeapi'),
-    *collect_submodules('pymicro_wakeword'),
-    *collect_submodules('soundcard'),
-    *collect_submodules('pygame'),
-    *collect_submodules('vlc'),
-    *collect_submodules('zeroconf'),
-    *collect_submodules('ifaddr'),
-    *collect_submodules('pydantic'),
-    *collect_submodules('pydantic_core'),
-    *collect_submodules('attrs'),
-    *collect_submodules('comtypes'),
-    *collect_submodules('PIL'),
-    *collect_submodules('pystray'),
-    *collect_submodules('win10toast'),
-    *collect_submodules('windows_toasts'),
 ]
+
+# Collect all submodules to ensure nothing is missing
+hiddenimports += collect_submodules('customtkinter')
+hiddenimports += collect_submodules('aioesphomeapi')
+hiddenimports += collect_submodules('pymicro_wakeword')
+hiddenimports += collect_submodules('soundcard')
+hiddenimports += collect_submodules('pygame')
+hiddenimports += collect_submodules('vlc')
+hiddenimports += collect_submodules('webrtcvad')
+hiddenimports += collect_submodules('zeroconf')
+hiddenimports += collect_submodules('ifaddr')
+hiddenimports += collect_submodules('pydantic')
+hiddenimports += collect_submodules('pydantic_core')
+hiddenimports += collect_submodules('attrs')
+hiddenimports += collect_submodules('comtypes')
+hiddenimports += collect_submodules('PIL')
+hiddenimports += collect_submodules('pystray')
+hiddenimports += collect_submodules('win10toast')
+hiddenimports += collect_submodules('windows_toasts')
+hiddenimports += collect_submodules('aiohttp')
+hiddenimports += collect_submodules('yarl')
+hiddenimports += collect_submodules('multidict')
+hiddenimports += collect_submodules('idna')
+hiddenimports += collect_submodules('pycaw')
 
 a = Analysis(
     ['src\\__main__.py'],
@@ -304,19 +325,20 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# EXE configuration - exclude binaries to keep exe small
 exe = EXE(
     pyz,
     a.scripts,
     [],
-    exclude_binaries=True,
+    exclude_binaries=True,  # CRITICAL: This keeps binaries separate
     name='HomeAssistantWindows',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=True,  # Enable UPX compression
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=False,  # No console window
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -326,12 +348,13 @@ exe = EXE(
     icon=['src\\logo.ico'],
 )
 
+# Collect all files into directory
 coll = COLLECT(
     exe,
-    a.binaries,
-    a.datas,
+    a.binaries,  # All DLLs and libraries go here
+    a.datas,     # All data files go here
     strip=False,
-    upx=True,
+    upx=True,    # Enable UPX compression for binaries
     upx_exclude=[],
     name='HomeAssistantWindows',
 )

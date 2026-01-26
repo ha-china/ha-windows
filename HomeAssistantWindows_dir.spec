@@ -325,7 +325,7 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-# EXE configuration - exclude binaries to keep exe small
+# EXE configuration - GUI application (no console window)
 exe = EXE(
     pyz,
     a.scripts,
@@ -338,7 +338,7 @@ exe = EXE(
     upx=True,  # Enable UPX compression
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # No console window
+    console=False,  # GUI APPLICATION - No console window (no black box)
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

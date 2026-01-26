@@ -28,13 +28,18 @@ jobs:
 
     - name: Install NSIS
       run: |
-        # Download NSIS
-        Invoke-WebRequest -Uri "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.10/nsis-3.10-setup.exe" -OutFile "nsis-setup.exe"
-        # Install NSIS silently
-        Start-Process -FilePath "nsis-setup.exe" -ArgumentList "/S /D=C:\NSIS" -Wait
+        # Download NSIS using chocolatey (more reliable)
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        
+        # Install NSIS
+        choco install nsis -y
+        
         # Verify installation
-        if (Test-Path "C:\NSIS\makensis.exe") {
-          Write-Host "NSIS installed successfully"
+        $nsisPath = "C:\Program Files (x86)\NSIS\makensis.exe"
+        if (Test-Path $nsisPath) {
+          Write-Host "NSIS installed successfully at $nsisPath"
         } else {
           Write-Error "NSIS installation failed"
           exit 1
@@ -79,8 +84,29 @@ jobs:
         # Create installer directory
         New-Item -ItemType Directory -Force -Path "installer" | Out-Null
         
+        # Find NSIS makensis.exe
+        $nsisPaths = @(
+          "C:\Program Files (x86)\NSIS\makensis.exe",
+          "C:\Program Files\NSIS\makensis.exe",
+          "C:\NSIS\makensis.exe"
+        )
+        
+        $makensis = $null
+        foreach ($path in $nsisPaths) {
+          if (Test-Path $path) {
+            $makensis = $path
+            Write-Host "Found NSIS at: $makensis"
+            break
+          }
+        }
+        
+        if (-not $makensis) {
+          Write-Error "NSIS makensis.exe not found"
+          exit 1
+        }
+        
         # Build NSIS installer
-        & "C:\NSIS\makensis.exe" "installer\installer.nsi"
+        & $makensis "installer\installer.nsi"
         
         if ($LASTEXITCODE -eq 0) {
           Write-Host "Installer built successfully!"

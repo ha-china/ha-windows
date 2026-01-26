@@ -26,8 +26,8 @@ Var StartMenuFolder
 
 ; Interface Settings
 !define MUI_ABORTWARNING
-!define MUI_ICON "dist\HomeAssistantWindows\logo.ico"
-!define MUI_UNICON "dist\HomeAssistantWindows\logo.ico"
+!define MUI_ICON "src\logo.ico"
+!define MUI_UNICON "src\logo.ico"
 !define MUI_HEADERIMAGE
 !define MUI_HEADERIMAGE_BITMAP "installer\header.bmp"
 !define MUI_WELCOMEFINISHPAGE_BITMAP "installer\welcome.bmp"

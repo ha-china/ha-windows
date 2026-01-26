@@ -14,7 +14,7 @@
 
 ; General
 Name "${PRODUCT_NAME}"
-OutFile "dist\HomeAssistantWindows_Setup.exe"
+OutFile "..\dist\HomeAssistantWindows_Setup.exe"
 InstallDir "$PROGRAMFILES64\HomeAssistantWindows"
 InstallDirRegKey HKLM "${PRODUCT_DIR_REGKEY}" ""
 ShowInstDetails show
@@ -54,7 +54,7 @@ Var StartMenuFolder
 Section "Main Program" SEC01
   SectionIn RO
   SetOutPath "$INSTDIR"
-  File /r "dist\HomeAssistantWindows\*"
+  File /r "..\dist\HomeAssistantWindows\*"
   
   ; Create shortcuts
   CreateDirectory "$SMPROGRAMS\$StartMenuFolder"

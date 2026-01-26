@@ -28,22 +28,49 @@ jobs:
 
     - name: Install NSIS
       run: |
-        # Download NSIS using chocolatey (more reliable)
-        Set-ExecutionPolicy Bypass -Scope Process -Force
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        # Download NSIS directly from GitHub releases (more reliable)
+        $nsisUrl = "https://github.com/NSIS/nsis/releases/download/v3.10/nsis-3.10-setup.exe"
+        $nsisSetup = "nsis-setup.exe"
         
-        # Install NSIS
-        choco install nsis -y
+        Write-Host "Downloading NSIS from $nsisUrl"
+        Invoke-WebRequest -Uri $nsisUrl -OutFile $nsisSetup -UseBasicParsing
         
-        # Verify installation
-        $nsisPath = "C:\Program Files (x86)\NSIS\makensis.exe"
-        if (Test-Path $nsisPath) {
-          Write-Host "NSIS installed successfully at $nsisPath"
-        } else {
-          Write-Error "NSIS installation failed"
+        # Verify download
+        if (-not (Test-Path $nsisSetup)) {
+          Write-Error "NSIS download failed"
           exit 1
         }
+        
+        $fileSize = (Get-Item $nsisSetup).Length
+        Write-Host "Downloaded NSIS setup: $([math]::Round($fileSize / 1MB, 2)) MB"
+        
+        # Install NSIS silently
+        Write-Host "Installing NSIS..."
+        Start-Process -FilePath $nsisSetup -ArgumentList "/S /D=C:\NSIS" -Wait
+        
+        # Verify installation
+        $nsisPaths = @(
+          "C:\Program Files (x86)\NSIS\makensis.exe",
+          "C:\Program Files\NSIS\makensis.exe",
+          "C:\NSIS\makensis.exe"
+        )
+        
+        $makensis = $null
+        foreach ($path in $nsisPaths) {
+          if (Test-Path $path) {
+            $makensis = $path
+            Write-Host "NSIS installed successfully at: $makensis"
+            break
+          }
+        }
+        
+        if (-not $makensis) {
+          Write-Error "NSIS installation failed - makensis.exe not found"
+          exit 1
+        }
+        
+        # Cleanup
+        Remove-Item $nsisSetup -Force -ErrorAction SilentlyContinue
       shell: pwsh
 
     - name: Install dependencies

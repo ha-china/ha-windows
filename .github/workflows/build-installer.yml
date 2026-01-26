@@ -28,25 +28,14 @@ jobs:
 
     - name: Install NSIS
       run: |
-        # Download NSIS directly from GitHub releases (more reliable)
-        $nsisUrl = "https://github.com/NSIS/nsis/releases/download/v3.10/nsis-3.10-setup.exe"
-        $nsisSetup = "nsis-setup.exe"
+        # Use winget (Windows Package Manager) to install NSIS
+        Write-Host "Installing NSIS using winget..."
         
-        Write-Host "Downloading NSIS from $nsisUrl"
-        Invoke-WebRequest -Uri $nsisUrl -OutFile $nsisSetup -UseBasicParsing
+        # Try to install NSIS using winget
+        winget install --id NSIS.NSIS --exact --accept-source-agreements --accept-package-agreements -e --silent
         
-        # Verify download
-        if (-not (Test-Path $nsisSetup)) {
-          Write-Error "NSIS download failed"
-          exit 1
-        }
-        
-        $fileSize = (Get-Item $nsisSetup).Length
-        Write-Host "Downloaded NSIS setup: $([math]::Round($fileSize / 1MB, 2)) MB"
-        
-        # Install NSIS silently
-        Write-Host "Installing NSIS..."
-        Start-Process -FilePath $nsisSetup -ArgumentList "/S /D=C:\NSIS" -Wait
+        # Wait for installation to complete
+        Start-Sleep -Seconds 10
         
         # Verify installation
         $nsisPaths = @(
@@ -65,12 +54,22 @@ jobs:
         }
         
         if (-not $makensis) {
-          Write-Error "NSIS installation failed - makensis.exe not found"
-          exit 1
+          # Fallback: try to find makensis.exe in Program Files
+          $found = Get-ChildItem -Path "C:\Program Files" -Recurse -Filter "makensis.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            $makensis = $found.FullName
+            Write-Host "Found NSIS at: $makensis"
+          }
         }
         
-        # Cleanup
-        Remove-Item $nsisSetup -Force -ErrorAction SilentlyContinue
+        if (-not $makensis) {
+          Write-Error "NSIS installation failed - makensis.exe not found"
+          Write-Host "Available paths checked:"
+          foreach ($path in $nsisPaths) {
+            Write-Host "  - $path : $(Test-Path $path)"
+          }
+          exit 1
+        }
       shell: pwsh
 
     - name: Install dependencies

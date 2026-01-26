@@ -70,11 +70,17 @@ def check_dependencies():
 
 
 # Configure logging
+# Use user directory for log file to avoid permission issues in Program Files
+import os
+log_dir = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'HomeAssistantWindows')
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, 'ha_windows.log')
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('ha_windows.log', encoding='utf-8'),
+        logging.FileHandler(log_file, encoding='utf-8'),
         logging.StreamHandler()
     ]
 )

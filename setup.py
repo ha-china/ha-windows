@@ -120,6 +120,7 @@ def build_dir():
     # PyInstaller arguments
     pyinstaller_args = [
         MAIN_SCRIPT,
+        "--windowed",  # No console window
         "--name=" + APP_NAME,  # exe file name
         "--icon=src/logo.ico" if os.path.exists("src/logo.ico") else "",
         f"--version-file=version_info.txt" if os.path.exists("version_info.txt") else "",

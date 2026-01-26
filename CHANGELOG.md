@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- NSIS installer support with auto-startup option
+- Directory mode build for faster startup and installer packages
+- Auto-startup management module (src/autostart.py)
+- GitHub Actions workflow for building installer packages
+- PyInstaller hooks for pygame and soundcard dependencies
+- Log file path to user directory (avoiding Program Files permission issues)
+
+### Changed
+- Optimized PyInstaller spec files for better dependency management
+- Separated single-file and directory mode builds
+- Reduced package size by removing unnecessary dependencies
+- Improved audio dependency collection for voice assistant functionality
+
+### Fixed
+- GUI application configuration (console=False for no black window)
+- Tkinter import error (required by customtkinter)
+- Zeroconf DNS cache KeyError during async cleanup
+- Audio playback issues with comprehensive pygame and vlc imports
+- Log file permission error when installed to Program Files
+- NSIS installation in CI (switched from Chocolatey to winget)
+- NSIS installer script paths and missing file references
+
 ## [0.3.3] - 2026-01-24
 
 ### Added

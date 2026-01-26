@@ -47,6 +47,15 @@ binaries += collect_dynamic_libs('pystray')
 
 # Hidden imports (all necessary modules)
 hiddenimports = [
+    # GUI framework
+    'tkinter',
+    'tkinter.ttk',
+    'tkinter.messagebox',
+    'tkinter.filedialog',
+    'tkinter.scrolledtext',
+    'tkinter.colorchooser',
+    'tkinter.font',
+    'tkinter.dnd',
     # Core dependencies
     'customtkinter',
     'aioesphomeapi',
@@ -319,7 +328,7 @@ a = Analysis(
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['matplotlib', 'pandas', 'scipy', 'pytest', 'tkinter'],
+    excludes=['matplotlib', 'pandas', 'scipy', 'pytest'],
     noarchive=False,
     optimize=0,
 )

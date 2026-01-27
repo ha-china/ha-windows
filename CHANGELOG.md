@@ -5,9 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-01-27
 
 ### Added
+- Global hotkey support for voice input trigger
+- Set voice input hotkey service (set_voice_input_hotkey)
+- Voice input hotkey text sensor for displaying current hotkey
+- Floating button visibility preference (saved to user directory)
+- Persistent configuration storage in AppData/Local/HomeAssistantWindows
 - NSIS installer support with auto-startup option
 - Directory mode build for faster startup and installer packages
 - Auto-startup management module (src/autostart.py)
@@ -16,10 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Log file path to user directory (avoiding Program Files permission issues)
 
 ### Changed
+- Floating button is hidden by default on startup
+- Preferences now save to user directory instead of program directory
+- Update notification now opens release page instead of direct exe download
 - Optimized PyInstaller spec files for better dependency management
 - Separated single-file and directory mode builds
 - Reduced package size by removing unnecessary dependencies
 - Improved audio dependency collection for voice assistant functionality
+
+### Improved
+- Configuration persistence across restarts
+- Better user experience with customizable hotkeys
+- Preferences stored in Windows AppData for better portability
 
 ### Fixed
 - GUI application configuration (console=False for no black window)

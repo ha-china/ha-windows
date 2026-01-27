@@ -19,3 +19,4 @@ pyinstaller>=6.0.0
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
 hypothesis>=6.0.0
+keyboard>=0.13.5

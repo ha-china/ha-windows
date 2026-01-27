@@ -126,7 +126,7 @@ class HomeAssistantWindows:
         # Components
         self.mdns_broadcaster: MDNSBroadcaster = None
         self.api_server: ESPHomeServer = None
-        self.tray = get_tray()
+        self.tray = None
         self.main_window: MainWindow = None
         self._local_ip = None  # Save local IP for tray display
 
@@ -182,6 +182,9 @@ class HomeAssistantWindows:
         if not success:
             raise RuntimeError("Failed to start API server")
 
+        # Create system tray icon after server is initialized
+        self.tray = get_tray(state=self.api_server.state)
+
         # Run server in background
         asyncio.create_task(self.api_server.serve_forever())
 
@@ -220,8 +223,11 @@ class HomeAssistantWindows:
             port=self.port
         )
 
-        # Auto-show floating button on startup
-        self._show_floating_button()
+        # Show floating button on startup if preference is True
+        if self.api_server.state.preferences.show_floating_button:
+            self._show_floating_button()
+        else:
+            logger.info("Floating button hidden (preference: show_floating_button=False)")
 
     def _show_floating_button(self) -> None:
         """Show the floating mic button"""

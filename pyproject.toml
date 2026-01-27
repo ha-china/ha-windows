@@ -1,6 +1,6 @@
 [project]
 name = "ha-windows"
-version = "0.3.3"
+version = "0.4.0"
 description = "Home Assistant Windows Client - ESPHome Device Simulator"
 readme = "README.md"
 requires-python = ">=3.12"

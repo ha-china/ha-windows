@@ -6,6 +6,7 @@ References linux-voice-assistant's models.py
 
 import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -88,6 +89,8 @@ class AvailableWakeWord:
 class Preferences:
     """User preferences"""
     active_wake_words: List[str] = field(default_factory=list)
+    voice_input_hotkey: str = ""
+    show_floating_button: bool = True
 
 
 class WindowsVolumeController:
@@ -434,7 +437,7 @@ class ServerState:
 
     # Preferences
     preferences: Preferences = field(default_factory=Preferences)
-    preferences_path: Path = field(default_factory=lambda: Path("preferences.json"))
+    preferences_path: Path = field(default_factory=lambda: Path(os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'HomeAssistantWindows', 'preferences.json')))
     download_dir: Path = field(default_factory=lambda: Path("downloads"))
 
     # Entity references
@@ -452,7 +455,9 @@ class ServerState:
             self.preferences_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.preferences_path, "w", encoding="utf-8") as f:
                 json.dump({
-                    "active_wake_words": self.preferences.active_wake_words
+                    "active_wake_words": self.preferences.active_wake_words,
+                    "voice_input_hotkey": self.preferences.voice_input_hotkey,
+                    "show_floating_button": self.preferences.show_floating_button
                 }, f, ensure_ascii=False, indent=4)
         except Exception as e:
             logger.error(f"Failed to save preferences: {e}")
@@ -466,6 +471,8 @@ class ServerState:
             with open(self.preferences_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self.preferences.active_wake_words = data.get("active_wake_words", [])
+                self.preferences.voice_input_hotkey = data.get("voice_input_hotkey", "")
+                self.preferences.show_floating_button = data.get("show_floating_button", True)
         except Exception as e:
             logger.error(f"Failed to load preferences: {e}")
 

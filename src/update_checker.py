@@ -10,7 +10,7 @@ from typing import Optional, Tuple
 logger = logging.getLogger(__name__)
 
 LATEST_VERSION_URL = "https://github.com/ha-china/ha-windows/releases/latest/download/latest.json"
-LATEST_EXE_URL = "https://github.com/ha-china/ha-windows/releases/latest/download/HomeAssistantWindows.exe"
+RELEASE_PAGE_URL = "https://github.com/ha-china/ha-windows/releases/latest"
 
 
 def get_current_version() -> str:
@@ -121,7 +121,7 @@ def show_update_notification(current_version: str, latest_version: str) -> None:
 
         # Set click action to open download link
         def on_activated(args):
-            webbrowser.open(LATEST_EXE_URL)
+            webbrowser.open(RELEASE_PAGE_URL)
 
         toast.on_activated = on_activated
 

@@ -1,5 +1,6 @@
 {
     "active_wake_words": [
         "okay_nabu"
-    ]
+    ],
+    "voice_input_hotkey": "ctrl+alt+v"
 }

@@ -79,12 +79,20 @@ class ServiceEntityManager:
             'name': 'media_previous',
             'args': [],
         },
+        {
+            'key': 208,
+            'name': 'set_voice_input_hotkey',
+            'args': [
+                {'name': 'hotkey', 'type': UserServiceArgType.STRING},
+            ],
+        },
     ]
 
     def __init__(self):
         """Initialize service manager"""
         self._notification_handler = NotificationHandler()
         self._command_executor = None
+        self._set_hotkey_callback = None
 
         logger.info(f"Service entity manager initialized, {len(self.SERVICE_DEFINITIONS)} services total")
 
@@ -161,6 +169,8 @@ class ServiceEntityManager:
                 self._handle_media_command('next')
             elif msg.key == 207:  # media_previous
                 self._handle_media_command('previous')
+            elif msg.key == 208:  # set_voice_input_hotkey
+                self._handle_set_voice_input_hotkey(args)
             else:
                 logger.warning(f"Unknown service key: {msg.key}")
 
@@ -243,6 +253,26 @@ class ServiceEntityManager:
         if self._command_executor is None:
             from src.commands.command_executor import CommandExecutor
             self._command_executor = CommandExecutor()
+
+        result = self._command_executor.execute(f"media:{command}")
+        logger.info(f"Media command: {command}, result: {result}")
+
+    def set_hotkey_callback(self, callback) -> None:
+        """Set hotkey change callback"""
+        self._set_hotkey_callback = callback
+
+    def _handle_set_voice_input_hotkey(self, args: Dict) -> None:
+        """Handle set voice input hotkey service"""
+        hotkey = args.get('hotkey', '')
+        logger.info(f"Setting voice input hotkey: {hotkey}")
+
+        if self._set_hotkey_callback:
+            try:
+                self._set_hotkey_callback(hotkey)
+            except Exception as e:
+                logger.error(f"Error in hotkey callback: {e}")
+        else:
+            logger.warning("Hotkey callback not set")
 
         result = self._command_executor.execute(command)
         logger.info(f"Media command: {command}, result: {result}")

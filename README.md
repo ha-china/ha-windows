@@ -11,6 +11,7 @@ A Windows client that emulates an ESPHome device for seamless Home Assistant int
 ### 🎤 Voice Assistant
 - **Wake Word Detection**: Multiple wake words supported (Okay Nabu, Hey Jarvis, Alexa, etc.)
 - **Floating Mic Button**: Push-to-talk with draggable floating button
+- **Global Hotkey**: Set keyboard shortcuts to trigger voice input (e.g., Ctrl+Alt+V)
 - **Voice Recognition**: Process voice commands through Home Assistant's Assist
 - **TTS Playback**: Play voice responses from Home Assistant
 
@@ -81,6 +82,14 @@ Call these services from Home Assistant:
 - **media_next** - Next track
 - **media_previous** - Previous track
 
+#### Voice Control Services
+- **set_voice_input_hotkey** - Set global hotkey for voice input
+  ```yaml
+  service: esphome.my_pc_set_voice_input_hotkey
+  data:
+    hotkey: "ctrl+alt+v"
+  ```
+
 ### 🎵 Media Player
 The client exposes a media player entity that can:
 - Play TTS (Text-to-Speech) announcements
@@ -138,8 +147,14 @@ Or add manually:
 - **Drag**: Move button to any position
 - Button turns red when listening
 
+### Global Hotkey
+- Set a keyboard shortcut to quickly trigger voice input
+- Press the hotkey to start voice recognition
+- Useful for hands-free voice control
+- Configure using the `set_voice_input_hotkey` service
+
 ### Voice Assistant
-Say the wake word (default: "Okay Nabu") to activate voice assistant, or use the floating mic button for push-to-talk.
+Say the wake word (default: "Okay Nabu") to activate voice assistant, press the floating mic button, or use your configured global hotkey for push-to-talk.
 
 ## 🎯 Wake Words
 
@@ -225,6 +240,19 @@ automation:
       - service: esphome.my_pc_set_volume
         data:
           volume: 30
+```
+
+### Set Voice Input Hotkey
+```yaml
+automation:
+  - alias: "Set Voice Hotkey on Startup"
+    trigger:
+      - platform: homeassistant
+        event: start
+    action:
+      - service: esphome.my_pc_set_voice_input_hotkey
+        data:
+          hotkey: "ctrl+alt+v"
 ```
 
 ## 🛠️ Development

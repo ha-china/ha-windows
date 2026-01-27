@@ -98,6 +98,8 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._media_player_entity = None
         self._button_manager = None
         self._service_manager = None
+        self._config_sensor_manager = None
+        self._hotkey_manager = None
 
         logger.debug(f"ESPHome protocol initialized: {self.state.name}")
 
@@ -542,6 +544,31 @@ class ESPHomeProtocol(asyncio.Protocol):
             logger.debug("Manually stopped TTS")
             self._tts_finished()
 
+    def _on_voice_input_trigger(self) -> None:
+        """Handle voice input trigger from button"""
+        logger.info("🎤 Voice input triggered via button (no wake word)")
+        # Trigger voice assistant without wake word
+        self.wakeup(wake_word_phrase="")
+
+    def _on_hotkey_changed(self, hotkey: str) -> None:
+        """Handle hotkey change"""
+        logger.info(f"Hotkey changed to: {hotkey}")
+
+        # Update preferences
+        self.state.preferences.voice_input_hotkey = hotkey
+        self.state.save_preferences()
+
+        # Update config sensor state
+        if self._config_sensor_manager:
+            self._config_sensor_manager.set_hotkey(hotkey)
+
+        # Update hotkey manager
+        if self._hotkey_manager and self._hotkey_manager.is_available():
+            if hotkey:
+                self._hotkey_manager.set_hotkey(hotkey, self._on_voice_input_trigger)
+            else:
+                self._hotkey_manager.remove_hotkey()
+
     def play_tts(self) -> None:
         """Play TTS response"""
         if not self._tts_url or self._tts_played:
@@ -685,6 +712,25 @@ class ESPHomeProtocol(asyncio.Protocol):
             from src.notify.service_entity import ServiceEntityManager
 
             self._service_manager = ServiceEntityManager()
+            # Set hotkey callback
+            self._service_manager.set_hotkey_callback(self._on_hotkey_changed)
+
+        # Get config sensor manager
+        if self._config_sensor_manager is None:
+            from src.sensors.config_sensor import ConfigSensorManager
+
+            self._config_sensor_manager = ConfigSensorManager()
+            # Update hotkey state from preferences
+            self._config_sensor_manager.set_hotkey(self.state.preferences.voice_input_hotkey)
+
+        # Get hotkey manager
+        if self._hotkey_manager is None:
+            from src.core.hotkey_manager import get_hotkey_manager
+
+            self._hotkey_manager = get_hotkey_manager()
+            # Set hotkey callback
+            if self._hotkey_manager.is_available():
+                self._hotkey_manager.set_hotkey(self.state.preferences.voice_input_hotkey, self._on_voice_input_trigger)
 
         if isinstance(msg, ListEntitiesRequest):
             # Send sensor entity definitions
@@ -699,6 +745,9 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Send service entity definitions
             for svc_def in self._service_manager.get_entity_definitions():
                 yield svc_def
+            # Send config sensor entity definitions
+            for cfg_def in self._config_sensor_manager.get_entity_definitions():
+                yield cfg_def
 
         elif isinstance(msg, SubscribeHomeAssistantStatesRequest):
             # Send sensor states
@@ -706,6 +755,9 @@ class ESPHomeProtocol(asyncio.Protocol):
                 yield state
             # Send MediaPlayer state
             yield self._media_player_entity.get_state()
+            # Send config sensor states
+            for cfg_state in self._config_sensor_manager.get_states():
+                yield cfg_state
 
         elif isinstance(msg, MediaPlayerCommandRequest):
             # Handle MediaPlayer command

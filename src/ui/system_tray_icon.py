@@ -29,13 +29,14 @@ class SystemTrayIcon:
     - Status notifications
     """
 
-    def __init__(self):
+    def __init__(self, state=None):
         """Initialize system tray icon"""
         self.icon: Optional[pystray.Icon] = None
         self._running = False
         self._loop_thread: Optional[threading.Thread] = None
         self._icon_ready = threading.Event()
-        self._floating_visible = True  # Track floating button visibility
+        self._floating_visible = False  # Track floating button visibility
+        self._state = state  # Reference to ServerState for saving preferences
 
         # Status information
         self._status_info = {
@@ -102,6 +103,8 @@ class SystemTrayIcon:
                     self._on_hide_floating()
                     self._floating_visible = False
                     logger.info("Floating button hidden")
+                    # Save preference
+                    self._save_floating_preference()
                 except Exception as e:
                     logger.error(f"Error hiding floating button: {e}")
         else:
@@ -111,6 +114,8 @@ class SystemTrayIcon:
                     self._on_show_floating()
                     self._floating_visible = True
                     logger.info("Floating button shown")
+                    # Save preference
+                    self._save_floating_preference()
                 except Exception as e:
                     logger.error(f"Error showing floating button: {e}")
 
@@ -122,6 +127,15 @@ class SystemTrayIcon:
                 self._floating_visible = True
             except Exception as e:
                 logger.error(f"Error showing floating button: {e}")
+
+    def _save_floating_preference(self) -> None:
+        """Save floating button visibility preference"""
+        if self._state:
+            try:
+                self._state.preferences.show_floating_button = self._floating_visible
+                self._state.save_preferences()
+            except Exception as e:
+                logger.error(f"Error saving floating button preference: {e}")
 
     def _on_show_status(self, icon, item) -> None:
         """Handle show status menu item"""
@@ -510,9 +524,9 @@ class SystemTrayIcon:
 _tray_instance: Optional[SystemTrayIcon] = None
 
 
-def get_tray() -> SystemTrayIcon:
+def get_tray(state=None) -> SystemTrayIcon:
     """Get system tray singleton instance"""
     global _tray_instance
     if _tray_instance is None:
-        _tray_instance = SystemTrayIcon()
+        _tray_instance = SystemTrayIcon(state=state)
     return _tray_instance

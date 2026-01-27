@@ -41,6 +41,93 @@ jobs:
       run: |
         python setup.py --build
 
+    - name: Build Directory Mode for Installer
+      run: |
+        python setup.py --build-dir
+
+    - name: Install NSIS
+      run: |
+        # Use winget (Windows Package Manager) to install NSIS
+        Write-Host "Installing NSIS using winget..."
+        
+        # Try to install NSIS using winget
+        winget install --id NSIS.NSIS --exact --accept-source-agreements --accept-package-agreements -e --silent
+        
+        # Wait for installation to complete
+        Start-Sleep -Seconds 10
+        
+        # Verify installation
+        $nsisPaths = @(
+          "C:\Program Files (x86)\NSIS\makensis.exe",
+          "C:\Program Files\NSIS\makensis.exe",
+          "C:\NSIS\makensis.exe"
+        )
+        
+        $makensis = $null
+        foreach ($path in $nsisPaths) {
+          if (Test-Path $path) {
+            $makensis = $path
+            Write-Host "NSIS installed successfully at: $makensis"
+            break
+          }
+        }
+        
+        if (-not $makensis) {
+          # Fallback: try to find makensis.exe in Program Files
+          $found = Get-ChildItem -Path "C:\Program Files" -Recurse -Filter "makensis.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            $makensis = $found.FullName
+            Write-Host "Found NSIS at: $makensis"
+          }
+        }
+        
+        if (-not $makensis) {
+          Write-Error "NSIS installation failed - makensis.exe not found"
+          exit 1
+        }
+      shell: pwsh
+
+    - name: Build NSIS Installer
+      run: |
+        # Create installer directory
+        New-Item -ItemType Directory -Force -Path "installer" | Out-Null
+        
+        # Find NSIS makensis.exe
+        $nsisPaths = @(
+          "C:\Program Files (x86)\NSIS\makensis.exe",
+          "C:\Program Files\NSIS\makensis.exe",
+          "C:\NSIS\makensis.exe"
+        )
+        
+        $makensis = $null
+        foreach ($path in $nsisPaths) {
+          if (Test-Path $path) {
+            $makensis = $path
+            Write-Host "Found NSIS at: $makensis"
+            break
+          }
+        }
+        
+        if (-not $makensis) {
+          Write-Error "NSIS makensis.exe not found"
+          exit 1
+        }
+        
+        # Build NSIS installer
+        & $makensis "installer\installer.nsi"
+        
+        if ($LASTEXITCODE -eq 0) {
+          Write-Host "Installer built successfully!"
+          if (Test-Path "dist\HomeAssistantWindows_Setup.exe") {
+            $file = Get-Item dist\HomeAssistantWindows_Setup.exe
+            Write-Host "Size: $([math]::Round($file.Length / 1MB, 2)) MB"
+          }
+        } else {
+          Write-Error "Installer build failed!"
+          exit 1
+        }
+      shell: pwsh
+
     - name: Check build output
       run: |
         if (Test-Path "dist\HomeAssistantWindows.exe") {
@@ -52,6 +139,15 @@ jobs:
           Write-Host "EXE file build failed!"
           exit 1
         }
+
+        if (Test-Path "dist\HomeAssistantWindows_Setup.exe") {
+          Write-Host "Installer built successfully!"
+          $file = Get-Item dist\HomeAssistantWindows_Setup.exe
+          Write-Host "Size: $([math]::Round($file.Length / 1MB, 2)) MB"
+        } else {
+          Write-Host "Warning: Installer not found, skipping..."
+        }
+      shell: pwsh
 
     - name: Generate latest.json
       run: |
@@ -68,6 +164,7 @@ jobs:
       with:
         files: |
           dist/HomeAssistantWindows.exe
+          dist/HomeAssistantWindows_Setup.exe
           dist/latest.json
         draft: false
         prerelease: false

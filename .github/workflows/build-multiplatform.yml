@@ -1,0 +1,164 @@
+name: Build Multi-Platform
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  release:
+    types: [created]
+
+jobs:
+  build-windows:
+    name: Build Windows EXE & Installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "numpy>=1.24.0,<2.0.0" --only-binary=:all:
+          pip install -r requirements-windows.txt --verbose
+        shell: pwsh
+      
+      - name: Build Single-File EXE
+        run: python setup.py --build
+      
+      - name: Build Directory Mode for Installer
+        run: python setup.py --build-dir
+      
+      - name: Install NSIS
+        run: |
+          winget install --id NSIS.NSIS --exact --accept-source-agreements --accept-package-agreements -e --silent
+          Start-Sleep -Seconds 10
+        shell: pwsh
+      
+      - name: Build NSIS Installer
+        run: |
+          $nsisPaths = @(
+            "C:\Program Files (x86)\NSIS\makensis.exe",
+            "C:\Program Files\NSIS\makensis.exe",
+            "C:\NSIS\makensis.exe"
+          )
+          
+          $makensis = $null
+          foreach ($path in $nsisPaths) {
+            if (Test-Path $path) {
+              $makensis = $path
+              break
+            }
+          }
+          
+          if (-not $makensis) {
+            Write-Error "NSIS makensis.exe not found"
+            exit 1
+          }
+          
+          & $makensis "installer\installer.nsi"
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Installer build failed!"
+            exit 1
+          }
+        shell: pwsh
+      
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: ha-assistant-windows-exe
+          path: dist/HomeAssistantWindows.exe
+          retention-days: 30
+      
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ha-assistant-windows-installer
+          path: dist/HomeAssistantWindows_Setup.exe
+          retention-days: 30
+
+  build-macos:
+    name: Build macOS App
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-macos.txt
+      
+      - name: Build macOS App
+        run: python setup.py --build
+      
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "Home Assistant" -srcfolder dist/HomeAssistant.app -ov -format UDZO dist/HomeAssistant-macOS.dmg
+      
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ha-assistant-macos
+          path: dist/HomeAssistant-macOS.dmg
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: [build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download Windows EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: ha-assistant-windows-exe
+          path: dist/
+      
+      - name: Download Windows Installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ha-assistant-windows-installer
+          path: dist/
+      
+      - name: Download macOS DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: ha-assistant-macos
+          path: dist/
+      
+      - name: Generate latest.json
+        run: |
+          tag="${{ github.ref_name }}"
+          version="${tag#v}"
+          echo "{\"version\": \"$version\"}" > dist/latest.json
+        shell: bash
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/HomeAssistantWindows.exe
+            dist/HomeAssistantWindows_Setup.exe
+            dist/HomeAssistant-macOS.dmg
+            dist/latest.json
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

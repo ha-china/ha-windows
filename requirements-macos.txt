@@ -1,0 +1,27 @@
+# Home Assistant Client - macOS Dependencies
+# This file contains macOS-specific dependencies
+
+# Core dependencies (from requirements.txt)
+customtkinter>=5.2.0
+aioesphomeapi>=42.0.0
+aiohttp>=3.8.0
+soundcard>=0.4.0
+numpy>=1.24.0,<2.0.0
+pygame>=2.5.0
+pymicro-wakeword>=2.0.0
+pyopen-wakeword>=1.0.0
+webrtcvad-wheels>=2.0.10
+psutil>=5.9.0
+zeroconf>=0.100.0
+Pillow>=10.0.0
+
+# macOS-specific dependencies
+pyobjc>=10.0.0
+rumps>=0.4.0
+
+# Build dependencies
+pyinstaller>=6.0.0
+
+# Note: python-vlc may need manual installation on macOS
+# brew install vlc
+# pip install python-vlc

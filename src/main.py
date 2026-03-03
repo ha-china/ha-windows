@@ -143,6 +143,8 @@ class HomeAssistantWindows:
         self.api_server: ESPHomeServer = None
         self.tray = None
         self.main_window: MainWindow = None
+        self._main_window_lock = threading.Lock()
+        self._main_window_creating = False
         self._local_ip = None  # Save local IP for tray display
 
         # Wake word detection
@@ -250,6 +252,11 @@ class HomeAssistantWindows:
         logger.info("Showing floating button...")
 
         if self.main_window is None:
+            with self._main_window_lock:
+                if self.main_window is not None or self._main_window_creating:
+                    return
+                self._main_window_creating = True
+
             def create_window():
                 try:
                     self.main_window = MainWindow(on_mic_press=self._on_mic_button_press)
@@ -257,13 +264,15 @@ class HomeAssistantWindows:
                 except Exception as e:
                     logger.error(f"Failed to create floating button: {e}")
                 finally:
+                    with self._main_window_lock:
+                        self._main_window_creating = False
                     self.main_window = None
 
             window_thread = threading.Thread(target=create_window, daemon=True)
             window_thread.start()
         else:
             try:
-                self.main_window.show()
+                self.main_window.after(0, self.main_window.show)
             except Exception as e:
                 logger.error(f"Failed to show floating button: {e}")
 
@@ -272,7 +281,7 @@ class HomeAssistantWindows:
         logger.info("Hiding floating button...")
         if self.main_window:
             try:
-                self.main_window.hide()
+                self.main_window.after(0, self.main_window.hide)
             except Exception as e:
                 logger.error(f"Failed to hide floating button: {e}")
 
@@ -493,7 +502,7 @@ class HomeAssistantWindows:
         # Close main window
         if self.main_window:
             try:
-                self.main_window.destroy()
+                self.main_window.after(0, self.main_window.destroy)
                 self.main_window = None
             except Exception as e:
                 logger.error(f"Failed to close main window: {e}")

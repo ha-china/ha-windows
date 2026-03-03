@@ -150,10 +150,10 @@ class TestTimerEventHandling:
 
     @given(timer_id=timer_id_strategy)
     @settings(max_examples=100, deadline=None)
-    def test_timer_finished_ducks_audio(self, timer_id: str):
+    def test_timer_finished_does_not_duck_audio_by_default(self, timer_id: str):
         """
         Property 10: For any TIMER_FINISHED event, the Windows_Client
-        SHALL duck audio before playing timer sound.
+        SHALL NOT duck audio by default.
         
         **Feature: ha-windows-client, Property 10: Timer Event Handling**
         **Validates: Requirements 4.1**
@@ -171,8 +171,6 @@ class TestTimerEventHandling:
         
         def mock_play(url, done_callback=None):
             nonlocal play_called
-            # Duck should be called before play
-            assert duck_called, "duck() should be called before play()"
             play_called = True
         
         protocol.state.music_player.duck = mock_duck
@@ -189,8 +187,10 @@ class TestTimerEventHandling:
             msg
         )
         
-        # Property: duck should be called
-        assert duck_called, "duck() should be called for timer finished"
+        # Property: timer sound should still play
+        assert play_called, "timer finished should trigger playback"
+        # Property: duck should not be called by default
+        assert not duck_called, "duck() should not be called by default"
 
     def test_timer_finished_only_triggers_once(self):
         """

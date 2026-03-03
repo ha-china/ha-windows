@@ -131,7 +131,8 @@ class HomeAssistantWindows:
         self._local_ip = None  # Save local IP for tray display
 
         # Wake word detection
-        self._wake_word_detector = None
+        self._wake_word_detectors = {}
+        self._wake_word_callback = None
         self._audio_recorder: AudioRecorder = None
         self._wake_word_listening = False
         self._event_loop = None  # Event loop reference for callbacks
@@ -310,11 +311,8 @@ class HomeAssistantWindows:
             if models:
                 logger.info(f"Available wake words: {[m[1] for m in models]}")
 
-            # Get active wake word from server state
-            active_wake_word = self._get_active_wake_word()
-
-            # Initialize wake word detector
-            self._wake_word_detector = WakeWordDetector(active_wake_word)
+            # Initialize wake word detectors from active server state
+            self._update_wake_word_detector(initial_setup=True)
 
             # Initialize stop word detector
             self._stop_word_detector = WakeWordDetector('stop')
@@ -339,7 +337,9 @@ class HomeAssistantWindows:
                     except Exception as e:
                         logger.error(f"Failed to trigger wakeup: {e}")
 
-            self._wake_word_detector.on_wake_word(on_wake_word)
+            self._wake_word_callback = on_wake_word
+            for detector in self._wake_word_detectors.values():
+                detector.on_wake_word(on_wake_word)
 
             # Initialize audio recorder
             self._audio_recorder = AudioRecorder()
@@ -360,9 +360,9 @@ class HomeAssistantWindows:
 
                 # Skip wake word detection if TTS is playing (to avoid false positives)
                 if self.api_server and self.api_server.protocol and not self.api_server.protocol._is_playing_tts:
-                    # Pass raw bytes to wake word detector
-                    if self._wake_word_detector:
-                        self._wake_word_detector.process_audio(audio_data)
+                    # Pass raw bytes to wake word detectors
+                    for detector in self._wake_word_detectors.values():
+                        detector.process_audio(audio_data)
 
                 # Always process stop word (like linux-voice-assistant)
                 if self._stop_word_detector:
@@ -375,8 +375,11 @@ class HomeAssistantWindows:
             self._wake_word_listening = True
             self._audio_recorder.start_recording(audio_callback=on_audio_chunk)
 
-            wake_phrase = self._wake_word_detector.wake_word_phrase
-            logger.info(f"🎤 Wake word detection started (say '{wake_phrase}')")
+            wake_phrases = [det.wake_word_phrase for det in self._wake_word_detectors.values()]
+            if wake_phrases:
+                logger.info(f"🎤 Wake word detection started (say one of: {', '.join(wake_phrases)})")
+            else:
+                logger.warning("No valid wake word detectors active; only manual trigger is available")
 
         except ImportError as e:
             logger.warning(f"Wake word detection not available: {e}")
@@ -384,35 +387,54 @@ class HomeAssistantWindows:
         except Exception as e:
             logger.error(f"Failed to start wake word detection: {e}")
 
-    def _get_active_wake_word(self) -> str:
-        """Get the first active wake word from server state"""
-        if self.api_server and self.api_server.state.active_wake_words:
-            return next(iter(self.api_server.state.active_wake_words))
-        return 'okay_nabu'  # Default
+    def _get_active_wake_words(self) -> list[str]:
+        """Get active wake words from server state in a stable order"""
+        if not self.api_server:
+            return ['okay_nabu']
 
-    def _update_wake_word_detector(self):
+        active_set = self.api_server.state.active_wake_words
+        if not active_set:
+            return ['okay_nabu']
+
+        ordered = [
+            wake_word_id
+            for wake_word_id in self.api_server.state.available_wake_words.keys()
+            if wake_word_id in active_set
+        ]
+        if ordered:
+            return ordered
+
+        return sorted(active_set)
+
+    def _update_wake_word_detector(self, initial_setup: bool = False):
         """Update wake word detector when active wake word changes"""
         from src.voice.wake_word import WakeWordDetector
 
-        new_wake_word = self._get_active_wake_word()
+        target_wake_words = self._get_active_wake_words()
+        current_wake_words = list(self._wake_word_detectors.keys())
 
-        if self._wake_word_detector and self._wake_word_detector.model_name == new_wake_word:
-            return  # No change
+        if current_wake_words == target_wake_words:
+            return
 
-        logger.info(f"🔄 Switching wake word to: {new_wake_word}")
+        action = "Initializing" if initial_setup else "Switching"
+        logger.info(f"🔄 {action} wake words: {target_wake_words}")
 
-        # Save callback
-        old_callback = self._wake_word_detector._on_wake_word if self._wake_word_detector else None
+        detectors = {}
+        for wake_word_id in target_wake_words:
+            detector = WakeWordDetector(wake_word_id)
+            if getattr(detector, "_model", None) is None:
+                logger.warning(f"Wake word detector unavailable: {wake_word_id}")
+                continue
+            if self._wake_word_callback:
+                detector.on_wake_word(self._wake_word_callback)
+            detectors[wake_word_id] = detector
 
-        # Create new detector
-        self._wake_word_detector = WakeWordDetector(new_wake_word)
-
-        # Restore callback
-        if old_callback:
-            self._wake_word_detector.on_wake_word(old_callback)
-
-        wake_phrase = self._wake_word_detector.wake_word_phrase
-        logger.info(f"🎤 Now listening for: '{wake_phrase}'")
+        self._wake_word_detectors = detectors
+        wake_phrases = [det.wake_word_phrase for det in self._wake_word_detectors.values()]
+        if wake_phrases:
+            logger.info(f"🎤 Now listening for: {', '.join(wake_phrases)}")
+        else:
+            logger.warning("No wake word detectors are active")
 
     def _stop_wake_word_detection(self):
         """Stop wake word detection"""
@@ -423,7 +445,8 @@ class HomeAssistantWindows:
             except Exception as e:
                 logger.error(f"Failed to stop audio recorder: {e}")
             self._audio_recorder = None
-        self._wake_word_detector = None
+        self._wake_word_detectors = {}
+        self._wake_word_callback = None
         self._stop_word_detector = None
 
     async def _main_loop(self):

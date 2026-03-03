@@ -40,6 +40,7 @@ from aioesphomeapi.api_pb2 import (
     ListEntitiesDoneResponse,
     VoiceAssistantConfigurationRequest,
     VoiceAssistantConfigurationResponse,
+    VoiceAssistantSetConfiguration,
     VoiceAssistantRequest,
     VoiceAssistantAudio,
     VoiceAssistantEventResponse,
@@ -271,6 +272,22 @@ class TestESPHomeProtocolFlow:
         assert len(response.available_wake_words) >= 1
         assert response.max_active_wake_words >= 1
 
+    def test_set_voice_configuration_supports_two_wake_words(self):
+        """Test VoiceAssistantSetConfiguration accepts two wake words."""
+        protocol = create_test_protocol()
+
+        available_ids = list(protocol.state.available_wake_words.keys())
+        if len(available_ids) < 2:
+            pytest.skip("Need at least two wake word models for this test")
+
+        config_req = VoiceAssistantSetConfiguration(
+            active_wake_words=[available_ids[0], available_ids[1]],
+        )
+        protocol.data_received(encode_message(config_req))
+
+        assert protocol.state.active_wake_words == {available_ids[0], available_ids[1]}
+        assert protocol.state.wake_words_changed is True
+
 
 # =============================================================================
 # Integration Test: Voice Assistant End-to-End Flow
@@ -302,8 +319,8 @@ class TestVoiceAssistantFlow:
         # Verify streaming is enabled
         assert protocol._is_streaming_audio is True
         
-        # Verify duck was called
-        protocol.state.music_player.duck.assert_called()
+        # Volume ducking is disabled by default
+        protocol.state.music_player.duck.assert_not_called()
 
     def test_audio_streaming_during_conversation(self):
         """
@@ -404,8 +421,8 @@ class TestVoiceAssistantFlow:
         )
         protocol.data_received(encode_message(announce_req))
         
-        # Verify duck was called
-        protocol.state.music_player.duck.assert_called()
+        # Volume ducking is disabled by default
+        protocol.state.music_player.duck.assert_not_called()
         
         # Verify TTS player was called
         protocol.state.tts_player.play.assert_called()
@@ -486,8 +503,8 @@ class TestConnectionLifecycle:
         assert protocol._continue_conversation is False
         assert protocol._transport is None
         
-        # Verify unduck was called
-        protocol.state.music_player.unduck.assert_called()
+        # Volume ducking is disabled by default
+        protocol.state.music_player.unduck.assert_not_called()
 
     def test_multiple_messages_in_single_packet(self):
         """

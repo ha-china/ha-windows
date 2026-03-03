@@ -37,7 +37,10 @@ device_name_strategy = st.text(
 
 # Strategy for generating log messages (exclude carriage returns which cause line ending issues)
 log_message_strategy = st.text(
-    alphabet=st.characters(blacklist_characters='\r\n'),
+    alphabet=st.characters(
+        blacklist_categories=('Cs',),
+        blacklist_characters='\r\n'
+    ),
     min_size=1,
     max_size=200
 ).filter(lambda x: x.strip())
@@ -117,10 +120,10 @@ class TestConnectionReconnection:
 
     @given(device_name=device_name_strategy)
     @settings(max_examples=100, deadline=None)
-    def test_connection_lost_calls_unduck(self, device_name: str):
+    def test_connection_lost_does_not_change_system_volume(self, device_name: str):
         """
         Property 21: For any device, when connection is lost,
-        the music player SHALL be unducked.
+        the client SHALL NOT change system volume by default.
         
         **Feature: ha-windows-client, Property 21: Connection Reconnection**
         **Validates: Requirements 1.5, 11.1**
@@ -130,8 +133,8 @@ class TestConnectionReconnection:
         # Simulate connection lost
         protocol.connection_lost(None)
         
-        # Property: unduck should be called
-        protocol.state.music_player.unduck.assert_called()
+        # Property: volume should not be modified
+        protocol.state.music_player.unduck.assert_not_called()
 
     @given(device_name=device_name_strategy)
     @settings(max_examples=100, deadline=None)
@@ -498,8 +501,8 @@ class TestErrorHandlingEdgeCases:
         
         # Timer state should remain (it's not reset by connection_lost)
         # This is intentional - timer is a local state
-        # The unduck should still be called
-        protocol.state.music_player.unduck.assert_called()
+        # Volume should not be modified by default
+        protocol.state.music_player.unduck.assert_not_called()
 
     def test_log_file_handles_unicode(self):
         """

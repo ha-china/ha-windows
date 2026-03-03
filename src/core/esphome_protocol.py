@@ -8,8 +8,9 @@ Uses asyncio.Protocol architecture, implements complete Voice Assistant state ma
 import asyncio
 import logging
 import socket
+import threading
 from collections.abc import Iterable
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 # pylint: disable=no-name-in-module
 from aioesphomeapi.api_pb2 import (
@@ -76,6 +77,8 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._pos: int = 0
         self._transport = None
         self._writelines = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._loop_thread_id: Optional[int] = None
 
         # Voice Assistant state machine
         self._is_streaming_audio = False
@@ -84,6 +87,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._continue_conversation = False
         self._timer_finished = False
         self._is_playing_tts = False  # Flag to pause wake word detection during TTS playback
+        self._volume_ducking_enabled = False  # User preference: do not lower global system volume
 
         # Audio recorder (lazy load)
         self._audio_recorder = None
@@ -91,7 +95,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._event_loop: Optional[asyncio.AbstractEventLoop] = None
 
         # External wake word cache
-        self._external_wake_words: Dict[str, any] = {}
+        self._external_wake_words: Dict[str, Any] = {}
 
         # Module instances (lazy load)
         self._monitor = None
@@ -110,6 +114,13 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._transport = transport
         self._writelines = transport.writelines
         self._event_loop = asyncio.get_event_loop()
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
+            self._loop_thread_id = None
+        else:
+            self._loop_thread_id = threading.get_ident()
         peername = transport.get_extra_info("peername")
         logger.info(f"📱 New client connected: {peername}")
 
@@ -118,6 +129,8 @@ class ESPHomeProtocol(asyncio.Protocol):
         logger.debug("Client disconnected")
         self._transport = None
         self._writelines = None
+        self._loop = None
+        self._loop_thread_id = None
 
         # Reset streaming state (main recorder continues)
         self._is_streaming_audio = False
@@ -126,7 +139,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._continue_conversation = False
 
         # Restore volume (if previously ducked)
-        # self.unduck()  # Duck feature disabled
+        self.unduck()
 
     def data_received(self, data: bytes) -> None:
         """Receive data"""
@@ -343,7 +356,7 @@ class ESPHomeProtocol(asyncio.Protocol):
                 if self.state.stop_word:
                     self.state.active_wake_words.add(self.state.stop_word.id)
                 self._timer_finished = True
-                # self.duck()  # Duck feature disabled
+                self.duck()
                 self._play_timer_finished()
 
     # ========== Voice Assistant Configuration ==========
@@ -384,25 +397,29 @@ class ESPHomeProtocol(asyncio.Protocol):
 
     def _handle_set_voice_config(self, msg: VoiceAssistantSetConfiguration) -> None:
         """Handle set voice assistant configuration"""
-        active_wake_words: Set[str] = set()
+        active_wake_words: List[str] = []
 
         for wake_word_id in msg.active_wake_words:
             if wake_word_id in self.state.wake_words:
-                active_wake_words.add(wake_word_id)
+                if wake_word_id not in active_wake_words:
+                    active_wake_words.append(wake_word_id)
                 continue
 
             model_info = self.state.available_wake_words.get(wake_word_id)
             if model_info:
                 logger.debug(f"Setting wake word: {wake_word_id}")
-                active_wake_words.add(wake_word_id)
+                if wake_word_id not in active_wake_words:
+                    active_wake_words.append(wake_word_id)
+
+            if len(active_wake_words) >= 2:
                 break
 
-        self.state.active_wake_words = active_wake_words
-        self.state.preferences.active_wake_words = list(active_wake_words)
+        self.state.active_wake_words = set(active_wake_words)
+        self.state.preferences.active_wake_words = active_wake_words
         self.state.save_preferences()
         self.state.wake_words_changed = True
 
-        logger.info(f"🎤 Active wake words updated: {active_wake_words}")
+        logger.info(f"🎤 Active wake words updated: {self.state.active_wake_words}")
 
     # ========== Announcement Processing ==========
 
@@ -428,7 +445,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             self.state.active_wake_words.add(self.state.stop_word.id)
 
         # Duck volume and play
-        # self.duck()  # Duck feature disabled
+        self.duck()
 
         # Play audio
         if urls:
@@ -515,7 +532,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self.send_messages([VoiceAssistantRequest(start=True, wake_word_phrase=wake_word_phrase)])
 
         # Duck volume
-        # self.duck()  # Duck feature disabled
+        self.duck()
 
         # Start audio stream
         self._is_streaming_audio = True
@@ -585,12 +602,22 @@ class ESPHomeProtocol(asyncio.Protocol):
         self.state.tts_player.play(self._tts_url, done_callback=self._tts_finished)
 
     def duck(self) -> None:
-        """Lower volume (disabled)"""
-        pass  # Duck feature disabled
+        """Lower volume"""
+        if not self._volume_ducking_enabled:
+            return
+        try:
+            self.state.music_player.duck()
+        except Exception as e:
+            logger.error(f"Failed to duck volume: {e}")
 
     def unduck(self) -> None:
-        """Restore volume (disabled)"""
-        pass  # Unduck feature disabled
+        """Restore volume"""
+        if not self._volume_ducking_enabled:
+            return
+        try:
+            self.state.music_player.unduck()
+        except Exception as e:
+            logger.error(f"Failed to unduck volume: {e}")
 
     def _tts_finished(self) -> None:
         """TTS playback finished callback"""
@@ -619,15 +646,14 @@ class ESPHomeProtocol(asyncio.Protocol):
             logger.debug("Continuing conversation")
         else:
             # Restore volume
-            # self.unduck()  # Duck feature disabled
-            pass
+            self.unduck()
 
         logger.debug("TTS playback finished")
 
     def _play_timer_finished(self) -> None:
         """Play timer finished sound"""
         if not self._timer_finished:
-            # self.unduck()  # Duck feature disabled
+            self.unduck()
             return
 
         # Loop play timer sound
@@ -783,6 +809,14 @@ class ESPHomeProtocol(asyncio.Protocol):
         packets = [(PROTO_TO_MESSAGE_TYPE[msg.__class__], msg.SerializeToString()) for msg in msgs]
 
         packet_bytes = make_plain_text_packets(packets)
+        if (
+            self._loop is not None
+            and self._loop_thread_id is not None
+            and threading.get_ident() != self._loop_thread_id
+        ):
+            self._loop.call_soon_threadsafe(self._writelines, packet_bytes)
+            return
+
         self._writelines(packet_bytes)
 
 

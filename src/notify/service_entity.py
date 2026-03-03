@@ -274,5 +274,4 @@ class ServiceEntityManager:
         else:
             logger.warning("Hotkey callback not set")
 
-        result = self._command_executor.execute(command)
-        logger.info(f"Media command: {command}, result: {result}")
+        logger.info(f"Voice input hotkey updated: {hotkey}")

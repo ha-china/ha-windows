@@ -8,7 +8,7 @@ import logging
 import threading
 import warnings
 from typing import Optional, Callable
-from queue import Queue
+from queue import Empty, Full, Queue
 
 import numpy as np
 
@@ -19,10 +19,19 @@ if not hasattr(np, 'fromstring'):
         return np.frombuffer(s, dtype=dtype, count=count)
     np.fromstring = _fromstring_wrapper  # type: ignore[assignment]
 
-# Suppress soundcard data discontinuity warnings
-warnings.filterwarnings("ignore", message="data discontinuity in recording")
-
 import soundcard  # noqa: E402
+
+# Suppress soundcard recording discontinuity warnings (common under load)
+try:
+    from soundcard.mediafoundation import SoundcardRuntimeWarning  # type: ignore
+
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*data discontinuity in recording.*",
+        category=SoundcardRuntimeWarning,
+    )
+except Exception:
+    warnings.filterwarnings("ignore", message=r".*data discontinuity in recording.*")
 
 from src.i18n import get_i18n  # noqa: E402
 
@@ -48,7 +57,7 @@ class AudioRecorder:
         self.device = device
         self.mic = None
         self.is_recording = False
-        self.audio_queue: Queue[bytes] = Queue()
+        self.audio_queue: Queue[bytes] = Queue(maxsize=200)
         self.recording_thread: Optional[threading.Thread] = None
 
     @staticmethod
@@ -125,6 +134,12 @@ class AudioRecorder:
             self.recording_thread.join(timeout=2.0)
             self.recording_thread = None
 
+        try:
+            while True:
+                self.audio_queue.get_nowait()
+        except Empty:
+            pass
+
         logger.debug("Recording stopped")
 
     def _record_loop(self, audio_callback: Optional[Callable[[bytes], None]]):
@@ -161,7 +176,14 @@ class AudioRecorder:
                     if audio_callback:
                         audio_callback(audio_pcm)
                     else:
-                        self.audio_queue.put(audio_pcm)
+                        try:
+                            self.audio_queue.put_nowait(audio_pcm)
+                        except Full:
+                            try:
+                                self.audio_queue.get_nowait()
+                                self.audio_queue.put_nowait(audio_pcm)
+                            except (Empty, Full):
+                                pass
 
         except Exception as e:
             logger.error(f"Recording loop error: {e}")

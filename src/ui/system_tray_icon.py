@@ -50,6 +50,13 @@ class SystemTrayIcon:
         self._on_hide_floating: Optional[Callable] = None
         self._on_quit: Optional[Callable] = None
 
+        # Dedicated tkinter UI thread for About/Status dialogs
+        self._dialog_root: Optional[tk.Tk] = None
+        self._dialog_thread: Optional[threading.Thread] = None
+        self._dialog_ready = threading.Event()
+        self._about_window: Optional[tk.Toplevel] = None
+        self._status_window: Optional[tk.Toplevel] = None
+
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
         """
         Create tray icon image
@@ -303,181 +310,218 @@ class SystemTrayIcon:
         self._on_hide_floating = on_hide_floating
         self._on_quit = on_quit
 
+    def _run_dialog_loop(self) -> None:
+        """Run tkinter event loop for tray dialogs."""
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            self._dialog_root = root
+            self._dialog_ready.set()
+            root.mainloop()
+        except Exception as e:
+            logger.error(f"Dialog loop failed: {e}")
+        finally:
+            self._dialog_root = None
+            self._about_window = None
+            self._status_window = None
+            self._dialog_ready.clear()
+
+    def _ensure_dialog_thread(self) -> bool:
+        """Ensure dialog thread is running and ready."""
+        if self._dialog_root is not None:
+            return True
+
+        if self._dialog_thread and self._dialog_thread.is_alive():
+            return self._dialog_ready.wait(timeout=2)
+
+        self._dialog_ready.clear()
+        self._dialog_thread = threading.Thread(target=self._run_dialog_loop, daemon=True)
+        self._dialog_thread.start()
+        ready = self._dialog_ready.wait(timeout=2)
+        if not ready:
+            logger.error("Dialog thread did not start in time")
+        return ready
+
+    def _run_on_dialog_thread(self, callback: Callable[[], None]) -> None:
+        """Schedule callback on dialog thread."""
+        if not self._ensure_dialog_thread() or self._dialog_root is None:
+            return
+        try:
+            self._dialog_root.after(0, callback)
+        except Exception as e:
+            logger.error(f"Failed to schedule dialog callback: {e}")
+
     def show_status(self) -> None:
         """Show status window with i18n support"""
-        try:
-            # Create a simple tkinter window for Status dialog
-            status_window = tk.Toplevel()
-            status_window.title("Status")
+        def _show_status_window() -> None:
+            try:
+                if self._dialog_root is None:
+                    return
 
-            # Use dynamic sizing based on content
-            status_window.geometry("450x280")
-            status_window.resizable(False, False)
+                if self._status_window and self._status_window.winfo_exists():
+                    self._status_window.deiconify()
+                    self._status_window.lift()
+                    self._status_window.focus_force()
+                    return
 
-            # Center the window
-            status_window.update_idletasks()
-            width = status_window.winfo_width()
-            height = status_window.winfo_height()
-            x = (status_window.winfo_screenwidth() // 2) - (width // 2)
-            y = (status_window.winfo_screenheight() // 2) - (height // 2)
-            status_window.geometry(f'{width}x{height}+{x}+{y}')
+                status_window = tk.Toplevel(self._dialog_root)
+                self._status_window = status_window
+                status_window.title("Status")
+                status_window.geometry("450x280")
+                status_window.resizable(False, False)
 
-            # Create main frame
-            main_frame = ttk.Frame(status_window, padding="25")
-            main_frame.pack(fill=tk.BOTH, expand=True)
+                status_window.update_idletasks()
+                width = status_window.winfo_width()
+                height = status_window.winfo_height()
+                x = (status_window.winfo_screenwidth() // 2) - (width // 2)
+                y = (status_window.winfo_screenheight() // 2) - (height // 2)
+                status_window.geometry(f'{width}x{height}+{x}+{y}')
 
-            # Title
-            title_label = ttk.Label(
-                main_frame,
-                text="Device Status",
-                font=("Segoe UI", 14, "bold") if self._is_windows() else ("Arial", 14, "bold")
-            )
-            title_label.pack(pady=(0, 25))
+                main_frame = ttk.Frame(status_window, padding="25")
+                main_frame.pack(fill=tk.BOTH, expand=True)
 
-            # Device name
-            device_label = ttk.Label(
-                main_frame,
-                text=f"{_i18n.t('device_label')}: {self._status_info['name']}",
-                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
-            )
-            device_label.pack(pady=8, anchor="w")
+                ttk.Label(
+                    main_frame,
+                    text="Device Status",
+                    font=("Segoe UI", 14, "bold") if self._is_windows() else ("Arial", 14, "bold"),
+                ).pack(pady=(0, 25))
 
-            # IP
-            ip_label = ttk.Label(
-                main_frame,
-                text=f"{_i18n.t('ip_label')}: {self._status_info['ip']}",
-                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
-            )
-            ip_label.pack(pady=8, anchor="w")
+                ttk.Label(
+                    main_frame,
+                    text=f"{_i18n.t('device_label')}: {self._status_info['name']}",
+                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
+                ).pack(pady=8, anchor="w")
 
-            # Port
-            port_label = ttk.Label(
-                main_frame,
-                text=f"{_i18n.t('port_label')}: {self._status_info['port']}",
-                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
-            )
-            port_label.pack(pady=8, anchor="w")
+                ttk.Label(
+                    main_frame,
+                    text=f"{_i18n.t('ip_label')}: {self._status_info['ip']}",
+                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
+                ).pack(pady=8, anchor="w")
 
-            # Status
-            status_text = ttk.Label(
-                main_frame,
-                text=f"{_i18n.t('status_running')}",
-                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
-                foreground="green"
-            )
-            status_text.pack(pady=(25, 0), anchor="w")
+                ttk.Label(
+                    main_frame,
+                    text=f"{_i18n.t('port_label')}: {self._status_info['port']}",
+                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
+                ).pack(pady=8, anchor="w")
 
-            # Close button
-            close_button = ttk.Button(
-                main_frame,
-                text=self._get_close_text(),
-                command=status_window.destroy,
-                width=20
-            )
-            close_button.pack(pady=(25, 0))
+                ttk.Label(
+                    main_frame,
+                    text=f"{_i18n.t('status_running')}",
+                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
+                    foreground="green",
+                ).pack(pady=(25, 0), anchor="w")
 
-            # Make window modal
-            status_window.transient(status_window.master)
-            status_window.grab_set()
-            status_window.focus_set()
+                def _on_close() -> None:
+                    if self._status_window is status_window:
+                        self._status_window = None
+                    status_window.destroy()
 
-            logger.info("Status dialog shown")
-        except Exception as e:
-            logger.error(f"Failed to show status: {e}")
+                ttk.Button(
+                    main_frame,
+                    text=self._get_close_text(),
+                    command=_on_close,
+                    width=20,
+                ).pack(pady=(25, 0))
+
+                status_window.protocol("WM_DELETE_WINDOW", _on_close)
+
+                logger.info("Status dialog shown")
+            except Exception as e:
+                logger.error(f"Failed to show status: {e}")
+
+        self._run_on_dialog_thread(_show_status_window)
 
     def show_about(self) -> None:
         """Show about dialog with version and repository info"""
-        try:
-            from src import __version__
+        def _show_about_window() -> None:
+            try:
+                try:
+                    from src import __version__
+                except Exception:
+                    __version__ = "unknown"
 
-            # Repository URL (hardcoded as it's the official repo)
-            repo_url = "https://github.com/ha-china/ha-windows"
-
-            # Create a simple tkinter window for About dialog
-            about_window = tk.Toplevel()
-            about_window.title("About")
-
-            # Use dynamic sizing based on content
-            about_window.geometry("450x350")
-            about_window.resizable(False, False)
-
-            # Center the window
-            about_window.update_idletasks()
-            width = about_window.winfo_width()
-            height = about_window.winfo_height()
-            x = (about_window.winfo_screenwidth() // 2) - (width // 2)
-            y = (about_window.winfo_screenheight() // 2) - (height // 2)
-            about_window.geometry(f'{width}x{height}+{x}+{y}')
-
-            # Create main frame
-            main_frame = ttk.Frame(about_window, padding="25")
-            main_frame.pack(fill=tk.BOTH, expand=True)
-
-            # Title
-            title_label = ttk.Label(
-                main_frame,
-                text="Home Assistant Windows",
-                font=("Segoe UI", 16, "bold") if self._is_windows() else ("Arial", 16, "bold")
-            )
-            title_label.pack(pady=(0, 25))
-
-            # Version
-            version_label = ttk.Label(
-                main_frame,
-                text=f"Version: {__version__}",
-                font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10)
-            )
-            version_label.pack(pady=8)
-
-            # Repository section
-            repo_label = ttk.Label(
-                main_frame,
-                text="Repository:",
-                font=("Segoe UI", 10, "bold") if self._is_windows() else ("Arial", 10, "bold")
-            )
-            repo_label.pack(pady=(25, 8))
-
-            repo_url_label = ttk.Label(
-                main_frame,
-                text=repo_url,
-                font=("Segoe UI", 9) if self._is_windows() else ("Arial", 9),
-                foreground="blue",
-                cursor="hand2"
-            )
-            repo_url_label.pack(pady=8)
-
-            # Make repository URL clickable
-            def open_repo(event):
                 import webbrowser
-                webbrowser.open(repo_url)
 
-            repo_url_label.bind("<Button-1>", open_repo)
+                if self._dialog_root is None:
+                    return
 
-            # Copyright
-            copyright_label = ttk.Label(
-                main_frame,
-                text="© 2024 ha-china",
-                font=("Segoe UI", 9) if self._is_windows() else ("Arial", 9)
-            )
-            copyright_label.pack(pady=(35, 0))
+                if self._about_window and self._about_window.winfo_exists():
+                    self._about_window.deiconify()
+                    self._about_window.lift()
+                    self._about_window.focus_force()
+                    return
 
-            # Close button
-            close_button = ttk.Button(
-                main_frame,
-                text=self._get_close_text(),
-                command=about_window.destroy,
-                width=20
-            )
-            close_button.pack(pady=(25, 0))
+                repo_url = "https://github.com/ha-china/ha-windows"
 
-            # Make window modal
-            about_window.transient(about_window.master)
-            about_window.grab_set()
-            about_window.focus_set()
+                about_window = tk.Toplevel(self._dialog_root)
+                self._about_window = about_window
+                about_window.title("About")
+                about_window.geometry("450x350")
+                about_window.resizable(False, False)
 
-            logger.info("About dialog shown")
-        except Exception as e:
-            logger.error(f"Failed to show about: {e}")
+                about_window.update_idletasks()
+                width = about_window.winfo_width()
+                height = about_window.winfo_height()
+                x = (about_window.winfo_screenwidth() // 2) - (width // 2)
+                y = (about_window.winfo_screenheight() // 2) - (height // 2)
+                about_window.geometry(f'{width}x{height}+{x}+{y}')
+
+                main_frame = ttk.Frame(about_window, padding="25")
+                main_frame.pack(fill=tk.BOTH, expand=True)
+
+                ttk.Label(
+                    main_frame,
+                    text="Home Assistant Windows",
+                    font=("Segoe UI", 16, "bold") if self._is_windows() else ("Arial", 16, "bold"),
+                ).pack(pady=(0, 25))
+
+                ttk.Label(
+                    main_frame,
+                    text=f"Version: {__version__}",
+                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
+                ).pack(pady=8)
+
+                ttk.Label(
+                    main_frame,
+                    text="Repository:",
+                    font=("Segoe UI", 10, "bold") if self._is_windows() else ("Arial", 10, "bold"),
+                ).pack(pady=(25, 8))
+
+                repo_url_label = ttk.Label(
+                    main_frame,
+                    text=repo_url,
+                    font=("Segoe UI", 9) if self._is_windows() else ("Arial", 9),
+                    foreground="blue",
+                    cursor="hand2",
+                )
+                repo_url_label.pack(pady=8)
+                repo_url_label.bind("<Button-1>", lambda _e: webbrowser.open(repo_url))
+
+                ttk.Label(
+                    main_frame,
+                    text="© 2024 ha-china",
+                    font=("Segoe UI", 9) if self._is_windows() else ("Arial", 9),
+                ).pack(pady=(35, 0))
+
+                def _on_close() -> None:
+                    if self._about_window is about_window:
+                        self._about_window = None
+                    about_window.destroy()
+
+                ttk.Button(
+                    main_frame,
+                    text=self._get_close_text(),
+                    command=_on_close,
+                    width=20,
+                ).pack(pady=(25, 0))
+
+                about_window.protocol("WM_DELETE_WINDOW", _on_close)
+
+                logger.info("About dialog shown")
+            except Exception as e:
+                logger.error(f"Failed to show about: {e}")
+
+        self._run_on_dialog_thread(_show_about_window)
 
     def stop(self) -> None:
         """Stop system tray icon"""
@@ -487,6 +531,13 @@ class SystemTrayIcon:
                 self.icon.stop()
             except Exception:
                 pass  # May already be stopped
+
+            if self._dialog_root:
+                try:
+                    self._dialog_root.after(0, self._dialog_root.quit)
+                except Exception:
+                    pass
+
             logger.info("System tray icon stopped")
 
     def _is_windows(self) -> bool:

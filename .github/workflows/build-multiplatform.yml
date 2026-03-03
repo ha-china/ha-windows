@@ -21,6 +21,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements-windows.txt
+            pyproject.toml
+
+      - name: Validate version consistency
+        run: |
+          python -c "import pathlib,re,sys,tomllib; py=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); v1=py['project']['version']; txt=pathlib.Path('src/__init__.py').read_text(encoding='utf-8'); m=re.search(r'__version__\s*=\s*\"([^\"]+)\"', txt); v2=m.group(1) if m else None; print(f'pyproject={v1}, src={v2}'); sys.exit(0 if (v1 and v1==v2) else 1)"
+        shell: pwsh
       
       - name: Install dependencies
         run: |
@@ -30,10 +39,23 @@ jobs:
         shell: pwsh
       
       - name: Build Single-File EXE
-        run: python setup.py --build
+        run: |
+          New-Item -ItemType Directory -Force -Path build-logs | Out-Null
+          python setup.py --build *>&1 | Tee-Object -FilePath build-logs/pyinstaller-single.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "PyInstaller single-file build failed"
+            exit $LASTEXITCODE
+          }
+        shell: pwsh
       
       - name: Build Directory Mode for Installer
-        run: python setup.py --build-dir
+        run: |
+          python setup.py --build-dir *>&1 | Tee-Object -FilePath build-logs/pyinstaller-dir.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "PyInstaller directory build failed"
+            exit $LASTEXITCODE
+          }
+        shell: pwsh
       
       - name: Install NSIS
         run: |
@@ -61,14 +83,25 @@ jobs:
             Write-Error "NSIS makensis.exe not found"
             exit 1
           }
-          
-          & $makensis "installer\installer.nsi"
-          
+
+          & $makensis "installer\installer.nsi" *>&1 | Tee-Object -FilePath build-logs/nsis.log
+
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Installer build failed!"
             exit 1
           }
         shell: pwsh
+
+      - name: Upload Windows build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-logs
+          path: |
+            build-logs/**
+            build/**
+          retention-days: 14
+          if-no-files-found: warn
       
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
@@ -95,6 +128,27 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements-macos.txt
+            pyproject.toml
+
+      - name: Validate version consistency
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          py = tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8'))
+          v1 = py['project']['version']
+          txt = pathlib.Path('src/__init__.py').read_text(encoding='utf-8')
+          m = re.search(r'__version__\s*=\s*"([^"]+)"', txt)
+          v2 = m.group(1) if m else None
+          print(f'pyproject={v1}, src={v2}')
+          raise SystemExit(0 if (v1 and v1 == v2) else 1)
+          PY
       
       - name: Install dependencies
         run: |
@@ -102,11 +156,26 @@ jobs:
           pip install -r requirements-macos.txt
       
       - name: Build macOS App
-        run: python setup.py --build
+        run: |
+          mkdir -p build-logs
+          set -o pipefail
+          python setup.py --build 2>&1 | tee build-logs/pyinstaller-macos.log
       
       - name: Create DMG
         run: |
-          hdiutil create -volname "Home Assistant" -srcfolder dist/HomeAssistant.app -ov -format UDZO dist/HomeAssistant-macOS.dmg
+          set -o pipefail
+          hdiutil create -volname "Home Assistant" -srcfolder dist/HomeAssistant.app -ov -format UDZO dist/HomeAssistant-macOS.dmg 2>&1 | tee build-logs/dmg.log
+
+      - name: Upload macOS build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-logs
+          path: |
+            build-logs/**
+            build/**
+          retention-days: 14
+          if-no-files-found: warn
       
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4

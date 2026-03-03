@@ -28,7 +28,21 @@ jobs:
 
       - name: Validate version consistency
         run: |
-          python -c "import pathlib,re,sys,tomllib; py=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); v1=py['project']['version']; txt=pathlib.Path('src/__init__.py').read_text(encoding='utf-8'); m=re.search(r'__version__\s*=\s*\"([^\"]+)\"', txt); v2=m.group(1) if m else None; print(f'pyproject={v1}, src={v2}'); sys.exit(0 if (v1 and v1==v2) else 1)"
+          $code = @'
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          py = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          v1 = py["project"]["version"]
+          txt = pathlib.Path("src/__init__.py").read_text(encoding="utf-8")
+          m = re.search(r"__version__\s*=\s*\"([^\"]+)\"", txt)
+          v2 = m.group(1) if m else None
+          print(f"pyproject={v1}, src={v2}")
+          sys.exit(0 if (v1 and v1 == v2) else 1)
+          '@
+          python -c $code
         shell: pwsh
       
       - name: Install dependencies

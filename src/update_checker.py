@@ -5,6 +5,7 @@ Check for new versions from GitHub releases
 
 import logging
 import json
+import platform
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -97,37 +98,42 @@ def _compare_versions(current: str, latest: str) -> bool:
 
 def show_update_notification(current_version: str, latest_version: str) -> None:
     """
-    Show update notification using Windows toast
+    Show update notification using cross-platform handler
 
     Args:
         current_version: Current version
         latest_version: Latest version
     """
     try:
-        from windows_toasts import Toast, InteractableWindowsToaster, ToastButton
-        import webbrowser
+        if platform.system() == "Windows":
+            from windows_toasts import Toast, InteractableWindowsToaster, ToastButton
+            import webbrowser
 
-        toaster = InteractableWindowsToaster('Home Assistant Windows')
+            toaster = InteractableWindowsToaster('Home Assistant Windows')
 
-        # Create toast
-        toast = Toast()
-        toast.text_fields = [
-            f'New Version Available: v{latest_version}',
-            f'Current version: v{current_version}'
-        ]
+            toast = Toast()
+            toast.text_fields = [
+                f'New Version Available: v{latest_version}',
+                f'Current version: v{current_version}'
+            ]
+            toast.AddAction(ToastButton('Download', arguments='download'))
 
-        # Add download button
-        toast.AddAction(ToastButton('Download', arguments='download'))
+            def on_activated(args):
+                webbrowser.open(RELEASE_PAGE_URL)
 
-        # Set click action to open download link
-        def on_activated(args):
-            webbrowser.open(RELEASE_PAGE_URL)
+            toast.on_activated = on_activated
+            toaster.show_toast(toast)
+            logger.info(f"Update notification shown: {current_version} -> {latest_version}")
+            return
 
-        toast.on_activated = on_activated
+        from src.notify.toast_notification import get_notification_handler, Notification
 
-        # Show toast
-        toaster.show_toast(toast)
-        logger.info(f"Update notification shown: {current_version} -> {latest_version}")
+        handler = get_notification_handler()
+        message = f"Current version: v{current_version}\nLatest version: v{latest_version}"
+        success = handler.show(Notification(title="New version available", message=message, duration=8))
+        if not success:
+            logger.warning("Failed to show update notification")
+        logger.info(f"Update notification handled: {current_version} -> {latest_version}")
 
     except Exception as e:
         logger.error(f"Failed to show update notification: {e}")

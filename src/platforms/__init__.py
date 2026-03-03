@@ -4,13 +4,8 @@ Provides platform-specific implementations for cross-platform support
 """
 
 import platform
-import sys
 from typing import Optional
 from src.platforms.base import PlatformBase, Notification
-
-# Import platform-specific implementations
-from src.platforms.windows import WindowsPlatform
-from src.platforms.macos import MacOSPlatform
 
 # Platform detection
 def get_platform() -> str:
@@ -25,15 +20,15 @@ def get_platform_implementation() -> PlatformBase:
         PlatformBase: Platform-specific implementation instance
     """
     current_platform = get_platform()
-    
+
     if current_platform == "Windows":
+        from src.platforms.windows import WindowsPlatform
         return WindowsPlatform()
     elif current_platform == "Darwin":  # macOS
+        from src.platforms.macos import MacOSPlatform
         return MacOSPlatform()
     else:
-        # Fallback to Windows for other platforms (or raise error)
-        print(f"Warning: Unsupported platform {current_platform}, using Windows implementation")
-        return WindowsPlatform()
+        raise RuntimeError(f"Unsupported platform: {current_platform}")
 
 # Singleton instance
 _platform_instance: Optional[PlatformBase] = None

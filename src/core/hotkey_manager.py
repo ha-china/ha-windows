@@ -5,6 +5,7 @@ Manages global keyboard shortcuts for voice input and other functions.
 """
 
 import logging
+import platform
 import threading
 from typing import Optional, Callable
 
@@ -32,8 +33,12 @@ class HotkeyManager:
             self._keyboard_available = True
             logger.info("Keyboard library available for global hotkeys")
         except ImportError:
-            logger.warning("Keyboard library not available, hotkeys disabled")
-            logger.warning("Install with: pip install keyboard")
+            system = platform.system()
+            if system == "Windows":
+                logger.warning("Keyboard library not available, hotkeys disabled")
+                logger.warning("Install with: pip install keyboard")
+            else:
+                logger.warning(f"Global hotkey not supported on {system} (keyboard backend unavailable)")
 
     def set_hotkey(self, hotkey: str, callback: Callable) -> bool:
         """
@@ -47,7 +52,7 @@ class HotkeyManager:
             bool: Whether hotkey was set successfully
         """
         if not self._keyboard_available:
-            logger.error("Cannot set hotkey: keyboard library not available")
+            logger.error("Cannot set hotkey: backend not available on this platform")
             return False
 
         # Remove previous hotkey if exists

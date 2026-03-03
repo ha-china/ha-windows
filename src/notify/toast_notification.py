@@ -8,6 +8,7 @@ macOS: osascript
 
 import asyncio
 import logging
+import platform
 import tempfile
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -95,7 +96,13 @@ class NotificationHandler:
         Returns:
             bool: True if successful
         """
-        # Try platform abstraction layer first
+        # Keep legacy Windows behavior first to avoid regressions
+        if platform.system() == "Windows":
+            shown = self._show_windows(notification)
+            if shown:
+                return True
+
+        # Try platform abstraction layer
         if self._platform and PlatformNotification:
             try:
                 platform_notification = PlatformNotification(

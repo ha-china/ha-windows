@@ -17,6 +17,7 @@ import asyncio
 import argparse
 import socket
 import threading
+import platform
 
 # PyInstaller path setup
 if getattr(sys, 'frozen', False):
@@ -72,7 +73,21 @@ def check_dependencies():
 # Configure logging
 # Use user directory for log file to avoid permission issues in Program Files
 import os
-log_dir = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'HomeAssistantWindows')
+
+
+def _get_log_dir() -> str:
+    system = platform.system()
+    home = os.path.expanduser('~')
+
+    if system == 'Windows':
+        return os.path.join(home, 'AppData', 'Local', 'HomeAssistantWindows')
+    if system == 'Darwin':
+        return os.path.join(home, 'Library', 'Logs', 'HomeAssistantWindows')
+
+    return os.path.join(home, '.local', 'state', 'HomeAssistantWindows')
+
+
+log_dir = _get_log_dir()
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'ha_windows.log')
 
@@ -94,7 +109,7 @@ def _get_hostname() -> str:
         hostname = socket.gethostname()
         return hostname.split('.')[0]
     except Exception:
-        return "Windows-PC"
+        return "HA-Client"
 
 
 class HomeAssistantWindows:
@@ -196,7 +211,7 @@ class HomeAssistantWindows:
         device_info = DeviceInfo(
             name=self.device_name,
             version="1.0.0",
-            platform="Windows",
+            platform=platform.system(),
             board="PC",
         )
 

@@ -585,6 +585,8 @@ class ESPHomeProtocol(asyncio.Protocol):
                 self._hotkey_manager.set_hotkey(hotkey, self._on_voice_input_trigger)
             else:
                 self._hotkey_manager.remove_hotkey()
+        elif hotkey:
+            logger.warning("Hotkey saved but runtime hotkey backend is unavailable on this platform")
 
     def play_tts(self) -> None:
         """Play TTS response"""

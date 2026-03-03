@@ -8,6 +8,7 @@ Also provides ESPHome entity definitions and states for server mode.
 import asyncio
 import logging
 import platform
+import re
 from typing import Dict, List, Optional, Tuple
 
 import psutil
@@ -73,6 +74,36 @@ class WindowsMonitor:
         self._available_entities: List[Tuple[str, str, str, int]] = []
         self._entity_map: Dict[str, Tuple[str, str, int]] = {}
         logger.info("Windows monitor initialized")
+
+    @staticmethod
+    def _mount_point_to_object_id(mount_point: str) -> str:
+        """Convert mount point to safe object id suffix."""
+        if not mount_point:
+            return "root"
+
+        normalized = mount_point.strip().lower().replace('\\', '/').rstrip('/')
+        if not normalized:
+            return "root"
+
+        if normalized == '/':
+            return "root"
+
+        if len(normalized) == 2 and normalized[1] == ':':
+            return normalized[0]
+
+        # Keep only alphanumerics for stable entity ids
+        return re.sub(r'[^a-z0-9]+', '_', normalized).strip('_') or "disk"
+
+    @staticmethod
+    def _mount_point_display_name(mount_point: str) -> str:
+        """Human-readable mount point label for entity names."""
+        if not mount_point or mount_point == '/':
+            return '/'
+
+        normalized = mount_point.rstrip('\\/')
+        if len(normalized) == 2 and normalized[1] == ':':
+            return normalized[0].upper()
+        return normalized or '/'
 
     # ========================================================================
     # System Info Methods
@@ -297,17 +328,17 @@ class WindowsMonitor:
         disk_info = info.get("disk", {})
         disk_key = DISK_KEY_OFFSET
         for mount_point in sorted(disk_info.keys()):
-            # Get drive letter (e.g., "C" from "C:\")
-            drive_letter = mount_point.rstrip(":\\")
+            mount_id = self._mount_point_to_object_id(mount_point)
+            mount_name = self._mount_point_display_name(mount_point)
 
             # Disk usage %
-            usage_id = f"disk_{drive_letter.lower()}_usage"
-            available.append((usage_id, f"Disk {drive_letter} Usage", "mdi:harddisk", disk_key))
+            usage_id = f"disk_{mount_id}_usage"
+            available.append((usage_id, f"Disk {mount_name} Usage", "mdi:harddisk", disk_key))
             disk_key += 1
 
             # Disk free GB
-            free_id = f"disk_{drive_letter.lower()}_free"
-            available.append((free_id, f"Disk {drive_letter} Free", "mdi:harddisk", disk_key))
+            free_id = f"disk_{mount_id}_free"
+            available.append((free_id, f"Disk {mount_name} Free", "mdi:harddisk", disk_key))
             disk_key += 1
 
         # Battery - only if battery info available
@@ -473,16 +504,16 @@ class WindowsMonitor:
         # Disk sensors - usage% and free GB for each drive
         disk_info = info.get("disk", {})
         for mount_point, disk_data in disk_info.items():
-            drive_letter = mount_point.rstrip(":\\").lower()
+            mount_id = self._mount_point_to_object_id(mount_point)
 
             # Disk usage %
-            usage_id = f"disk_{drive_letter}_usage"
+            usage_id = f"disk_{mount_id}_usage"
             if usage_id in self._entity_map:
                 _, _, key = self._entity_map[usage_id]
                 states.append(SensorStateResponse(key=key, state=float(disk_data.get("percent", 0))))
 
             # Disk free GB
-            free_id = f"disk_{drive_letter}_free"
+            free_id = f"disk_{mount_id}_free"
             if free_id in self._entity_map:
                 _, _, key = self._entity_map[free_id]
                 states.append(SensorStateResponse(key=key, state=float(disk_data.get("free_gb", 0))))

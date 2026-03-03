@@ -4,6 +4,7 @@ Exposes notification and other features as services in Home Assistant
 """
 
 import logging
+import platform
 from collections.abc import Iterable
 from typing import Dict, List
 
@@ -272,6 +273,8 @@ class ServiceEntityManager:
             except Exception as e:
                 logger.error(f"Error in hotkey callback: {e}")
         else:
-            logger.warning("Hotkey callback not set")
+            logger.warning(
+                f"Hotkey callback not set (platform={platform.system()}, feature may be unavailable)"
+            )
 
         logger.info(f"Voice input hotkey updated: {hotkey}")

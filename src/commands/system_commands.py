@@ -4,6 +4,7 @@ Implements cross-platform system control commands (shutdown, restart, lock scree
 """
 
 import logging
+import platform
 import subprocess
 
 from src.i18n import get_i18n
@@ -32,6 +33,16 @@ class SystemCommands:
             except Exception as e:
                 logger.warning(f"Failed to initialize platform abstraction: {e}")
 
+    @staticmethod
+    def _not_supported(action: str) -> dict:
+        """Return standardized not-supported result for current platform."""
+        system = platform.system()
+        return {
+            'success': False,
+            'message': f"{action} is not supported on {system} in fallback mode",
+            'action': action,
+        }
+
     def shutdown(self) -> dict:
         """
         Shutdown
@@ -53,6 +64,9 @@ class SystemCommands:
                 logger.error(f"Platform shutdown failed: {e}")
         
         # Fallback to Windows-specific implementation
+        if platform.system() != "Windows":
+            logger.warning("Shutdown not supported for non-Windows fallback path")
+            return self._not_supported('shutdown')
         return self._shutdown_windows()
 
     def restart(self) -> dict:
@@ -76,6 +90,9 @@ class SystemCommands:
                 logger.error(f"Platform restart failed: {e}")
         
         # Fallback to Windows-specific implementation
+        if platform.system() != "Windows":
+            logger.warning("Restart not supported for non-Windows fallback path")
+            return self._not_supported('restart')
         return self._restart_windows()
 
     def sleep(self) -> dict:
@@ -99,6 +116,9 @@ class SystemCommands:
                 logger.error(f"Platform sleep failed: {e}")
         
         # Fallback to Windows-specific implementation
+        if platform.system() != "Windows":
+            logger.warning("Sleep not supported for non-Windows fallback path")
+            return self._not_supported('sleep')
         return self._sleep_windows()
 
     def hibernate(self) -> dict:
@@ -122,6 +142,9 @@ class SystemCommands:
                 logger.error(f"Platform hibernate failed: {e}")
         
         # Fallback to Windows-specific implementation
+        if platform.system() != "Windows":
+            logger.warning("Hibernate not supported for non-Windows fallback path")
+            return self._not_supported('hibernate')
         return self._hibernate_windows()
 
     def lock(self) -> dict:
@@ -145,6 +168,9 @@ class SystemCommands:
                 logger.error(f"Platform lock screen failed: {e}")
         
         # Fallback to Windows-specific implementation
+        if platform.system() != "Windows":
+            logger.warning("Lock not supported for non-Windows fallback path")
+            return self._not_supported('lock')
         return self._lock_windows()
 
     def logoff(self) -> dict:
@@ -168,6 +194,9 @@ class SystemCommands:
                 logger.error(f"Platform logoff failed: {e}")
         
         # Fallback to Windows-specific implementation
+        if platform.system() != "Windows":
+            logger.warning("Logoff not supported for non-Windows fallback path")
+            return self._not_supported('logoff')
         return self._logoff_windows()
 
     # ========== Windows-specific fallback methods ==========

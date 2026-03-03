@@ -4,6 +4,7 @@ Responsible for parsing and executing commands from Home Assistant
 """
 
 import logging
+import platform
 import subprocess
 import webbrowser
 from typing import Dict, Callable, Optional
@@ -230,14 +231,27 @@ class CommandExecutor:
             message = parts[1] if len(parts) > 1 else ""
             duration = int(parts[2]) if len(parts) > 2 else 5
 
-            from win10toast import ToastNotifier
-            toaster = ToastNotifier()
-            toaster.show_toast(
-                title=title,
-                msg=message,
-                duration=duration,
-                threaded=True
-            )
+            if platform.system() == "Windows":
+                from win10toast import ToastNotifier
+
+                toaster = ToastNotifier()
+                toaster.show_toast(
+                    title=title,
+                    msg=message,
+                    duration=duration,
+                    threaded=True,
+                )
+            else:
+                from src.notify.toast_notification import get_notification_handler, Notification
+
+                handler = get_notification_handler()
+                ok = handler.show(Notification(title=title, message=message, duration=duration))
+                if not ok:
+                    return {
+                        'success': False,
+                        'message': _i18n.t('command_failed'),
+                        'error': 'Notification backend unavailable'
+                    }
 
             return {
                 'success': True,

@@ -74,6 +74,7 @@ def get_platform_specific_args():
             "--hidden-import=pycaw",
             "--hidden-import=pystray",
             "--hidden-import=win10toast",
+            "--hidden-import=src.platforms.windows",
         ])
         
     elif CURRENT_PLATFORM == "Darwin":  # macOS
@@ -147,8 +148,6 @@ def build_exe():
         # Platform abstraction layer
         "--hidden-import=src.platforms",
         "--hidden-import=src.platforms.base",
-        "--hidden-import=src.platforms.windows",
-        "--hidden-import=src.platforms.macos",
         # Collect all submodules
         "--collect-all=customtkinter",
         "--collect-all=aioesphomeapi",

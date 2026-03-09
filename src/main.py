@@ -443,12 +443,17 @@ class HomeAssistantWindows:
         action = "Initializing" if initial_setup else "Switching"
         logger.info(f"🔄 {action} wake words: {target_wake_words}")
 
+        existing = self._wake_word_detectors
         detectors = {}
+
         for wake_word_id in target_wake_words:
-            detector = WakeWordDetector(wake_word_id)
-            if getattr(detector, "_model", None) is None:
-                logger.warning(f"Wake word detector unavailable: {wake_word_id}")
-                continue
+            detector = existing.get(wake_word_id)
+            if detector is None:
+                detector = WakeWordDetector(wake_word_id)
+                if getattr(detector, "_model", None) is None:
+                    logger.warning(f"Wake word detector unavailable: {wake_word_id}")
+                    continue
+
             if self._wake_word_callback:
                 detector.on_wake_word(self._wake_word_callback)
             detectors[wake_word_id] = detector

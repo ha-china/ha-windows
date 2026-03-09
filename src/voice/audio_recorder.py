@@ -260,12 +260,27 @@ class AsyncAudioRecorder:
             device: Audio device name
         """
         self.recorder = AudioRecorder(device)
-        self.audio_queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self.audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=200)
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     async def start_recording(self):
         """Start recording"""
+        self._loop = asyncio.get_running_loop()
         self.recorder.start_recording(self._on_audio_data)
         logger.info("Async recording started")
+
+    def _enqueue_audio_data(self, audio_data: bytes) -> None:
+        """Enqueue audio in event loop thread with bounded growth."""
+        if self.audio_queue.full():
+            try:
+                self.audio_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+
+        try:
+            self.audio_queue.put_nowait(audio_data)
+        except asyncio.QueueFull:
+            pass
 
     def _on_audio_data(self, audio_data: bytes):
         """
@@ -276,17 +291,28 @@ class AsyncAudioRecorder:
         """
         # Called in recording thread, put data in async queue
         try:
-            asyncio.run_coroutine_threadsafe(
-                self.audio_queue.put(audio_data),
-                asyncio.get_event_loop()
-            )
+            if self._loop is None:
+                return
+            self._loop.call_soon_threadsafe(self._enqueue_audio_data, audio_data)
         except Exception as e:
             logger.error(f"Audio data callback failed: {e}")
 
     def stop_recording(self):
         """Stop recording"""
         self.recorder.stop_recording()
+
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._clear_queue)
+
         logger.info("Async recording stopped")
+
+    def _clear_queue(self) -> None:
+        """Clear buffered audio chunks from async queue."""
+        try:
+            while True:
+                self.audio_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
 
     async def get_audio_chunk(self) -> bytes:
         """

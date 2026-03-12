@@ -87,15 +87,46 @@ def _get_log_dir() -> str:
     return os.path.join(home, '.local', 'state', 'HomeAssistantWindows')
 
 
+class SizeLimitedFileHandler(logging.FileHandler):
+    """Keep a single log file capped at a fixed size."""
+
+    def __init__(self, filename: str, max_bytes: int, **kwargs):
+        self.max_bytes = max_bytes
+        super().__init__(filename, **kwargs)
+
+    def emit(self, record):
+        if self.stream is None:
+            self.stream = self._open()
+
+        if self.max_bytes > 0:
+            try:
+                self.stream.seek(0, os.SEEK_END)
+                if self.stream.tell() >= self.max_bytes:
+                    self.stream.close()
+                    self.mode = 'w'
+                    self.stream = self._open()
+                    self.mode = 'a'
+            except Exception:
+                self.handleError(record)
+                return
+
+        super().emit(record)
+
+
 log_dir = _get_log_dir()
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'ha_windows.log')
+log_max_bytes = 5 * 1024 * 1024
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_file, encoding='utf-8'),
+        SizeLimitedFileHandler(
+            log_file,
+            max_bytes=log_max_bytes,
+            encoding='utf-8',
+        ),
         logging.StreamHandler()
     ]
 )

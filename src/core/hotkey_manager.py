@@ -6,7 +6,6 @@ Manages global keyboard shortcuts for voice input and other functions.
 
 import logging
 import platform
-import threading
 from typing import Optional, Callable
 
 logger = logging.getLogger(__name__)
@@ -23,8 +22,7 @@ class HotkeyManager:
         """Initialize hotkey manager"""
         self._hotkey: Optional[str] = None
         self._callback: Optional[Callable] = None
-        self._listening_thread: Optional[threading.Thread] = None
-        self._running = False
+        self._hotkey_handle = None
         self._keyboard_available = False
 
         # Check if keyboard library is available
@@ -62,46 +60,18 @@ class HotkeyManager:
         self._hotkey = hotkey
         self._callback = callback
 
-        # Start listening for hotkey
-        self._start_listening()
-        logger.info(f"Hotkey set: {hotkey}")
-        return True
-
-    def _start_listening(self) -> None:
-        """Start listening for hotkey in background thread"""
-        if not self._hotkey or not self._callback:
-            return
-
-        def hotkey_listener():
-            """Hotkey listener function"""
+        try:
             import keyboard
 
-            try:
-                self._running = True
-                logger.info(f"Listening for hotkey: {self._hotkey}")
-
-                # Wait for hotkey press
-                keyboard.wait(self._hotkey)
-
-                if self._running:
-                    logger.info(f"Hotkey triggered: {self._hotkey}")
-                    # Call the callback in a separate thread to avoid blocking
-                    callback_thread = threading.Thread(
-                        target=self._safe_callback,
-                        daemon=True
-                    )
-                    callback_thread.start()
-            except Exception as e:
-                logger.error(f"Error in hotkey listener: {e}")
-            finally:
-                self._running = False
-
-        # Start listener thread
-        self._listening_thread = threading.Thread(
-            target=hotkey_listener,
-            daemon=True
-        )
-        self._listening_thread.start()
+            self._hotkey_handle = keyboard.add_hotkey(hotkey, self._safe_callback, suppress=False)
+            logger.info(f"Hotkey set: {hotkey}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to register hotkey '{hotkey}': {e}")
+            self._hotkey = None
+            self._callback = None
+            self._hotkey_handle = None
+            return False
 
     def _safe_callback(self) -> None:
         """Safely execute callback with error handling"""
@@ -113,10 +83,16 @@ class HotkeyManager:
 
     def remove_hotkey(self) -> None:
         """Remove current hotkey"""
-        self._running = False
+        if self._keyboard_available and self._hotkey_handle is not None:
+            try:
+                import keyboard
+
+                keyboard.remove_hotkey(self._hotkey_handle)
+            except Exception as e:
+                logger.error(f"Failed to remove hotkey: {e}")
         self._hotkey = None
         self._callback = None
-        self._listening_thread = None
+        self._hotkey_handle = None
         logger.info("Hotkey removed")
 
     def get_hotkey(self) -> Optional[str]:

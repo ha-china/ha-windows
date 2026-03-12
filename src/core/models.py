@@ -7,6 +7,10 @@ References linux-voice-assistant's models.py
 import json
 import logging
 import os
+import shutil
+import tempfile
+import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -212,6 +216,9 @@ class AudioPlayer:
         self._done_callback: Optional[Callable] = None
         self._volume_controller = get_volume_controller()
         self._play_thread: Optional[Any] = None
+        self._playback_lock = Lock()
+        self._playback_id = 0
+        self._temp_file_path: Optional[str] = None
 
         # Try VLC first (best for streaming, requires VLC installed)
         self._vlc_instance: Optional[Any] = None
@@ -249,28 +256,29 @@ class AudioPlayer:
 
     def play(self, url: str, done_callback: Optional[Callable] = None) -> None:
         """Play audio (true streaming for URLs)"""
-        import threading
-
         logger.debug(f"Playing: {url}")
-        self._is_playing = True
-        self._done_callback = done_callback
+        self.stop()
+
+        with self._playback_lock:
+            self._playback_id += 1
+            playback_id = self._playback_id
+            self._is_playing = True
+            self._done_callback = done_callback
 
         if self._vlc_available:
             # VLC handles streaming natively
-            self._play_vlc(url)
+            self._play_vlc(url, playback_id)
         else:
-            # Fallback to pygame in background thread
+            # Fallback to pygame in background thread without buffering URL in memory
             self._play_thread = threading.Thread(
                 target=self._play_pygame,
-                args=(url,),
+                args=(url, playback_id),
                 daemon=True
             )
             self._play_thread.start()
 
-    def _play_vlc(self, url: str) -> None:
+    def _play_vlc(self, url: str, playback_id: int) -> None:
         """Play with VLC (true streaming)"""
-        import threading
-
         try:
             import vlc
 
@@ -283,39 +291,66 @@ class AudioPlayer:
 
             # Monitor playback in background
             def monitor():
-                import time
                 time.sleep(0.5)  # Wait for playback to start
                 while True:
+                    if not self._is_current_playback(playback_id):
+                        return
                     state = self._vlc_player.get_state()
                     if state in (vlc.State.Ended, vlc.State.Stopped, vlc.State.Error):
                         break
                     time.sleep(0.1)
                 logger.debug("VLC playback finished")
-                self._on_playback_finished()
+                self._on_playback_finished(playback_id)
 
             threading.Thread(target=monitor, daemon=True).start()
 
         except Exception as e:
             logger.error(f"VLC playback error: {e}")
-            self._on_playback_finished()
+            self._on_playback_finished(playback_id)
 
-    def _play_pygame(self, url: str) -> None:
-        """Play with pygame (downloads to memory first)"""
-        import io
-        import time
+    def _download_to_temp_file(self, url: str) -> str:
+        """Download a remote audio file to disk instead of memory."""
+        import urllib.request
+
+        suffix = Path(url.split("?", 1)[0]).suffix or ".audio"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp_path = tmp.name
+            with urllib.request.urlopen(url, timeout=30) as response:
+                shutil.copyfileobj(response, tmp)
+
+        with self._playback_lock:
+            old_temp = self._temp_file_path
+            self._temp_file_path = tmp_path
+
+        if old_temp and old_temp != tmp_path:
+            self._cleanup_temp_file(old_temp)
+
+        return tmp_path
+
+    def _cleanup_temp_file(self, path: Optional[str]) -> None:
+        """Delete a temporary playback file if present."""
+        if not path:
+            return
+
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+        except Exception as e:
+            logger.debug(f"Failed to remove temp audio file {path}: {e}")
+
+    def _play_pygame(self, url: str, playback_id: int) -> None:
+        """Play with pygame using file-backed playback for remote URLs."""
 
         try:
             import pygame
 
             if url.startswith(('http://', 'https://')):
-                import urllib.request
-                logger.debug(f"Downloading audio: {url}")
-
-                with urllib.request.urlopen(url, timeout=30) as response:
-                    audio_data = response.read()
-
-                audio_io = io.BytesIO(audio_data)
-                pygame.mixer.music.load(audio_io)
+                logger.debug(f"Downloading audio to temp file: {url}")
+                local_path = self._download_to_temp_file(url)
+                if not self._is_current_playback(playback_id):
+                    self._cleanup_temp_file(local_path)
+                    return
+                pygame.mixer.music.load(local_path)
             else:
                 pygame.mixer.music.load(url)
 
@@ -323,6 +358,8 @@ class AudioPlayer:
             pygame.mixer.music.play()
 
             while pygame.mixer.music.get_busy():
+                if not self._is_current_playback(playback_id):
+                    return
                 time.sleep(0.1)
 
             logger.debug("pygame playback finished")
@@ -331,11 +368,21 @@ class AudioPlayer:
             logger.error(f"pygame playback error: {e}")
 
         finally:
-            self._on_playback_finished()
+            self._on_playback_finished(playback_id)
+
+    def _is_current_playback(self, playback_id: int) -> bool:
+        """Check whether a playback token still matches the active item."""
+        with self._playback_lock:
+            return playback_id == self._playback_id
 
     def stop(self) -> None:
         """Stop playback"""
         logger.debug("Stopping playback")
+        with self._playback_lock:
+            self._playback_id += 1
+            self._done_callback = None
+            temp_path = self._temp_file_path
+            self._temp_file_path = None
         try:
             if self._vlc_available and self._vlc_player:
                 self._vlc_player.stop()
@@ -345,6 +392,7 @@ class AudioPlayer:
         except Exception as e:
             logger.error(f"Stop error: {e}")
         self._is_playing = False
+        self._cleanup_temp_file(temp_path)
 
     def pause(self) -> None:
         """Pause playback"""
@@ -393,16 +441,24 @@ class AudioPlayer:
             logger.error(f"Set volume error: {e}")
         logger.debug(f"Volume set to {self._volume}")
 
-    def _on_playback_finished(self) -> None:
+    def _on_playback_finished(self, playback_id: int) -> None:
         """Playback finished callback"""
-        self._is_playing = False
-        if self._done_callback:
+        with self._playback_lock:
+            if playback_id != self._playback_id:
+                return
+            self._is_playing = False
+            callback = self._done_callback
+            self._done_callback = None
+            temp_path = self._temp_file_path
+            self._temp_file_path = None
+
+        self._cleanup_temp_file(temp_path)
+
+        if callback:
             try:
-                self._done_callback()
+                callback()
             except Exception as e:
                 logger.error(f"Error in done callback: {e}")
-            finally:
-                self._done_callback = None
 
 
 @dataclass

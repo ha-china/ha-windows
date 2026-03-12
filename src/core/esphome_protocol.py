@@ -65,6 +65,8 @@ class ESPHomeProtocol(asyncio.Protocol):
     Implements complete Voice Assistant state machine
     """
 
+    MAX_BUFFER_SIZE = 4 * 1024 * 1024
+
     def __init__(self, state: ServerState):
         super().__init__()
 
@@ -143,6 +145,19 @@ class ESPHomeProtocol(asyncio.Protocol):
 
     def data_received(self, data: bytes) -> None:
         """Receive data"""
+        incoming_size = len(data)
+        if self._buffer_len + incoming_size > self.MAX_BUFFER_SIZE:
+            logger.error(
+                "Protocol buffer exceeded %d bytes; closing connection",
+                self.MAX_BUFFER_SIZE,
+            )
+            self._buffer = None
+            self._buffer_len = 0
+            self._pos = 0
+            if self._transport:
+                self._transport.close()
+            return
+
         if self._buffer is None:
             self._buffer = data
             self._buffer_len = len(data)

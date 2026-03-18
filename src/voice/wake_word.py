@@ -6,6 +6,8 @@ Supports both pymicro-wakeword and pyopen-wakeword for wake word detection.
 
 import json
 import logging
+import os
+import platform
 from pathlib import Path
 from typing import Callable, Dict, Optional, Union
 
@@ -15,6 +17,24 @@ logger = logging.getLogger(__name__)
 
 # Default wake word directory (relative to src/)
 DEFAULT_WAKEWORD_DIR = Path(__file__).parent.parent / "wakewords"
+DEFAULT_OPEN_WAKEWORD_DIR = DEFAULT_WAKEWORD_DIR / "openWakeWord"
+
+
+def _get_user_data_dir() -> Path:
+    """Get the app data directory used for user-managed files."""
+    home = Path(os.path.expanduser("~"))
+    system = platform.system()
+
+    if system == "Windows":
+        return home / "AppData" / "Local" / "HomeAssistantWindows"
+    if system == "Darwin":
+        return home / "Library" / "Logs" / "HomeAssistantWindows"
+    return home / ".local" / "state" / "HomeAssistantWindows"
+
+
+USER_WAKEWORD_MODELS_DIR = _get_user_data_dir() / "WakeWordModels"
+USER_MICRO_WAKEWORD_DIR = USER_WAKEWORD_MODELS_DIR / "MicroWakeWord"
+USER_OPEN_WAKEWORD_DIR = USER_WAKEWORD_MODELS_DIR / "OpenWakeWord"
 
 # Try to import pymicro-wakeword
 _microwakeword_available = False
@@ -48,8 +68,40 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
     Returns:
         Dict mapping wake word ID to AvailableWakeWord
     """
-    wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
-    wake_words = {}
+    if wakeword_dir is not None:
+        return _load_wake_words_from_directory(wakeword_dir)
+
+    USER_MICRO_WAKEWORD_DIR.mkdir(parents=True, exist_ok=True)
+    USER_OPEN_WAKEWORD_DIR.mkdir(parents=True, exist_ok=True)
+
+    wake_words: Dict[str, AvailableWakeWord] = {}
+    for directory in (
+        DEFAULT_WAKEWORD_DIR,
+        DEFAULT_OPEN_WAKEWORD_DIR,
+        USER_MICRO_WAKEWORD_DIR,
+        USER_OPEN_WAKEWORD_DIR,
+    ):
+        loaded = _load_wake_words_from_directory(directory)
+        for model_id, wake_word in loaded.items():
+            if model_id in wake_words:
+                logger.warning(
+                    "Wake word '%s' from %s overrides existing definition",
+                    model_id,
+                    directory,
+                )
+            wake_words[model_id] = wake_word
+
+    logger.info(
+        "Loaded %d wake word models from built-in and user directories under %s",
+        len(wake_words),
+        USER_WAKEWORD_MODELS_DIR,
+    )
+    return wake_words
+
+
+def _load_wake_words_from_directory(wakeword_dir: Path) -> Dict[str, AvailableWakeWord]:
+    """Load wake word definitions from a single directory."""
+    wake_words: Dict[str, AvailableWakeWord] = {}
 
     if not wakeword_dir.exists():
         logger.warning(f"Wake word directory not found: {wakeword_dir}")
@@ -66,20 +118,38 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
             model_type = config.get('type', 'micro')
 
             ww_type = WakeWordType.MICRO_WAKE_WORD if model_type == 'micro' else WakeWordType.OPEN_WAKE_WORD
+            wake_word_path = json_file
+
+            if ww_type == WakeWordType.MICRO_WAKE_WORD:
+                model_file = config.get('model')
+                if model_file:
+                    model_path = json_file.parent / model_file
+                    if not model_path.exists():
+                        logger.error(f"MicroWakeWord model file not found: {model_path}")
+                        continue
+
+            if ww_type == WakeWordType.OPEN_WAKE_WORD:
+                model_file = config.get('model')
+                if not model_file:
+                    logger.error(f"OpenWakeWord config missing model field: {json_file}")
+                    continue
+                wake_word_path = json_file.parent / model_file
+                if not wake_word_path.exists():
+                    logger.error(f"OpenWakeWord model file not found: {wake_word_path}")
+                    continue
 
             wake_words[model_id] = AvailableWakeWord(
                 id=model_id,
                 type=ww_type,
                 wake_word=wake_word,
                 trained_languages=trained_languages,
-                wake_word_path=json_file,
+                wake_word_path=wake_word_path,
             )
             logger.debug(f"Loaded wake word: {model_id} -> '{wake_word}'")
 
         except Exception as e:
             logger.error(f"Failed to load wake word config {json_file}: {e}")
 
-    logger.info(f"Loaded {len(wake_words)} wake word models")
     return wake_words
 
 
@@ -96,10 +166,10 @@ class WakeWordDetector:
 
         Args:
             model_name: Wake word model name (e.g., 'okay_nabu', 'hey_jarvis')
-            wakeword_dir: Directory containing wake word models
+            wakeword_dir: Optional directory containing wake word models
         """
         self.model_name = model_name
-        self.wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
+        self.wakeword_dir = wakeword_dir
         self._on_wake_word: Optional[Callable[[str], None]] = None
         self._wake_word_phrase: str = model_name
         self._last_detection_logged = False  # Track if we already logged this detection
@@ -265,23 +335,8 @@ class WakeWordDetector:
         Returns:
             list: List of (model_name, wake_word_phrase) tuples
         """
-        wakeword_dir = wakeword_dir or DEFAULT_WAKEWORD_DIR
-        models = []
-
-        if not wakeword_dir.exists():
-            return models
-
-        for json_file in wakeword_dir.glob("*.json"):
-            model_name = json_file.stem
-            try:
-                with open(json_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                    wake_word = config.get('wake_word', model_name)
-                    models.append((model_name, wake_word))
-            except Exception:
-                models.append((model_name, model_name))
-
-        return models
+        wake_words = load_available_wake_words(wakeword_dir)
+        return [(model_id, wake_word.wake_word) for model_id, wake_word in wake_words.items()]
 
     @staticmethod
     def is_available() -> bool:

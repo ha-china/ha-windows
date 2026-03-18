@@ -75,6 +75,9 @@ class AvailableWakeWord:
             except ImportError:
                 logger.warning("pymicro_wakeword not installed")
                 return None
+            except Exception as e:
+                logger.error(f"Failed to load MicroWakeWord model {self.wake_word_path}: {e}")
+                return None
 
         if self.type == WakeWordType.OPEN_WAKE_WORD:
             try:
@@ -84,6 +87,9 @@ class AvailableWakeWord:
                 return oww_model
             except ImportError:
                 logger.warning("pyopen_wakeword not installed")
+                return None
+            except Exception as e:
+                logger.error(f"Failed to load OpenWakeWord model {self.wake_word_path}: {e}")
                 return None
 
         raise ValueError(f"Unexpected wake word type: {self.type}")

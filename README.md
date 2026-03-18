@@ -100,7 +100,7 @@ Use Home Assistant's `media_player.play_media` or `tts.speak` service to play au
 
 **Optional: Install VLC for streaming support**
 
-For long audio (music), install [VLC media player](https://www.videolan.org/vlc/) to enable true streaming playback. Without VLC, audio is downloaded to memory first (fine for short TTS).
+For long audio (music), install [VLC media player](https://www.videolan.org/vlc/) to enable true streaming playback. Without VLC, remote audio is downloaded to a temporary file before playback.
 
 ## 📥 Installation
 
@@ -168,6 +168,45 @@ Available wake words:
 - Hey Luna
 
 Configure wake word in Home Assistant's ESPHome device settings.
+
+### Custom Wake Word Models
+
+You can place custom wake word models in the user data directory:
+
+```text
+Windows: C:\Users\<username>\AppData\Local\HomeAssistantWindows\WakeWordModels\
+  MicroWakeWord\
+  OpenWakeWord\
+```
+
+Current behavior:
+- `MicroWakeWord` is used for MicroWakeWord-style models
+- `OpenWakeWord` is used for OpenWakeWord-style models
+- Invalid or corrupted models are skipped automatically and do not crash the app
+- If a custom model ID matches a built-in model ID, the custom one overrides the built-in one
+
+#### MicroWakeWord structure
+
+```text
+WakeWordModels/
+  MicroWakeWord/
+    my_wakeword.json
+    my_wakeword.tflite
+```
+
+#### OpenWakeWord structure
+
+```text
+WakeWordModels/
+  OpenWakeWord/
+    alexa_v0.1.json
+    alexa_v0.1.tflite
+```
+
+Notes:
+- The JSON filename without `.json` becomes the model ID
+- The `model` field must point to a file in the same directory
+- For examples, see `src/wakewords/okay_nabu.json` and `src/wakewords/openWakeWord/alexa_v0.1.json`
 
 ## 📝 Automation Examples
 

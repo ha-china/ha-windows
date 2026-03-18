@@ -13,6 +13,7 @@ from zeroconf import ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
 from src.i18n import get_i18n
+from src.core.models import get_mac_address
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()
@@ -51,21 +52,7 @@ class DeviceInfo:
     @staticmethod
     def _get_mac_address() -> str:
         """Get local MAC address"""
-        try:
-            # Get MAC address of first non-loopback interface
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            s.getsockname()[0]  # Trigger connection
-            s.close()
-
-            # Get MAC from IP
-            import uuid
-            mac = uuid.getnode()
-            mac_str = ':'.join(f'{(mac >> (i * 8)) & 0xff:02x}' for i in range(5, -1, -1))
-            return mac_str
-        except Exception:
-            # Return default MAC
-            return "00:00:00:00:00:01"
+        return get_mac_address()
 
 
 class MDNSBroadcaster:

@@ -5,8 +5,11 @@ References linux-voice-assistant's models.py
 """
 
 import json
+import hashlib
 import logging
 import os
+import platform
+import re
 import shutil
 import tempfile
 import threading
@@ -24,14 +27,98 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MAC_ADDRESS = "00:00:00:00:00:01"
+_MAC_ADDRESS_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
+
+
+def get_user_data_dir() -> Path:
+    """Get the user data directory for persistent app state."""
+    home = Path(os.path.expanduser("~"))
+    system = platform.system()
+
+    if system == "Windows":
+        return home / "AppData" / "Local" / "HomeAssistantWindows"
+    if system == "Darwin":
+        return home / "Library" / "Logs" / "HomeAssistantWindows"
+    return home / ".local" / "state" / "HomeAssistantWindows"
+
+
+def _get_device_identity_path() -> Path:
+    """Get the persistent device identity file path."""
+    return get_user_data_dir() / "device_identity.json"
+
+
+def _is_valid_mac_address(mac_address: str) -> bool:
+    """Validate colon-separated MAC address string."""
+    mac = mac_address.strip().lower()
+    return bool(_MAC_ADDRESS_RE.fullmatch(mac)) and mac != DEFAULT_MAC_ADDRESS
+
+
+def _format_mac_address(mac: int) -> str:
+    """Format a 48-bit integer as a colon-separated MAC address."""
+    return ":".join(f"{(mac >> i) & 0xff:02x}" for i in range(40, -1, -8))
+
+
+def _get_runtime_mac_address() -> str:
+    """Best-effort MAC address from the current runtime environment."""
+    try:
+        return _format_mac_address(uuid.getnode())
+    except Exception:
+        return DEFAULT_MAC_ADDRESS
+
+
+def _generate_persistent_mac_address(device_id: str) -> str:
+    """Generate a stable locally administered MAC from a device ID."""
+    digest = hashlib.sha256(device_id.encode("utf-8")).digest()
+    first_octet = (digest[0] | 0x02) & 0xFE
+    mac_bytes = [first_octet, digest[1], digest[2], digest[3], digest[4], digest[5]]
+    return ":".join(f"{byte:02x}" for byte in mac_bytes)
+
+
+def get_device_identity() -> Dict[str, str]:
+    """Load or create a persistent device identity."""
+    identity_path = _get_device_identity_path()
+
+    try:
+        identity_path.parent.mkdir(parents=True, exist_ok=True)
+        if identity_path.exists():
+            with open(identity_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            device_id = str(data.get("device_id", "")).strip()
+            mac_address = str(data.get("mac_address", "")).strip().lower()
+            if device_id and _is_valid_mac_address(mac_address):
+                return {
+                    "device_id": device_id,
+                    "mac_address": mac_address,
+                }
+
+            logger.warning("Invalid device identity file, regenerating: %s", identity_path)
+    except Exception as e:
+        logger.warning("Failed to load device identity, regenerating: %s", e)
+
+    device_id = uuid.uuid4().hex
+    mac_address = _get_runtime_mac_address()
+    if not _is_valid_mac_address(mac_address):
+        mac_address = _generate_persistent_mac_address(device_id)
+
+    identity = {
+        "device_id": device_id,
+        "mac_address": mac_address,
+    }
+
+    try:
+        with open(identity_path, "w", encoding="utf-8") as f:
+            json.dump(identity, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error("Failed to persist device identity: %s", e)
+
+    return identity
+
 
 def get_mac_address() -> str:
-    """Get MAC address (with colons format)"""
-    try:
-        mac = uuid.getnode()
-        return ":".join(f"{(mac >> i) & 0xff:02x}" for i in range(40, -1, -8))
-    except Exception:
-        return "00:00:00:00:00:01"
+    """Get the persistent ESPHome MAC address."""
+    return get_device_identity()["mac_address"]
 
 
 # pycaw availability flag (lazy import to avoid COM conflicts)
@@ -499,7 +586,7 @@ class ServerState:
 
     # Preferences
     preferences: Preferences = field(default_factory=Preferences)
-    preferences_path: Path = field(default_factory=lambda: Path(os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'HomeAssistantWindows', 'preferences.json')))
+    preferences_path: Path = field(default_factory=lambda: get_user_data_dir() / 'preferences.json')
     download_dir: Path = field(default_factory=lambda: Path("downloads"))
 
     # Entity references

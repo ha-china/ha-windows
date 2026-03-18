@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated wake word discovery to load built-in and user-provided MicroWakeWord and OpenWakeWord models together.
 - Invalid, missing, or corrupted wake word model files are now skipped safely instead of crashing the app.
 - Documented the custom wake word model directory structure in the README.
+- ESPHome and mDNS device identity now use a persistent MAC stored in the user data directory instead of depending on the runtime network environment.
 
 ## [0.4.4] - 2026-03-18
 

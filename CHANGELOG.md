@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-03-18
+
+### Fixed
+- Reduced long-run memory growth during remote audio playback by using temp-file backed playback instead of loading full responses into memory.
+- Added a hard limit for the ESPHome protocol receive buffer to avoid unbounded memory growth on malformed or stalled input.
+- Reworked global hotkey registration to clean up handlers correctly instead of leaving blocked listener threads behind.
+- Limited the application log file to a single 5 MB file to prevent unbounded disk usage over time.
+
 ## [0.4.0] - 2026-01-27
 
 ### Added

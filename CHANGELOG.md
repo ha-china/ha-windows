@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-03-18
+
+### Added
+- Added a `Thinking Sound` config switch entity and bundled a default processing sound from the reference project.
+
+### Improved
+- Synced more ESPHome device metadata so Home Assistant receives richer device information.
+- Improved the media player entity with fuller feature flags, better mute/unmute behavior, and persistent volume handling.
+- Added support for playing a short processing sound during voice assistant intent handling when enabled.
+
 ## [0.4.7] - 2026-03-18
 
 ### Fixed

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-03-18
+
+### Fixed
+- Fixed ESPHome entity key collisions that could prevent entity definitions and state updates from refreshing correctly in Home Assistant.
+- Added periodic ESPHome state updates after subscription so system sensors continue to refresh instead of only reporting once.
+- Adjusted CPU usage sampling for periodic reporting so the Home Assistant CPU usage graph shows more reliable values.
+
 ## [0.4.6] - 2026-03-18
 
 ### Improved

@@ -73,6 +73,7 @@ class WindowsMonitor:
         self._boot_time = psutil.boot_time()
         self._available_entities: List[Tuple[str, str, str, int]] = []
         self._entity_map: Dict[str, Tuple[str, str, int]] = {}
+        psutil.cpu_percent(interval=None)
         logger.info("Windows monitor initialized")
 
     @staticmethod
@@ -117,7 +118,7 @@ class WindowsMonitor:
             Dict: CPU information
         """
         try:
-            cpu_percent = psutil.cpu_percent(interval=1)
+            cpu_percent = psutil.cpu_percent(interval=None)
             cpu_count = psutil.cpu_count()
             cpu_freq = psutil.cpu_freq()
 

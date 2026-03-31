@@ -67,13 +67,13 @@ class ConfigSensorManager:
         """Create all config sensor entities"""
         # Hotkey configuration sensor
         hotkey_sensor = ConfigSensor(
-            key=200,
+            key=400,
             name="Voice Input Hotkey",
             object_id="voice_input_hotkey",
             icon="mdi:keyboard",
             state="",
         )
-        self._sensors[200] = hotkey_sensor
+        self._sensors[400] = hotkey_sensor
 
     def get_entity_definitions(self) -> List[ListEntitiesTextSensorResponse]:
         """Get all entity definitions"""
@@ -85,11 +85,11 @@ class ConfigSensorManager:
 
     def set_hotkey(self, hotkey: str) -> None:
         """Set hotkey state"""
-        if 200 in self._sensors:
-            self._sensors[200].set_state(hotkey)
+        if 400 in self._sensors:
+            self._sensors[400].set_state(hotkey)
 
     def get_hotkey(self) -> str:
         """Get hotkey state"""
-        if 200 in self._sensors:
-            return self._sensors[200].get_state().state
+        if 400 in self._sensors:
+            return self._sensors[400].get_state().state
         return ""

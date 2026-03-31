@@ -66,6 +66,7 @@ class ESPHomeProtocol(asyncio.Protocol):
     """
 
     MAX_BUFFER_SIZE = 4 * 1024 * 1024
+    STATE_UPDATE_INTERVAL = 15.0
 
     def __init__(self, state: ServerState):
         super().__init__()
@@ -106,6 +107,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._service_manager = None
         self._config_sensor_manager = None
         self._hotkey_manager = None
+        self._state_update_task: Optional[asyncio.Task] = None
 
         logger.debug(f"ESPHome protocol initialized: {self.state.name}")
 
@@ -139,6 +141,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._tts_url = None
         self._tts_played = False
         self._continue_conversation = False
+        self._cancel_state_updates()
 
         # Restore volume (if previously ducked)
         self.unduck()
@@ -593,6 +596,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         # Update config sensor state
         if self._config_sensor_manager:
             self._config_sensor_manager.set_hotkey(hotkey)
+            self.send_messages(self._config_sensor_manager.get_states())
 
         # Update hotkey manager
         if self._hotkey_manager and self._hotkey_manager.is_available():
@@ -602,6 +606,49 @@ class ESPHomeProtocol(asyncio.Protocol):
                 self._hotkey_manager.remove_hotkey()
         elif hotkey:
             logger.warning("Hotkey saved but runtime hotkey backend is unavailable on this platform")
+
+    def _cancel_state_updates(self) -> None:
+        """Cancel background state update task."""
+        if self._state_update_task is not None:
+            self._state_update_task.cancel()
+            self._state_update_task = None
+
+    def _ensure_state_updates_started(self) -> None:
+        """Start periodic state updates once Home Assistant subscribes."""
+        if self._loop is None or self._state_update_task is not None:
+            return
+        self._state_update_task = self._loop.create_task(self._state_update_loop())
+
+    async def _state_update_loop(self) -> None:
+        """Push sensor and config states periodically to Home Assistant."""
+        try:
+            while self._transport is not None:
+                await asyncio.sleep(self.STATE_UPDATE_INTERVAL)
+                if self._transport is None:
+                    break
+                self._send_current_states()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"State update loop failed: {e}")
+        finally:
+            self._state_update_task = None
+
+    def _send_current_states(self) -> None:
+        """Send the current set of states to Home Assistant."""
+        if self._monitor is None:
+            return
+
+        messages = list(self._monitor.get_esp_sensor_states())
+
+        if self._media_player_entity is not None:
+            messages.append(self._media_player_entity.get_state())
+
+        if self._config_sensor_manager is not None:
+            messages.extend(self._config_sensor_manager.get_states())
+
+        if messages:
+            self.send_messages(messages)
 
     def play_tts(self) -> None:
         """Play TTS response"""
@@ -739,7 +786,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
             self._media_player_entity = MediaPlayerEntity(
                 server=self,
-                key=10,
+                key=300,
                 name="Media Player",
                 object_id="windows_media_player",
             )
@@ -794,13 +841,10 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         elif isinstance(msg, SubscribeHomeAssistantStatesRequest):
             # Send sensor states
-            for state in self._monitor.get_esp_sensor_states():
-                yield state
-            # Send MediaPlayer state
+            yield from self._monitor.get_esp_sensor_states()
             yield self._media_player_entity.get_state()
-            # Send config sensor states
-            for cfg_state in self._config_sensor_manager.get_states():
-                yield cfg_state
+            yield from self._config_sensor_manager.get_states()
+            self._ensure_state_updates_started()
 
         elif isinstance(msg, MediaPlayerCommandRequest):
             # Handle MediaPlayer command

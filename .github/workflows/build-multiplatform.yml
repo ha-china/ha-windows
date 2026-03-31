@@ -6,10 +6,67 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-  release:
-    types: [created]
+
+permissions:
+  contents: write
 
 jobs:
+  detect-release:
+    name: Detect Release Version Change
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.detect.outputs.should_release }}
+      version: ${{ steps.detect.outputs.version }}
+      tag_name: ${{ steps.detect.outputs.tag_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect version change
+        id: detect
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import subprocess
+          import tomllib
+
+          def set_output(name: str, value: str) -> None:
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+                  fh.write(f"{name}={value}\n")
+
+          before = os.environ.get("GITHUB_EVENT_BEFORE", "")
+          current = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          previous = None
+
+          if before and before != "0000000000000000000000000000000000000000":
+              try:
+                  previous_text = subprocess.check_output(
+                      ["git", "show", f"{before}:pyproject.toml"],
+                      text=True,
+                      stderr=subprocess.DEVNULL,
+                  )
+                  previous = tomllib.loads(previous_text)["project"]["version"]
+              except Exception:
+                  previous = None
+
+          should_release = previous != current
+          tag_name = f"v{current}"
+
+          print(f"previous={previous}")
+          print(f"current={current}")
+          print(f"should_release={str(should_release).lower()}")
+
+          set_output("should_release", str(should_release).lower())
+          set_output("version", current)
+          set_output("tag_name", tag_name)
+          PY
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+
   build-windows:
     name: Build Windows EXE & Installer
     runs-on: windows-latest
@@ -200,8 +257,8 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build-windows, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [detect-release, build-windows, build-macos]
+    if: needs.detect-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -227,14 +284,16 @@ jobs:
       
       - name: Generate latest.json
         run: |
-          tag="${{ github.ref_name }}"
-          version="${tag#v}"
+          version="${{ needs.detect-release.outputs.version }}"
           echo "{\"version\": \"$version\"}" > dist/latest.json
         shell: bash
-      
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.detect-release.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ needs.detect-release.outputs.tag_name }}
           files: |
             dist/HomeAssistantWindows.exe
             dist/HomeAssistantWindows_Setup.exe

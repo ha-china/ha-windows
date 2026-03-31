@@ -15,13 +15,24 @@ from aioesphomeapi.api_pb2 import (
     ListEntitiesRequest,
     SubscribeHomeAssistantStatesRequest,
 )
-from aioesphomeapi.model import MediaPlayerCommand, MediaPlayerState
+from aioesphomeapi.model import MediaPlayerCommand, MediaPlayerEntityFeature, MediaPlayerState
 from google.protobuf import message
 
 if TYPE_CHECKING:
     from src.core.esphome_protocol import ESPHomeProtocol
 
 logger = logging.getLogger(__name__)
+
+
+SUPPORTED_MEDIA_PLAYER_FEATURES = (
+    MediaPlayerEntityFeature.PLAY
+    | MediaPlayerEntityFeature.PAUSE
+    | MediaPlayerEntityFeature.STOP
+    | MediaPlayerEntityFeature.PLAY_MEDIA
+    | MediaPlayerEntityFeature.VOLUME_SET
+    | MediaPlayerEntityFeature.VOLUME_MUTE
+    | MediaPlayerEntityFeature.MEDIA_ANNOUNCE
+)
 
 
 class MediaPlayerEntity:
@@ -54,14 +65,16 @@ class MediaPlayerEntity:
 
         # State
         self.state = MediaPlayerState.IDLE
-        self.volume = 1.0
+        self.volume = max(0.0, min(1.0, getattr(server.state, "volume", 1.0)))
         self.muted = False
+        self.previous_volume = self.volume
 
         # Player (uses player from server.state)
         self._playlist: List[str] = []
         self._done_callback: Optional[Callable] = None
 
         logger.info(f"MediaPlayer entity initialized: {name}")
+        self._apply_volume(self.volume, persist=False, remember=True)
 
     def play(
         self,
@@ -175,15 +188,32 @@ class MediaPlayerEntity:
                     self.server.state.music_player.stop()
                     self.server.state.tts_player.stop()
                     yield self._update_state(MediaPlayerState.IDLE)
+                elif msg.command == MediaPlayerCommand.MUTE:
+                    if not self.muted:
+                        self.previous_volume = self.volume
+                        self._apply_volume(0.0, persist=False, remember=False)
+                        self.muted = True
+                    yield self._update_state(self.state)
+                elif msg.command == MediaPlayerCommand.UNMUTE:
+                    if self.muted:
+                        restore_volume = self.previous_volume if self.previous_volume > 0 else 1.0
+                        self._apply_volume(restore_volume, persist=False, remember=True)
+                        self.muted = False
+                    yield self._update_state(self.state)
             elif msg.has_volume:
-                volume = int(msg.volume * 100)
-                self.server.state.music_player.set_volume(volume)
-                self.server.state.tts_player.set_volume(volume)
-                self.volume = msg.volume
+                self._apply_volume(msg.volume, persist=True, remember=True)
                 yield self._update_state(self.state)
             elif msg.has_mute:
-                self.muted = msg.mute
-                # TODO: Implement mute
+                if msg.mute:
+                    if not self.muted:
+                        self.previous_volume = self.volume
+                        self._apply_volume(0.0, persist=False, remember=False)
+                        self.muted = True
+                else:
+                    if self.muted:
+                        restore_volume = self.previous_volume if self.previous_volume > 0 else 1.0
+                        self._apply_volume(restore_volume, persist=False, remember=True)
+                        self.muted = False
                 yield self._update_state(self.state)
 
         elif isinstance(msg, ListEntitiesRequest):
@@ -199,6 +229,7 @@ class MediaPlayerEntity:
             key=self.key,
             name=self.name,
             supports_pause=True,
+            feature_flags=SUPPORTED_MEDIA_PLAYER_FEATURES,
         )
 
     def get_state(self) -> MediaPlayerStateResponse:
@@ -218,3 +249,19 @@ class MediaPlayerEntity:
             volume=self.volume,
             muted=self.muted,
         )
+
+    def _apply_volume(self, volume: float, *, persist: bool, remember: bool) -> None:
+        """Apply normalized volume to both players."""
+        normalized = max(0.0, min(1.0, float(volume)))
+        volume_percent = int(round(normalized * 100))
+
+        self.server.state.music_player.set_volume(volume_percent)
+        self.server.state.tts_player.set_volume(volume_percent)
+        self.server.state.volume = normalized
+        self.volume = normalized
+
+        if remember:
+            self.previous_volume = normalized
+
+        if persist:
+            self.server.state.persist_volume(normalized)

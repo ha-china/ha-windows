@@ -30,6 +30,7 @@ from aioesphomeapi.api_pb2 import (
     ButtonCommandRequest,
     ExecuteServiceRequest,
     SubscribeHomeAssistantStatesRequest,
+    SwitchCommandRequest,
     VoiceAssistantConfigurationRequest,
     VoiceAssistantConfigurationResponse,
     VoiceAssistantEventResponse,
@@ -107,7 +108,9 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._service_manager = None
         self._config_sensor_manager = None
         self._hotkey_manager = None
+        self._thinking_sound_entity = None
         self._state_update_task: Optional[asyncio.Task] = None
+        self._processing = False
 
         logger.debug(f"ESPHome protocol initialized: {self.state.name}")
 
@@ -317,6 +320,13 @@ class ESPHomeProtocol(asyncio.Protocol):
             self._tts_url = data.get("url")
             self._tts_played = False
             self._continue_conversation = False
+            self._processing = False
+
+        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START:
+            if self.state.thinking_sound_enabled and self.state.processing_sound and not self._processing:
+                self._processing = True
+                self.duck()
+                self.state.tts_player.play(self.state.processing_sound)
 
         elif event_type in (
             VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END,
@@ -336,6 +346,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END:
             # Intent processing ended
+            self._processing = False
             if data.get("continue_conversation") == "1":
                 self._continue_conversation = True
 
@@ -348,6 +359,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Conversation ended
             logger.info("🎤 Received RUN_END, clearing streaming flag")
             self._is_streaming_audio = False
+            self._processing = False
             self._stop_audio_streaming()
             if not self._tts_played:
                 self._tts_finished()
@@ -607,6 +619,15 @@ class ESPHomeProtocol(asyncio.Protocol):
         elif hotkey:
             logger.warning("Hotkey saved but runtime hotkey backend is unavailable on this platform")
 
+    def _set_thinking_sound_enabled(self, enabled: bool) -> None:
+        """Persist thinking sound switch state."""
+        self.state.thinking_sound_enabled = bool(enabled)
+        self.state.preferences.thinking_sound = 1 if self.state.thinking_sound_enabled else 0
+        self.state.save_preferences()
+
+        if self._thinking_sound_entity is not None:
+            self.send_messages(list(self._thinking_sound_entity.handle_message(SubscribeHomeAssistantStatesRequest())))
+
     def _cancel_state_updates(self) -> None:
         """Cancel background state update task."""
         if self._state_update_task is not None:
@@ -655,6 +676,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         if not self._tts_url or self._tts_played:
             return
 
+        self._processing = False
         self._tts_played = True
         self._is_playing_tts = True  # Mark that TTS is playing
         logger.info(f"Playing TTS: {self._tts_url}")
@@ -685,6 +707,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
     def _tts_finished(self) -> None:
         """TTS playback finished callback"""
+        self._processing = False
         self._is_playing_tts = False  # Mark that TTS is no longer playing
 
         # Remove stop word
@@ -746,8 +769,13 @@ class ESPHomeProtocol(asyncio.Protocol):
             yield DeviceInfoResponse(
                 uses_password=False,
                 name=self.state.name,
+                friendly_name=self.state.friendly_name,
+                project_name="ha-china.ha-windows",
                 mac_address=self.state.mac_address,
                 project_version=version,
+                esphome_version=self.state.esphome_version,
+                manufacturer=self.state.manufacturer,
+                model=self.state.model,
                 voice_assistant_feature_flags=(
                     VoiceAssistantFeature.VOICE_ASSISTANT
                     | VoiceAssistantFeature.API_AUDIO
@@ -764,6 +792,7 @@ class ESPHomeProtocol(asyncio.Protocol):
                 MediaPlayerCommandRequest,
                 ButtonCommandRequest,
                 ExecuteServiceRequest,
+                SwitchCommandRequest,
             ),
         ):
             # Handle entity messages
@@ -813,6 +842,17 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Update hotkey state from preferences
             self._config_sensor_manager.set_hotkey(self.state.preferences.voice_input_hotkey)
 
+        if self._thinking_sound_entity is None:
+            from src.sensors.thinking_sound_switch import ThinkingSoundSwitchEntity
+
+            self._thinking_sound_entity = ThinkingSoundSwitchEntity(
+                key=500,
+                name="Thinking Sound",
+                object_id="thinking_sound",
+                get_enabled=lambda: self.state.thinking_sound_enabled,
+                set_enabled=self._set_thinking_sound_enabled,
+            )
+
         # Get hotkey manager
         if self._hotkey_manager is None:
             from src.core.hotkey_manager import get_hotkey_manager
@@ -838,12 +878,14 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Send config sensor entity definitions
             for cfg_def in self._config_sensor_manager.get_entity_definitions():
                 yield cfg_def
+            yield from self._thinking_sound_entity.handle_message(msg)
 
         elif isinstance(msg, SubscribeHomeAssistantStatesRequest):
             # Send sensor states
             yield from self._monitor.get_esp_sensor_states()
             yield self._media_player_entity.get_state()
             yield from self._config_sensor_manager.get_states()
+            yield from self._thinking_sound_entity.handle_message(msg)
             self._ensure_state_updates_started()
 
         elif isinstance(msg, MediaPlayerCommandRequest):
@@ -857,6 +899,9 @@ class ESPHomeProtocol(asyncio.Protocol):
         elif isinstance(msg, ExecuteServiceRequest):
             # Handle service execution
             yield from self._service_manager.handle_message(msg)
+
+        elif isinstance(msg, SwitchCommandRequest):
+            yield from self._thinking_sound_entity.handle_message(msg)
 
     # ========== Message Sending ==========
 

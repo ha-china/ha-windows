@@ -186,6 +186,8 @@ class AvailableWakeWord:
 class Preferences:
     """User preferences"""
     active_wake_words: List[str] = field(default_factory=list)
+    thinking_sound: int = 0
+    volume: Optional[float] = None
     voice_input_hotkey: str = ""
     show_floating_button: bool = True
 
@@ -563,6 +565,11 @@ class ServerState:
     """
     name: str
     mac_address: str
+    friendly_name: str = ""
+    version: str = "unknown"
+    esphome_version: str = "2025.9.0"
+    manufacturer: str = "ha-china"
+    model: str = "Home Assistant Windows"
 
     # Audio queue
     audio_queue: "Queue[Optional[bytes]]" = field(default_factory=Queue)
@@ -582,6 +589,7 @@ class ServerState:
 
     # Sound effects
     wakeup_sound: str = ""
+    processing_sound: str = ""
     timer_finished_sound: str = ""
 
     # Preferences
@@ -591,11 +599,14 @@ class ServerState:
 
     # Entity references
     media_player_entity: Optional[Any] = None
+    thinking_sound_entity: Optional[Any] = None
     satellite: Optional["ESPHomeProtocol"] = None
 
     # State flags
     wake_words_changed: bool = False
     refractory_seconds: float = 2.0
+    thinking_sound_enabled: bool = False
+    volume: float = 1.0
 
     def save_preferences(self) -> None:
         """Save preferences"""
@@ -605,6 +616,8 @@ class ServerState:
             with open(self.preferences_path, "w", encoding="utf-8") as f:
                 json.dump({
                     "active_wake_words": self.preferences.active_wake_words,
+                    "thinking_sound": self.preferences.thinking_sound,
+                    "volume": self.preferences.volume,
                     "voice_input_hotkey": self.preferences.voice_input_hotkey,
                     "show_floating_button": self.preferences.show_floating_button
                 }, f, ensure_ascii=False, indent=4)
@@ -620,10 +633,24 @@ class ServerState:
             with open(self.preferences_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self.preferences.active_wake_words = data.get("active_wake_words", [])
+                self.preferences.thinking_sound = int(data.get("thinking_sound", 0) or 0)
+                volume = data.get("volume")
+                self.preferences.volume = float(volume) if volume is not None else None
                 self.preferences.voice_input_hotkey = data.get("voice_input_hotkey", "")
                 self.preferences.show_floating_button = data.get("show_floating_button", True)
         except Exception as e:
             logger.error(f"Failed to load preferences: {e}")
+
+    def persist_volume(self, volume: float) -> None:
+        """Persist normalized media volume (0.0 - 1.0)."""
+        clamped_volume = max(0.0, min(1.0, float(volume)))
+        if abs(self.volume - clamped_volume) < 0.0001 and self.preferences.volume is not None:
+            if abs(self.preferences.volume - clamped_volume) < 0.0001:
+                return
+
+        self.volume = clamped_volume
+        self.preferences.volume = clamped_volume
+        self.save_preferences()
 
 
 def create_default_state(name: str) -> ServerState:
@@ -642,6 +669,7 @@ def create_default_state(name: str) -> ServerState:
     # Sound file paths
     sounds_dir = Path(__file__).parent.parent / "sounds"
     wakeup_sound = ""
+    processing_sound = ""
     timer_finished_sound = ""
 
     wakeup_file = sounds_dir / "wake_word_triggered.flac"
@@ -655,12 +683,18 @@ def create_default_state(name: str) -> ServerState:
     if timer_file.exists():
         timer_finished_sound = str(timer_file)
 
+    processing_file = sounds_dir / "processing.wav"
+    if processing_file.exists():
+        processing_sound = str(processing_file)
+
     state = ServerState(
         name=name,
         mac_address=get_mac_address(),
+        friendly_name=name,
         available_wake_words=available_wake_words,
         active_wake_words=default_active,
         wakeup_sound=wakeup_sound,
+        processing_sound=processing_sound,
         timer_finished_sound=timer_finished_sound,
     )
 
@@ -674,5 +708,13 @@ def create_default_state(name: str) -> ServerState:
         if valid_active:
             state.active_wake_words = valid_active
             logger.info(f"Loaded saved wake word preference: {valid_active}")
+
+    if state.preferences.volume is not None:
+        state.volume = max(0.0, min(1.0, state.preferences.volume))
+        initial_volume = int(round(state.volume * 100))
+        state.music_player.set_volume(initial_volume)
+        state.tts_player.set_volume(initial_volume)
+
+    state.thinking_sound_enabled = state.preferences.thinking_sound == 1
 
     return state

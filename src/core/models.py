@@ -132,9 +132,9 @@ def _check_pycaw():
         try:
             from pycaw.pycaw import AudioUtilities  # noqa: F401
             PYCAW_AVAILABLE = True
-        except (ImportError, OSError):
+        except (ImportError, OSError) as e:
             PYCAW_AVAILABLE = False
-            logger.warning("pycaw not available, duck/unduck will be disabled")
+            logger.warning("pycaw not available, duck/unduck will be disabled: %s", e)
     return PYCAW_AVAILABLE
 
 

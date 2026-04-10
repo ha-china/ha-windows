@@ -2,12 +2,14 @@
 # PyInstaller spec file for directory mode (one-dir)
 # Used for creating installer packages
 # Goal: Small exe file with all dependencies in directory
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, collect_dynamic_libs
 
 # Collect data files from packages (all dependencies)
 datas = []
 datas += collect_data_files('customtkinter', include_py_files=False)
 datas += collect_data_files('aioesphomeapi', include_py_files=False)
+datas += collect_all('pycaw')[0]
+datas += collect_all('comtypes')[0]
 datas += collect_data_files('pymicro_wakeword', include_py_files=False)
 datas += collect_data_files('pyopen_wakeword', include_py_files=False)
 datas += collect_data_files('soundcard', include_py_files=False)
@@ -32,6 +34,8 @@ datas += [('src', 'src')]
 binaries = []
 binaries += collect_dynamic_libs('customtkinter')
 binaries += collect_dynamic_libs('aioesphomeapi')
+binaries += collect_all('pycaw')[1]
+binaries += collect_all('comtypes')[1]
 binaries += collect_dynamic_libs('pymicro_wakeword')
 binaries += collect_dynamic_libs('pyopen_wakeword')
 binaries += collect_dynamic_libs('soundcard')
@@ -133,6 +137,8 @@ hiddenimports = [
 # Collect submodules (only for packages that need it)
 hiddenimports += collect_submodules('customtkinter')
 hiddenimports += collect_submodules('aioesphomeapi')
+hiddenimports += collect_all('pycaw')[2]
+hiddenimports += collect_all('comtypes')[2]
 hiddenimports += collect_submodules('pymicro_wakeword')
 hiddenimports += collect_submodules('pyopen_wakeword')
 hiddenimports += collect_submodules('soundcard')
@@ -177,6 +183,8 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,  # CRITICAL: This keeps binaries separate
+    append_pkg=False,
+    contents_directory='_internal',
     name='HomeAssistantWindows',
     debug=False,
     bootloader_ignore_signals=False,

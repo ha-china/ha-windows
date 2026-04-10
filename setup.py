@@ -70,9 +70,10 @@ def get_platform_specific_args():
         
         # Windows-specific hidden imports
         args.extend([
-            "--hidden-import=windows_toasts",
-            "--hidden-import=pycaw",
-            "--hidden-import=pystray",
+        "--hidden-import=windows_toasts",
+        "--hidden-import=pycaw",
+        "--hidden-import=comtypes",
+        "--hidden-import=pystray",
             "--hidden-import=win10toast",
             "--hidden-import=src.platforms.windows",
         ])
@@ -152,6 +153,8 @@ def build_exe():
         # Collect all submodules
         "--collect-all=customtkinter",
         "--collect-all=aioesphomeapi",
+        "--collect-all=pycaw",
+        "--collect-all=comtypes",
         "--collect-all=pymicro_wakeword",  # Include tensorflowlite_c.dll
         "--collect-all=pyopen_wakeword",
         # Add src directory to Python path

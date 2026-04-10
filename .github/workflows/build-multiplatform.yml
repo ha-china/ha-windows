@@ -342,24 +342,32 @@ jobs:
                       return textwrap.shorten(line, width=160, placeholder="...")
               return None
 
+          def summarize_commit(message: str) -> str:
+              first_line = message.splitlines()[0].strip()
+              return textwrap.shorten(first_line, width=160, placeholder="...")
+
           previous_tag = get_latest_release_tag()
-          pr_map: dict[int, dict] = {}
+          changes: list[dict] = []
 
           if previous_tag:
               compare = api(f"/repos/{repo}/compare/{urllib.parse.quote(previous_tag, safe='')}...{current_sha}")
               for commit in compare.get("commits", []):
                   commit_sha = commit["sha"]
+                  short_sha = commit_sha[:7]
                   pulls = api(f"/repos/{repo}/commits/{commit_sha}/pulls")
-                  for pull in pulls:
-                      pr_map[pull["number"]] = {
-                          "number": pull["number"],
-                          "title": pull["title"].strip(),
-                          "body": summarize_body(pull.get("body")),
-                          "url": pull["html_url"],
-                          "merged_at": pull.get("merged_at") or "",
+                  pull = pulls[0] if pulls else None
+                  changes.append(
+                      {
+                          "sha": short_sha,
+                          "url": commit["html_url"],
+                          "message": summarize_commit(commit["commit"]["message"]),
+                          "author": commit["commit"]["author"]["name"],
+                          "pr_number": pull["number"] if pull else None,
+                          "pr_title": pull["title"].strip() if pull else None,
+                          "pr_url": pull["html_url"] if pull else None,
+                          "pr_body": summarize_body(pull.get("body")) if pull else None,
                       }
-
-          prs = sorted(pr_map.values(), key=lambda pr: (pr["merged_at"], pr["number"]))
+                  )
 
           lines = [f"## What's Changed", ""]
           if previous_tag:
@@ -368,16 +376,22 @@ jobs:
               lines.append("- Initial release")
 
           lines.append("")
-          lines.append("## Pull Requests")
+          lines.append("## Changes")
           lines.append("")
 
-          if prs:
-              for pr in prs:
-                  lines.append(f"- #{pr['number']} {pr['title']} ({pr['url']})")
-                  if pr["body"]:
-                      lines.append(f"  - {pr['body']}")
+          if changes:
+              for change in changes:
+                  line = f"- {change['message']} ({change['sha']})"
+                  if change["pr_number"] is not None:
+                      line += f" via PR #{change['pr_number']}"
+                  line += f" [{change['url']}]"
+                  lines.append(line)
+                  if change["pr_title"]:
+                      lines.append(f"  - PR: {change['pr_title']} ({change['pr_url']})")
+                  if change["pr_body"]:
+                      lines.append(f"  - {change['pr_body']}")
           else:
-              lines.append("- No pull requests found between the previous release and this release.")
+              lines.append("- No commits found between the previous release and this release.")
 
           with open("dist/release_notes.md", "w", encoding="utf-8") as fh:
               fh.write("\n".join(lines) + "\n")

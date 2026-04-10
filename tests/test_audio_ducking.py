@@ -7,6 +7,7 @@ Validates: Requirements 3.4, 3.5
 """
 
 import logging
+import os
 from typing import Optional
 from unittest.mock import MagicMock, patch, PropertyMock
 
@@ -317,6 +318,41 @@ class TestAudioPlayerDucking:
         
         # Property: controller's unduck should be called
         mock_controller.unduck.assert_called_once()
+
+    def test_remote_download_stops_when_playback_changes(self):
+        """Remote download should stop and clean up when playback is cancelled."""
+        player = AudioPlayer()
+        cleanup_paths = []
+
+        original_cleanup = player._cleanup_temp_file
+
+        def track_cleanup(path: Optional[str]) -> None:
+            if path:
+                cleanup_paths.append(path)
+            original_cleanup(path)
+
+        player._cleanup_temp_file = track_cleanup
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self, size: int) -> bytes:
+                return b"x" * min(size, 16)
+
+        states = iter([True, False])
+        player._is_current_playback = MagicMock(side_effect=lambda playback_id: next(states))
+
+        with patch("urllib.request.urlopen", return_value=FakeResponse()):
+            local_path = player._download_to_temp_file("https://example.com/test.wav", 1)
+
+        assert local_path is None
+        assert player._temp_file_path is None
+        assert len(cleanup_paths) == 1
+        assert not os.path.exists(cleanup_paths[0])
 
 
 # =============================================================================

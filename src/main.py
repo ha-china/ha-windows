@@ -419,12 +419,11 @@ class HomeAssistantWindows:
                     for detector in self._wake_word_detectors.values():
                         detector.process_audio(audio_data)
 
-                # Always process stop word (like linux-voice-assistant)
-                if self._stop_word_detector:
-                    if self._stop_word_detector.process_audio(audio_data):
-                        # Stop word detected
-                        if self.api_server and self.api_server.protocol:
-                            self.api_server.protocol.stop()
+                if self._stop_word_detector and self.api_server:
+                    stop_word = self.api_server.state.stop_word
+                    stop_is_active = stop_word is not None and stop_word.id in self.api_server.state.active_wake_words
+                    if stop_is_active and self._stop_word_detector.process_audio(audio_data):
+                        self.api_server.protocol.stop()
 
             # Start recording
             self._wake_word_listening = True
@@ -489,6 +488,15 @@ class HomeAssistantWindows:
                 detector.on_wake_word(self._wake_word_callback)
             detectors[wake_word_id] = detector
 
+        for wake_word_id, detector in existing.items():
+            if wake_word_id in detectors:
+                continue
+
+            try:
+                detector.close()
+            except Exception as e:
+                logger.debug(f"Failed to close wake word detector {wake_word_id}: {e}")
+
         self._wake_word_detectors = detectors
         wake_phrases = [det.wake_word_phrase for det in self._wake_word_detectors.values()]
         if wake_phrases:
@@ -505,8 +513,18 @@ class HomeAssistantWindows:
             except Exception as e:
                 logger.error(f"Failed to stop audio recorder: {e}")
             self._audio_recorder = None
+        for wake_word_id, detector in self._wake_word_detectors.items():
+            try:
+                detector.close()
+            except Exception as e:
+                logger.debug(f"Failed to close wake word detector {wake_word_id}: {e}")
         self._wake_word_detectors = {}
         self._wake_word_callback = None
+        if self._stop_word_detector:
+            try:
+                self._stop_word_detector.close()
+            except Exception as e:
+                logger.debug(f"Failed to close stop word detector: {e}")
         self._stop_word_detector = None
 
     async def _main_loop(self):

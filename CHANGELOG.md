@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.8] - 2026-03-18
 
+## [0.4.9] - 2026-04-10
+
+### Improved
+- Split the internal `stop` interrupt model from the public wake word configuration flow so Home Assistant no longer shows it as a selectable wake word.
+- Made remote audio downloads cancellable during pygame fallback playback so interrupted TTS and announcements stop releasing temp files and network resources sooner.
+- Added diagnostic process sensors for RSS memory, thread count, handle count, GDI object count, and USER object count to help investigate long-run Windows memory and resource leaks.
+
+## [0.4.8] - 2026-03-18
+
 ### Added
 - Added a `Thinking Sound` config switch entity and bundled a default processing sound from the reference project.
 

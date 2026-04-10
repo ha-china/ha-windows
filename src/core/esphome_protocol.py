@@ -418,7 +418,11 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         response = VoiceAssistantConfigurationResponse(
             available_wake_words=available_wake_words,
-            active_wake_words=list(self.state.active_wake_words),
+            active_wake_words=[
+                wake_word_id
+                for wake_word_id in self.state.active_wake_words
+                if wake_word_id in self.state.available_wake_words
+            ],
             max_active_wake_words=2,
         )
 

@@ -17,7 +17,9 @@ from hypothesis import given, strategies as st, settings, assume
 
 from aioesphomeapi.api_pb2 import (
     ListEntitiesDoneResponse,
+    ListEntitiesSensorResponse,
     ListEntitiesTextSensorResponse,
+    SensorStateResponse,
     TextSensorStateResponse,
 )
 
@@ -234,6 +236,75 @@ class TestSensorEntityDefinitions:
             # Property: key is a positive integer
             assert isinstance(key, int) and key > 0, \
                 f"key should be positive integer, got {key}"
+
+    def test_entity_definitions_include_process_diagnostics(self):
+        """Process diagnostics should be exposed as sensors."""
+        monitor = WindowsMonitor()
+        system_info = {
+            'cpu': {'cpu_percent': 10.0},
+            'memory': {'percent': 20.0, 'available': 8 * 1024**3},
+            'disk': {},
+            'network': {'bytes_sent_gb': 1.0, 'bytes_recv_gb': 2.0, 'ip_address': '127.0.0.1'},
+            'system': {'boot_time_iso': '2024-01-01T00:00:00', 'uptime_hours': 1.0, 'process_count': 100},
+            'process': {
+                'rss_mb': 123.4,
+                'thread_count': 8,
+                'handle_count': 42,
+                'gdi_count': 7,
+                'user_object_count': 9,
+            },
+        }
+
+        with patch.object(monitor, 'get_all_info', return_value=system_info):
+            monitor.discover_esp_entities()
+            definitions = monitor.get_esp_entity_definitions()
+
+        diagnostics = {
+            definition.object_id: definition
+            for definition in definitions[:-1]
+            if isinstance(definition, ListEntitiesSensorResponse)
+        }
+
+        assert 'process_memory_mb' in diagnostics
+        assert 'thread_count' in diagnostics
+        assert 'handle_count' in diagnostics
+        assert 'gdi_count' in diagnostics
+        assert 'user_object_count' in diagnostics
+        assert diagnostics['process_memory_mb'].unit_of_measurement == 'MB'
+
+    def test_sensor_states_include_process_diagnostics(self):
+        """Process diagnostic states should be reported with current values."""
+        monitor = WindowsMonitor()
+        system_info = {
+            'cpu': {'cpu_percent': 10.0},
+            'memory': {'percent': 20.0, 'available': 8 * 1024**3},
+            'disk': {},
+            'network': {'bytes_sent_gb': 1.0, 'bytes_recv_gb': 2.0, 'ip_address': '127.0.0.1'},
+            'system': {'boot_time_iso': '2024-01-01T00:00:00', 'uptime_hours': 1.0, 'process_count': 100},
+            'process': {
+                'rss_mb': 123.4,
+                'thread_count': 8,
+                'handle_count': 42,
+                'gdi_count': 7,
+                'user_object_count': 9,
+            },
+        }
+
+        with patch.object(monitor, 'get_all_info', return_value=system_info):
+            monitor.discover_esp_entities()
+            states = monitor.get_esp_sensor_states()
+
+        numeric_states = {
+            state.key: state.state
+            for state in states
+            if isinstance(state, SensorStateResponse)
+        }
+
+        assert numeric_states[SENSOR_KEYS['process_memory_mb']] == pytest.approx(123.4)
+        assert numeric_states[SENSOR_KEYS['thread_count']] == 8.0
+        assert numeric_states[SENSOR_KEYS['handle_count']] == 42.0
+        assert numeric_states[SENSOR_KEYS['gdi_count']] == 7.0
+        assert numeric_states[SENSOR_KEYS['user_object_count']] == 9.0
 
     @given(system_info=system_info_strategy)
     @settings(max_examples=100, deadline=None)

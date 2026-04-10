@@ -272,6 +272,23 @@ class TestESPHomeProtocolFlow:
         assert len(response.available_wake_words) >= 1
         assert response.max_active_wake_words >= 1
 
+    def test_voice_assistant_configuration_hides_stop_word(self):
+        """Stop word should remain internal and hidden from HA config."""
+        protocol = create_test_protocol()
+        capture = MessageCapture(protocol)
+
+        protocol.state.active_wake_words.add("stop")
+
+        config_req = VoiceAssistantConfigurationRequest()
+        protocol.data_received(encode_message(config_req))
+
+        responses = capture.get_messages_of_type(VoiceAssistantConfigurationResponse)
+        assert len(responses) == 1
+
+        response = responses[0]
+        assert "stop" not in [ww.id for ww in response.available_wake_words]
+        assert "stop" not in response.active_wake_words
+
     def test_set_voice_configuration_supports_two_wake_words(self):
         """Test VoiceAssistantSetConfiguration accepts two wake words."""
         protocol = create_test_protocol()

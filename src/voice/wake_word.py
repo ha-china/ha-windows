@@ -69,7 +69,7 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
         Dict mapping wake word ID to AvailableWakeWord
     """
     if wakeword_dir is not None:
-        return _load_wake_words_from_directory(wakeword_dir)
+        return _load_public_wake_words_from_directory(wakeword_dir)
 
     USER_MICRO_WAKEWORD_DIR.mkdir(parents=True, exist_ok=True)
     USER_OPEN_WAKEWORD_DIR.mkdir(parents=True, exist_ok=True)
@@ -81,7 +81,7 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
         USER_MICRO_WAKEWORD_DIR,
         USER_OPEN_WAKEWORD_DIR,
     ):
-        loaded = _load_wake_words_from_directory(directory)
+        loaded = _load_public_wake_words_from_directory(directory)
         for model_id, wake_word in loaded.items():
             if model_id in wake_words:
                 logger.warning(
@@ -96,6 +96,31 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
         len(wake_words),
         USER_WAKEWORD_MODELS_DIR,
     )
+    return wake_words
+
+
+def load_wake_word(model_name: str, wakeword_dir: Optional[Path] = None) -> Optional[AvailableWakeWord]:
+    """Load a single wake word model, including internal-only models like stop."""
+    directories = (wakeword_dir,) if wakeword_dir is not None else (
+        DEFAULT_WAKEWORD_DIR,
+        DEFAULT_OPEN_WAKEWORD_DIR,
+        USER_MICRO_WAKEWORD_DIR,
+        USER_OPEN_WAKEWORD_DIR,
+    )
+
+    for directory in directories:
+        loaded = _load_wake_words_from_directory(directory)
+        wake_word = loaded.get(model_name)
+        if wake_word is not None:
+            return wake_word
+
+    return None
+
+
+def _load_public_wake_words_from_directory(wakeword_dir: Path) -> Dict[str, AvailableWakeWord]:
+    """Load public wake words from a single directory."""
+    wake_words = _load_wake_words_from_directory(wakeword_dir)
+    wake_words.pop("stop", None)
     return wake_words
 
 
@@ -180,12 +205,11 @@ class WakeWordDetector:
         self._features: Optional[Union[MicroWakeWordFeatures, OpenWakeWordFeatures]] = None
 
         # Load wake word info
-        wake_words = load_available_wake_words(self.wakeword_dir)
-        if model_name not in wake_words:
+        wake_word_info = load_wake_word(model_name, self.wakeword_dir)
+        if wake_word_info is None:
             logger.error(f"Wake word model not found: {model_name}")
             return
 
-        wake_word_info = wake_words[model_name]
         self._wake_word_phrase = wake_word_info.wake_word
         self._detector_type = wake_word_info.type
 
@@ -221,11 +245,12 @@ class WakeWordDetector:
         try:
             # Load model
             self._model = OpenWakeWord.from_model(model_path=wake_word_info.wake_word_path)
-            self._features = OpenWakeWordFeatures()
+            self._features = OpenWakeWordFeatures.from_builtin()
             logger.debug(f"Wake word detector initialized (OpenWakeWord): '{self._wake_word_phrase}' ({self.model_name})")
         except Exception as e:
             logger.error(f"Failed to initialize OpenWakeWord: {e}")
             self._model = None
+            self._features = None
 
     def on_wake_word(self, callback: Callable[[str], None]) -> None:
         """
@@ -288,15 +313,13 @@ class WakeWordDetector:
 
     def _process_open_wakeword(self, audio_chunk: bytes) -> bool:
         """Process audio with OpenWakeWord detector"""
-        # Convert audio bytes to numpy array
-        audio_array = np.frombuffer(audio_chunk, dtype=np.int16).astype(np.float32) / 32768.0
+        embeddings = self._features.process_streaming(audio_chunk)
 
-        # Extract features
-        oww_inputs = self._features.process_streaming(audio_array)
+        for embedding in embeddings:
+            for prob in self._model.process_streaming(embedding):
+                if prob <= 0.5:
+                    continue
 
-        # Process each input
-        for prob in oww_inputs:
-            if prob > 0.5:  # Detection threshold
                 # Only log once per detection sequence
                 if not self._last_detection_logged:
                     logger.info(f"Wake word detected: {self._wake_word_phrase}")
@@ -316,8 +339,24 @@ class WakeWordDetector:
         if self._detector_type == "micro" and _microwakeword_available:
             self._features = MicroWakeWordFeatures()
         elif self._detector_type == "openWakeWord" and _openwakeword_available:
-            self._features = OpenWakeWordFeatures()
+            self._features = OpenWakeWordFeatures.from_builtin()
         self._last_detection_logged = False
+
+    def close(self) -> None:
+        """Release detector resources held by native wake word libraries."""
+        for attr in ("_features", "_model"):
+            resource = getattr(self, attr, None)
+            if resource is None:
+                continue
+
+            close = getattr(resource, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as e:
+                    logger.debug(f"Failed to close {attr} for {self.model_name}: {e}")
+
+            setattr(self, attr, None)
 
     @property
     def wake_word_phrase(self) -> str:

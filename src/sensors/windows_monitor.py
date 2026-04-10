@@ -6,6 +6,7 @@ Also provides ESPHome entity definitions and states for server mode.
 """
 
 import asyncio
+import ctypes
 import logging
 import platform
 import re
@@ -54,7 +55,15 @@ SENSOR_KEYS = {
     "process_count": 10,
     "network_upload": 11,
     "network_download": 12,
+    "process_memory_mb": 13,
+    "thread_count": 14,
+    "handle_count": 15,
+    "gdi_count": 16,
+    "user_object_count": 17,
 }
+
+GR_GDIOBJECTS = 0
+GR_USEROBJECTS = 1
 
 # Dynamic key offset for disk sensors (each disk uses 2 keys: usage% and free GB)
 DISK_KEY_OFFSET = 20
@@ -285,6 +294,40 @@ class WindowsMonitor:
             logger.error(f"Failed to get system info: {e}")
             return {}
 
+    def get_process_info(self) -> Dict:
+        """Get current process diagnostics for leak tracking."""
+        try:
+            process = psutil.Process()
+            memory_info = process.memory_info()
+
+            try:
+                handle_count = process.num_handles()
+            except (AttributeError, NotImplementedError):
+                handle_count = None
+
+            gdi_count = None
+            user_object_count = None
+            if platform.system() == "Windows":
+                try:
+                    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                    user32 = ctypes.WinDLL("user32", use_last_error=True)
+                    process_handle = kernel32.GetCurrentProcess()
+                    gdi_count = user32.GetGuiResources(process_handle, GR_GDIOBJECTS)
+                    user_object_count = user32.GetGuiResources(process_handle, GR_USEROBJECTS)
+                except Exception as e:
+                    logger.debug(f"Failed to get GUI resource counts: {e}")
+
+            return {
+                "rss_mb": round(memory_info.rss / (1024 ** 2), 1),
+                "thread_count": process.num_threads(),
+                "handle_count": handle_count,
+                "gdi_count": gdi_count,
+                "user_object_count": user_object_count,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get process info: {e}")
+            return {}
+
     def get_all_info(self) -> Dict:
         """
         Get all information
@@ -299,6 +342,7 @@ class WindowsMonitor:
             "battery": self.get_battery_info(),
             "network": self.get_network_info(),
             "system": self.get_system_info(),
+            "process": self.get_process_info(),
         }
 
     # ========================================================================
@@ -356,6 +400,16 @@ class WindowsMonitor:
         available.append(("boot_time", "Boot Time", "mdi:clock-start", SENSOR_KEYS["boot_time"]))
         available.append(("uptime", "Uptime", "mdi:timer-outline", SENSOR_KEYS["uptime"]))
         available.append(("process_count", "Process Count", "mdi:application-cog", SENSOR_KEYS["process_count"]))
+        available.append(("process_memory_mb", "Process RSS", "mdi:memory", SENSOR_KEYS["process_memory_mb"]))
+        available.append(("thread_count", "Process Threads", "mdi:table-column", SENSOR_KEYS["thread_count"]))
+
+        process_info = info.get("process", {})
+        if process_info.get("handle_count") is not None:
+            available.append(("handle_count", "Process Handles", "mdi:link-box-variant", SENSOR_KEYS["handle_count"]))
+        if process_info.get("gdi_count") is not None:
+            available.append(("gdi_count", "Process GDI Objects", "mdi:vector-square", SENSOR_KEYS["gdi_count"]))
+        if process_info.get("user_object_count") is not None:
+            available.append(("user_object_count", "Process USER Objects", "mdi:application-outline", SENSOR_KEYS["user_object_count"]))
 
         self._available_entities = available
         self._entity_map = {obj_id: (name, icon, key) for obj_id, name, icon, key in available}
@@ -391,6 +445,17 @@ class WindowsMonitor:
                     key=key,
                     name=name,
                     icon=icon,
+                    entity_category=EntityCategory.ENTITY_CATEGORY_DIAGNOSTIC,
+                )
+            elif object_id == "process_memory_mb":
+                sensor = ListEntitiesSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                    unit_of_measurement="MB",
+                    accuracy_decimals=1,
+                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
                     entity_category=EntityCategory.ENTITY_CATEGORY_DIAGNOSTIC,
                 )
             # Percentage sensors
@@ -431,7 +496,7 @@ class WindowsMonitor:
                     state_class=SensorStateClass.STATE_CLASS_TOTAL_INCREASING,
                 )
             # Count sensor (process_count)
-            elif object_id == "process_count":
+            elif object_id in ("process_count", "thread_count", "handle_count", "gdi_count", "user_object_count"):
                 sensor = ListEntitiesSensorResponse(
                     object_id=object_id,
                     key=key,
@@ -439,6 +504,7 @@ class WindowsMonitor:
                     icon=icon,
                     accuracy_decimals=0,
                     state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
+                    entity_category=EntityCategory.ENTITY_CATEGORY_DIAGNOSTIC,
                 )
             else:
                 # Text sensor for status values (network_status, battery_status, boot_time)
@@ -570,6 +636,40 @@ class WindowsMonitor:
             sys_info = info.get("system", {})
             _, _, key = self._entity_map["process_count"]
             states.append(SensorStateResponse(key=key, state=float(sys_info.get("process_count", 0))))
+
+        # Process memory (MB)
+        if "process_memory_mb" in self._entity_map:
+            process_info = info.get("process", {})
+            _, _, key = self._entity_map["process_memory_mb"]
+            states.append(SensorStateResponse(key=key, state=float(process_info.get("rss_mb", 0))))
+
+        # Thread count
+        if "thread_count" in self._entity_map:
+            process_info = info.get("process", {})
+            _, _, key = self._entity_map["thread_count"]
+            states.append(SensorStateResponse(key=key, state=float(process_info.get("thread_count", 0))))
+
+        # Handle count
+        if "handle_count" in self._entity_map:
+            process_info = info.get("process", {})
+            handle_count = process_info.get("handle_count")
+            if handle_count is not None:
+                _, _, key = self._entity_map["handle_count"]
+                states.append(SensorStateResponse(key=key, state=float(handle_count)))
+
+        if "gdi_count" in self._entity_map:
+            process_info = info.get("process", {})
+            gdi_count = process_info.get("gdi_count")
+            if gdi_count is not None:
+                _, _, key = self._entity_map["gdi_count"]
+                states.append(SensorStateResponse(key=key, state=float(gdi_count)))
+
+        if "user_object_count" in self._entity_map:
+            process_info = info.get("process", {})
+            user_object_count = process_info.get("user_object_count")
+            if user_object_count is not None:
+                _, _, key = self._entity_map["user_object_count"]
+                states.append(SensorStateResponse(key=key, state=float(user_object_count)))
 
         # Extra states (command_result, voice_status, etc.)
         for entity_name, state_value in extra_states.items():

@@ -403,15 +403,35 @@ class AudioPlayer:
             logger.error(f"VLC playback error: {e}")
             self._on_playback_finished(playback_id)
 
-    def _download_to_temp_file(self, url: str) -> str:
-        """Download a remote audio file to disk instead of memory."""
+    def _download_to_temp_file(self, url: str, playback_id: int) -> Optional[str]:
+        """Download a remote audio file to disk and stop early if playback changes."""
         import urllib.request
 
         suffix = Path(url.split("?", 1)[0]).suffix or ".audio"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp_path = tmp.name
-            with urllib.request.urlopen(url, timeout=30) as response:
-                shutil.copyfileobj(response, tmp)
+        tmp_path: Optional[str] = None
+        cancelled = False
+
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp_path = tmp.name
+                with urllib.request.urlopen(url, timeout=30) as response:
+                    while True:
+                        if not self._is_current_playback(playback_id):
+                            cancelled = True
+                            break
+
+                        chunk = response.read(64 * 1024)
+                        if not chunk:
+                            break
+
+                        tmp.write(chunk)
+        except Exception:
+            self._cleanup_temp_file(tmp_path)
+            raise
+
+        if cancelled:
+            self._cleanup_temp_file(tmp_path)
+            return None
 
         with self._playback_lock:
             old_temp = self._temp_file_path
@@ -441,9 +461,8 @@ class AudioPlayer:
 
             if url.startswith(('http://', 'https://')):
                 logger.debug(f"Downloading audio to temp file: {url}")
-                local_path = self._download_to_temp_file(url)
-                if not self._is_current_playback(playback_id):
-                    self._cleanup_temp_file(local_path)
+                local_path = self._download_to_temp_file(url, playback_id)
+                if local_path is None:
                     return
                 pygame.mixer.music.load(local_path)
             else:

@@ -180,6 +180,7 @@ class HomeAssistantWindows:
 
         # Wake word detection
         self._wake_word_detectors = {}
+        self._stop_word_detector = None
         self._wake_word_callback = None
         self._audio_recorder: AudioRecorder = None
         self._wake_word_listening = False
@@ -562,10 +563,11 @@ class HomeAssistantWindows:
                 logger.error(f"Failed to close main window: {e}")
 
         # Stop system tray icon
-        try:
-            self.tray.stop()
-        except Exception as e:
-            logger.error(f"Failed to stop tray icon: {e}")
+        if self.tray:
+            try:
+                self.tray.stop()
+            except Exception as e:
+                logger.error(f"Failed to stop tray icon: {e}")
 
         # Unregister mDNS service
         if self.mdns_broadcaster:

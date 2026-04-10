@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-04-10
+
+### Fixed
+- Fixed startup crashes caused by wake word type annotations being evaluated before `AvailableWakeWord` was imported.
+- Fixed cleanup crashes when startup failed before the system tray icon was created.
+
 ## [0.5.0] - 2026-04-10
 
 ### Improved

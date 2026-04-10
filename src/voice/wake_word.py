@@ -15,6 +15,19 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+
+def _normalize_wake_word_phrase(phrase: str) -> str:
+    """Normalize wake word phrases for public deduplication."""
+    return " ".join(phrase.lower().split())
+
+
+def _should_replace_wake_word(existing: AvailableWakeWord, candidate: AvailableWakeWord) -> bool:
+    """Prefer micro wake words over open wake words for identical phrases."""
+    return (
+        existing.type == WakeWordType.OPEN_WAKE_WORD
+        and candidate.type == WakeWordType.MICRO_WAKE_WORD
+    )
+
 # Default wake word directory (relative to src/)
 DEFAULT_WAKEWORD_DIR = Path(__file__).parent.parent / "wakewords"
 DEFAULT_OPEN_WAKEWORD_DIR = DEFAULT_WAKEWORD_DIR / "openWakeWord"
@@ -75,6 +88,7 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
     USER_OPEN_WAKEWORD_DIR.mkdir(parents=True, exist_ok=True)
 
     wake_words: Dict[str, AvailableWakeWord] = {}
+    wake_words_by_phrase: Dict[str, AvailableWakeWord] = {}
     for directory in (
         DEFAULT_WAKEWORD_DIR,
         DEFAULT_OPEN_WAKEWORD_DIR,
@@ -83,6 +97,26 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
     ):
         loaded = _load_public_wake_words_from_directory(directory)
         for model_id, wake_word in loaded.items():
+            phrase_key = _normalize_wake_word_phrase(wake_word.wake_word)
+            existing_by_phrase = wake_words_by_phrase.get(phrase_key)
+            if existing_by_phrase is not None:
+                if not _should_replace_wake_word(existing_by_phrase, wake_word):
+                    logger.info(
+                        "Skipping duplicate wake word phrase '%s' from %s (keeping %s)",
+                        wake_word.wake_word,
+                        directory,
+                        existing_by_phrase.id,
+                    )
+                    continue
+
+                logger.info(
+                    "Replacing duplicate wake word phrase '%s': %s -> %s",
+                    wake_word.wake_word,
+                    existing_by_phrase.id,
+                    wake_word.id,
+                )
+                wake_words.pop(existing_by_phrase.id, None)
+
             if model_id in wake_words:
                 logger.warning(
                     "Wake word '%s' from %s overrides existing definition",
@@ -90,6 +124,7 @@ def load_available_wake_words(wakeword_dir: Optional[Path] = None) -> Dict[str, 
                     directory,
                 )
             wake_words[model_id] = wake_word
+            wake_words_by_phrase[phrase_key] = wake_word
 
     logger.info(
         "Loaded %d wake word models from built-in and user directories under %s",

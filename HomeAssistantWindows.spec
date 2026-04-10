@@ -22,6 +22,7 @@ hiddenimports = [
     'psutil',
     'win10toast',
     'pymicro_wakeword',
+    'pyopen_wakeword',
     'webrtcvad',
     'zeroconf',
     'pycaw',
@@ -58,6 +59,9 @@ tmp_ret = collect_all('aioesphomeapi')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 tmp_ret = collect_all('pymicro_wakeword')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+tmp_ret = collect_all('pyopen_wakeword')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 tmp_ret = collect_all('soundcard')

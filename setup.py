@@ -122,6 +122,7 @@ def build_exe():
         "--hidden-import=numpy",
         "--hidden-import=psutil",
         "--hidden-import=pymicro_wakeword",
+        "--hidden-import=pyopen_wakeword",
         "--hidden-import=webrtcvad",
         "--hidden-import=zeroconf",
         "--hidden-import=PIL",
@@ -152,6 +153,7 @@ def build_exe():
         "--collect-all=customtkinter",
         "--collect-all=aioesphomeapi",
         "--collect-all=pymicro_wakeword",  # Include tensorflowlite_c.dll
+        "--collect-all=pyopen_wakeword",
         # Add src directory to Python path
         "--add-data=src;src" if CURRENT_PLATFORM == "Windows" else "--add-data=src:src",
         # Exclude unnecessary modules (reduce size)

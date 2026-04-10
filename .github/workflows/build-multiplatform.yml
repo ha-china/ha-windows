@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   detect-release:
@@ -288,6 +289,105 @@ jobs:
           echo "{\"version\": \"$version\"}" > dist/latest.json
         shell: bash
 
+      - name: Generate release notes
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import textwrap
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          current_tag = os.environ["CURRENT_TAG"]
+          current_sha = os.environ["CURRENT_SHA"]
+
+          def api(path: str):
+              url = f"https://api.github.com{path}"
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(request) as response:
+                  return json.load(response)
+
+          def get_latest_release_tag() -> str | None:
+              try:
+                  release = api(f"/repos/{repo}/releases/latest")
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      return None
+                  raise
+              return release.get("tag_name")
+
+          def summarize_body(body: str | None) -> str | None:
+              if not body:
+                  return None
+
+              for raw_line in body.splitlines():
+                  line = raw_line.strip()
+                  if not line:
+                      continue
+                  if line.startswith("#"):
+                      continue
+                  if line.startswith("-") or line.startswith("*"):
+                      line = line[1:].strip()
+                  if line:
+                      return textwrap.shorten(line, width=160, placeholder="...")
+              return None
+
+          previous_tag = get_latest_release_tag()
+          pr_map: dict[int, dict] = {}
+
+          if previous_tag:
+              compare = api(f"/repos/{repo}/compare/{urllib.parse.quote(previous_tag, safe='')}...{current_sha}")
+              for commit in compare.get("commits", []):
+                  commit_sha = commit["sha"]
+                  pulls = api(f"/repos/{repo}/commits/{commit_sha}/pulls")
+                  for pull in pulls:
+                      pr_map[pull["number"]] = {
+                          "number": pull["number"],
+                          "title": pull["title"].strip(),
+                          "body": summarize_body(pull.get("body")),
+                          "url": pull["html_url"],
+                          "merged_at": pull.get("merged_at") or "",
+                      }
+
+          prs = sorted(pr_map.values(), key=lambda pr: (pr["merged_at"], pr["number"]))
+
+          lines = [f"## What's Changed", ""]
+          if previous_tag:
+              lines.append(f"- Compare: https://github.com/{repo}/compare/{previous_tag}...{current_tag}")
+          else:
+              lines.append("- Initial release")
+
+          lines.append("")
+          lines.append("## Pull Requests")
+          lines.append("")
+
+          if prs:
+              for pr in prs:
+                  lines.append(f"- #{pr['number']} {pr['title']} ({pr['url']})")
+                  if pr["body"]:
+                      lines.append(f"  - {pr['body']}")
+          else:
+              lines.append("- No pull requests found between the previous release and this release.")
+
+          with open("dist/release_notes.md", "w", encoding="utf-8") as fh:
+              fh.write("\n".join(lines) + "\n")
+          PY
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_TAG: ${{ needs.detect-release.outputs.tag_name }}
+          CURRENT_SHA: ${{ github.sha }}
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -299,8 +399,8 @@ jobs:
             dist/HomeAssistantWindows_Setup.exe
             dist/HomeAssistant-macOS.dmg
             dist/latest.json
+          body_path: dist/release_notes.md
           draft: false
           prerelease: false
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

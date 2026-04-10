@@ -9,6 +9,7 @@ datas = []
 datas += collect_data_files('customtkinter', include_py_files=False)
 datas += collect_data_files('aioesphomeapi', include_py_files=False)
 datas += collect_data_files('pymicro_wakeword', include_py_files=False)
+datas += collect_data_files('pyopen_wakeword', include_py_files=False)
 datas += collect_data_files('soundcard', include_py_files=False)
 datas += collect_data_files('pygame', include_py_files=False)
 datas += collect_data_files('vlc', include_py_files=False)
@@ -32,6 +33,7 @@ binaries = []
 binaries += collect_dynamic_libs('customtkinter')
 binaries += collect_dynamic_libs('aioesphomeapi')
 binaries += collect_dynamic_libs('pymicro_wakeword')
+binaries += collect_dynamic_libs('pyopen_wakeword')
 binaries += collect_dynamic_libs('soundcard')
 binaries += collect_dynamic_libs('pygame')
 binaries += collect_dynamic_libs('vlc')
@@ -61,6 +63,7 @@ hiddenimports = [
     'psutil',
     'win10toast',
     'pymicro_wakeword',
+    'pyopen_wakeword',
     'webrtcvad',
     'zeroconf',
     'pycaw',
@@ -131,6 +134,7 @@ hiddenimports = [
 hiddenimports += collect_submodules('customtkinter')
 hiddenimports += collect_submodules('aioesphomeapi')
 hiddenimports += collect_submodules('pymicro_wakeword')
+hiddenimports += collect_submodules('pyopen_wakeword')
 hiddenimports += collect_submodules('soundcard')
 hiddenimports += collect_submodules('pygame')
 hiddenimports += collect_submodules('vlc')

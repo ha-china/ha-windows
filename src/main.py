@@ -154,6 +154,7 @@ class HomeAssistantWindows:
     """
 
     DEFAULT_PORT = 6053
+    MDNS_RESTART_INTERVAL_SECONDS = 6 * 60 * 60
 
     def __init__(self, device_name: str = None, port: int = None):
         """
@@ -185,6 +186,7 @@ class HomeAssistantWindows:
         self._audio_recorder: AudioRecorder = None
         self._wake_word_listening = False
         self._event_loop = None  # Event loop reference for callbacks
+        self._mdns_refresh_task: asyncio.Task | None = None
 
         self.running = False
 
@@ -278,6 +280,25 @@ class HomeAssistantWindows:
             self._show_floating_button()
         else:
             logger.info("Floating button hidden (preference: show_floating_button=False)")
+
+        self._mdns_refresh_task = asyncio.create_task(self._refresh_mdns_periodically())
+
+    async def _refresh_mdns_periodically(self) -> None:
+        """Periodically recreate AsyncZeroconf to avoid long-lived cache growth."""
+        try:
+            while True:
+                await asyncio.sleep(self.MDNS_RESTART_INTERVAL_SECONDS)
+                if not self.running or not self.mdns_broadcaster:
+                    return
+
+                logger.info("Refreshing mDNS broadcaster to release cached zeroconf state")
+                success = await self.mdns_broadcaster.restart_service(self.port)
+                if not success:
+                    logger.warning("Failed to refresh mDNS broadcaster")
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.error(f"mDNS refresh loop failed: {e}")
 
     def _show_floating_button(self) -> None:
         """Show the floating mic button"""
@@ -550,6 +571,14 @@ class HomeAssistantWindows:
         logger.info("Cleaning up resources...")
 
         self.running = False
+
+        if self._mdns_refresh_task:
+            self._mdns_refresh_task.cancel()
+            try:
+                await self._mdns_refresh_task
+            except asyncio.CancelledError:
+                pass
+            self._mdns_refresh_task = None
 
         # Stop wake word detection
         self._stop_wake_word_detection()

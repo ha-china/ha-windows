@@ -91,14 +91,13 @@ class MDNSBroadcaster:
         try:
             logger.info(_i18n.t('registering_mdns'))
 
-            # Create AsyncZeroconf instance
-            self.aiozc = AsyncZeroconf()
-
-            # Get local IP address
             local_ip = self._get_local_ip()
             if not local_ip:
                 logger.error("Failed to get local IP address")
                 return False
+
+            # Create AsyncZeroconf instance
+            self.aiozc = AsyncZeroconf()
 
             # Build TXT record (ESPHome device properties)
             txt_record = self._build_txt_record()
@@ -130,6 +129,8 @@ class MDNSBroadcaster:
 
         except Exception as e:
             logger.error(f"mDNS service registration failed: {e}")
+            await self._cleanup()
+            self._is_registered = False
             return False
 
     def _build_txt_record(self) -> Dict[str, str]:
@@ -189,6 +190,14 @@ class MDNSBroadcaster:
             finally:
                 await self._cleanup()
                 self._is_registered = False
+        elif self.aiozc:
+            await self._cleanup()
+            self._is_registered = False
+
+    async def restart_service(self, port: int = SERVICE_PORT) -> bool:
+        """Restart the underlying AsyncZeroconf instance to release long-lived resources."""
+        await self.unregister_service()
+        return await self.register_service(port)
 
     async def _cleanup(self) -> None:
         """Cleanup resources"""

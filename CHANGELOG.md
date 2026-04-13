@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-04-10
+
+### Fixed
+- Clean up partially initialized mDNS resources immediately when zeroconf registration fails.
+- Periodically recreate the mDNS broadcaster during long-running sessions to release cached zeroconf state.
+
 ## [0.5.1] - 2026-04-10
 
 ### Fixed

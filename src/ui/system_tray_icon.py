@@ -126,14 +126,20 @@ class SystemTrayIcon:
         self._version = version
 
     def set_phase(self, phase: str) -> None:
-        """Update tray icon to reflect voice assistant phase"""
+        """Update tray icon and tooltip to reflect voice assistant phase"""
         if phase not in self._PHASE_COLORS:
-            return
-        if self._current_phase == phase:
             return
         self._current_phase = phase
         if self.icon:
-            self.icon.icon = self.create_icon_image()
+            try:
+                self.icon.icon = self.create_icon_image()
+            except Exception as e:
+                logger.debug(f"Icon update failed: {e}")
+            info = self._status_info
+            self.icon.title = (
+                f"HA Windows: {info['name']} [{phase}]\n"
+                f"{_i18n.t('ip_label')}: {info['ip']}:{info['port']}"
+            )
 
     def _on_show_status(self, icon, item) -> None:
         """Handle show status menu item"""

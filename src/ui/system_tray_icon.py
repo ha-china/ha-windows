@@ -99,39 +99,11 @@ class SystemTrayIcon:
         self._on_quit: Optional[Callable] = None
         self._version = "0.0.0"
 
-    def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
-        """
-        Create tray icon image
-
-        Args:
-            width: Icon width
-            height: Icon height
-
-        Returns:
-            Image: Icon image
-        """
+    def create_icon_image(self, width: int = 32, height: int = 32) -> Image.Image:
+        """Create tray icon: solid colored circle"""
         color = self._PHASE_COLORS.get(self._current_phase, self._PHASE_COLORS[self.PHASE_IDLE])
-
         image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(image)
-
-        draw.ellipse(
-            [4, 4, width - 4, height - 4],
-            fill=(*color, 255)
-        )
-
-        house_margin = 16
-        draw.polygon([
-            (house_margin, height // 2),
-            (width // 2, house_margin),
-            (width - house_margin, height // 2),
-        ], fill=(255, 255, 255, 255))
-
-        draw.rectangle([
-            (house_margin + 4, height // 2),
-            (width - house_margin - 4, height - house_margin),
-        ], fill=(255, 255, 255, 255))
-
+        ImageDraw.Draw(image).ellipse([0, 0, width - 1, height - 1], fill=(*color, 255))
         return image
 
     def set_version(self, version: str) -> None:
@@ -152,10 +124,9 @@ class SystemTrayIcon:
             )
 
     def _update_tray_icon(self, image: Image.Image, phase: str = "") -> None:
-        """Force tray icon update via direct Windows API"""
+        """Update tray icon via Windows API and pystray fallback"""
         hwnd = getattr(self.icon, '_hwnd', None)
         if not hwnd:
-            logger.debug("No HWND available for icon update")
             return
 
         fd, path = tempfile.mkstemp('.ico')
@@ -163,21 +134,21 @@ class SystemTrayIcon:
             with os.fdopen(fd, 'wb') as f:
                 image.save(f, 'ICO')
             hicon = _user32.LoadImageW(
-                None, path, _IMAGE_ICON, 0, 0,
-                _LR_DEFAULTSIZE | _LR_LOADFROMFILE)
+                None, path, _IMAGE_ICON, 32, 32,
+                _LR_LOADFROMFILE)
             if not hicon:
                 logger.debug(f"LoadImageW failed: {ctypes.get_last_error()}")
                 return
-            try:
-                nid = _NOTIFYICONDATAW(
+            result = _shell32.Shell_NotifyIconW(_NIM_MODIFY, ctypes.byref(
+                _NOTIFYICONDATAW(
                     cbSize=ctypes.sizeof(_NOTIFYICONDATAW),
                     hWnd=hwnd,
                     uFlags=_NIF_ICON,
                     hIcon=hicon,
-                )
-                _shell32.Shell_NotifyIconW(_NIM_MODIFY, ctypes.byref(nid))
-            finally:
-                _user32.DestroyIcon(hicon)
+                )))
+            if not result:
+                logger.debug(f"Shell_NotifyIconW failed: {ctypes.get_last_error()}")
+            _user32.DestroyIcon(hicon)
         finally:
             try:
                 os.unlink(path)

@@ -758,6 +758,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         """TTS playback finished callback"""
         self._processing = False
         self._is_playing_tts = False  # Mark that TTS is no longer playing
+        self._set_phase('idle')
 
         # Remove stop word
         if self.state.stop_word:

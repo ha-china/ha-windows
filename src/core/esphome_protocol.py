@@ -122,6 +122,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._phase_callback = callback
 
     def _set_phase(self, phase: str) -> None:
+        logger.info(f"Phase: {phase}")
         if self._phase_callback:
             try:
                 self._phase_callback(phase)
@@ -366,22 +367,27 @@ class ESPHomeProtocol(asyncio.Protocol):
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_PROGRESS:
             # Intent processing progress
             if data.get("tts_start_streaming") == "1":
+                logger.info("🎤 INTENT_PROGRESS: tts_start_streaming")
                 self._set_phase('replying')
                 self.play_tts()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END:
             # Intent processing ended
+            logger.info("🎤 Received INTENT_END")
             self._processing = False
             if data.get("continue_conversation") == "1":
                 self._continue_conversation = True
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START:
             # TTS generation started, emit phase for UI feedback
+            logger.info("🎤 Received TTS_START")
             self._set_phase('replying')
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END:
             # TTS generation ended
-            self._tts_url = data.get("url")
+            url = data.get("url", "")
+            logger.info(f"🎤 Received TTS_END with URL: {url[:60]}...")
+            self._tts_url = url
             self.play_tts()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END:
@@ -393,7 +399,8 @@ class ESPHomeProtocol(asyncio.Protocol):
             if not self._tts_played:
                 self._tts_finished()
             self._tts_played = False
-            self._set_phase('idle')
+            if not self._is_playing_tts:
+                self._set_phase('idle')
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_ERROR:
             logger.error(f"Voice assistant error: {data}")

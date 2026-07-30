@@ -1,62 +1,128 @@
 """
-Native Windows Dialogs using ctypes (Win32 API)
-Zero additional dependencies, native look and feel.
+Native Dialogs using tkinter (built-in, zero extra size)
 """
 
-import ctypes
 import logging
-from ctypes import wintypes
+import threading
+import tkinter as tk
+from tkinter import ttk
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Windows API constants
-MB_OK = 0
-MB_ICONINFORMATION = 0x40
-MB_ICONWARNING = 0x30
-MB_ICONERROR = 0x10
-MB_TASKMODAL = 0x2000
-MB_SETFOREGROUND = 0x00010000
-MB_TOPMOST = 0x00040000
-
-# Load user32
-_user32 = ctypes.windll.user32
-_user32.MessageBoxW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.UINT]
-_user32.MessageBoxW.restype = wintypes.INT
+REPO_URL = "https://github.com/ha-china/ha-windows"
 
 
-def _message_box(title: str, message: str, icon: int = MB_ICONINFORMATION) -> None:
-    """Show a native Windows message box."""
-    try:
-        _user32.MessageBoxW(
-            None,
-            message,
-            title,
-            MB_OK | icon | MB_TASKMODAL | MB_SETFOREGROUND | MB_TOPMOST,
-        )
-    except Exception as e:
-        logger.error(f"Failed to show message box: {e}")
+class _DialogManager:
+    """Manages a hidden tkinter root + dialog lifecycle in a dedicated thread."""
+
+    def __init__(self):
+        self._root: Optional[tk.Tk] = None
+        self._thread: Optional[threading.Thread] = None
+        self._ready = threading.Event()
+
+    def _run(self):
+        root = tk.Tk()
+        root.withdraw()
+        self._root = root
+        self._ready.set()
+        root.mainloop()
+
+    def _ensure(self):
+        if self._root is not None:
+            return True
+        if self._thread and self._thread.is_alive():
+            return self._ready.wait(timeout=3)
+        self._ready.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self._ready.wait(timeout=3)
+
+    def _schedule(self, fn):
+        if not self._ensure():
+            return
+        self._root.after(0, fn)
+
+    def show_status(self, name: str, ip: str, port: str, version: str):
+        self._schedule(lambda: _show_status(self._root, name, ip, port, version))
+
+    def show_about(self, version: str):
+        self._schedule(lambda: _show_about(self._root, version))
+
+
+_dialog_mgr = _DialogManager()
+
+
+def _show_status(parent, name: str, ip: str, port: str, version: str):
+    win = tk.Toplevel(parent)
+    win.title("Device Status")
+    win.geometry("380x250")
+    win.resizable(False, False)
+    win.transient(parent)
+    win.grab_set()
+
+    win.update_idletasks()
+    x = (win.winfo_screenwidth() - 380) // 2
+    y = (win.winfo_screenheight() - 250) // 2
+    win.geometry(f"+{x}+{y}")
+
+    frame = ttk.Frame(win, padding="20")
+    frame.pack(fill=tk.BOTH, expand=True)
+
+    rows = [
+        ("Device", name),
+        ("IP", ip),
+        ("Port", port),
+        ("Version", version),
+        ("Status", "Running"),
+    ]
+    for label, value in rows:
+        row = ttk.Frame(frame)
+        row.pack(fill=tk.X, pady=4)
+        ttk.Label(row, text=f"{label}:", font=("", 10)).pack(side=tk.LEFT)
+        ttk.Label(row, text=value, font=("", 10, "bold")).pack(side=tk.RIGHT)
+
+    ttk.Button(frame, text="Close", command=win.destroy).pack(pady=(20, 0))
+
+
+def _show_about(parent, version: str):
+    import webbrowser
+
+    win = tk.Toplevel(parent)
+    win.title("About")
+    win.geometry("380x240")
+    win.resizable(False, False)
+    win.transient(parent)
+    win.grab_set()
+
+    win.update_idletasks()
+    x = (win.winfo_screenwidth() - 380) // 2
+    y = (win.winfo_screenheight() - 240) // 2
+    win.geometry(f"+{x}+{y}")
+
+    frame = ttk.Frame(win, padding="20")
+    frame.pack(fill=tk.BOTH, expand=True)
+
+    ttk.Label(frame, text="Home Assistant Windows", font=("", 14, "bold")).pack(pady=(0, 10))
+    ttk.Label(frame, text=f"Version {version}", font=("", 10)).pack()
+    ttk.Label(
+        frame,
+        text="Windows native client for Home Assistant voice assistant.",
+        wraplength=320,
+        justify=tk.CENTER,
+    ).pack(pady=(10, 5))
+
+    link = ttk.Label(frame, text=REPO_URL, foreground="blue", cursor="hand2")
+    link.pack()
+    link.bind("<Button-1>", lambda e: webbrowser.open(REPO_URL))
+
+    ttk.Label(frame, text="© 2024 ha-china", foreground="gray").pack(pady=(10, 0))
+    ttk.Button(frame, text="Close", command=win.destroy).pack(pady=(10, 0))
 
 
 def show_status_dialog(name: str, ip: str, port: str, version: str) -> None:
-    """Show device status as a native Windows message box."""
-    message = (
-        f"Device:  {name}\n"
-        f"IP:      {ip}\n"
-        f"Port:    {port}\n"
-        f"Version: {version}\n"
-        f"Status:  Running"
-    )
-    _message_box("Device Status", message)
+    _dialog_mgr.show_status(name, ip, port, version)
 
 
 def show_about_dialog(version: str) -> None:
-    """Show about dialog as a native Windows message box."""
-    message = (
-        f"Home Assistant Windows v{version}\n\n"
-        f"Windows native client that emulates an ESPHome device\n"
-        f"for seamless Home Assistant integration.\n\n"
-        f"https://github.com/ha-china/ha-windows\n\n"
-        f"\u00a9 2024 ha-china"
-    )
-    _message_box("About", message)
+    _dialog_mgr.show_about(version)

@@ -25,7 +25,7 @@ a = Analysis(
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['matplotlib', 'pandas', 'scipy', 'pytest'],
+    excludes=['matplotlib', 'pandas', 'scipy', 'pytest', 'numpy.random', 'numpy.fft', 'numpy.linalg', 'numpy.f2py', 'numpy.ma', 'numpy.matrixlib', 'numpy.polynomial', 'numpy.distutils', 'numpy.doc', 'numpy.testing', 'numpy.compat', 'numpy.records', 'numpy._core._multiarray_tests', 'numpy._core._simd', 'numpy._core.memmap', 'numpy._core.defchararray', 'numpy.ctypeslib', 'numpy.version', 'numpy.strings', 'numpy.char', 'numpy.emath', 'numpy.rec', 'win10toast'],
     noarchive=False,
     optimize=0,
 )
@@ -40,7 +40,7 @@ exe = EXE(
     name='HomeAssistantWindows',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
+    strip=True,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,

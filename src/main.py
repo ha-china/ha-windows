@@ -232,6 +232,9 @@ class HomeAssistantWindows:
         # Create system tray icon after server is initialized
         self.tray = get_tray(state=self.api_server.state)
 
+        # Connect voice assistant phase changes to tray icon updates
+        self.api_server.set_phase_callback(self.tray.set_phase)
+
         # Run server in background
         asyncio.create_task(self.api_server.serve_forever())
 

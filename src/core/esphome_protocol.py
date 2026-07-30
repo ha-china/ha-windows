@@ -10,7 +10,7 @@ import logging
 import socket
 import threading
 from collections.abc import Iterable
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 # pylint: disable=no-name-in-module
 from aioesphomeapi.api_pb2 import (
@@ -113,7 +113,20 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._processing = False
         self._ha_host: Optional[str] = None
 
+        # Phase callback for tray icon state updates
+        self._phase_callback: Optional[Callable[[str], None]] = None
+
         logger.debug(f"ESPHome protocol initialized: {self.state.name}")
+
+    def set_phase_callback(self, callback: Optional[Callable[[str], None]]) -> None:
+        self._phase_callback = callback
+
+    def _set_phase(self, phase: str) -> None:
+        if self._phase_callback:
+            try:
+                self._phase_callback(phase)
+            except Exception as e:
+                logger.debug(f"Phase callback error: {e}")
 
     # ========== Connection Lifecycle ==========
 
@@ -135,6 +148,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             if self._service_manager is not None:
                 self._service_manager.set_ha_host(self._ha_host)
         logger.info(f"📱 New client connected: {peername}")
+        self._set_phase('idle')
 
     def connection_lost(self, exc) -> None:
         """Connection lost"""
@@ -153,6 +167,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         # Restore volume (if previously ducked)
         self.unduck()
+        self._set_phase('not_ready')
 
     def data_received(self, data: bytes) -> None:
         """Receive data"""
@@ -329,12 +344,14 @@ class ESPHomeProtocol(asyncio.Protocol):
             self._tts_played = False
             self._continue_conversation = False
             self._processing = False
+            self._set_phase('listening')
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START:
             if self.state.thinking_sound_enabled and self.state.processing_sound and not self._processing:
                 self._processing = True
                 self.duck()
                 self.state.tts_player.play(self.state.processing_sound)
+            self._set_phase('thinking')
 
         elif event_type in (
             VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END,
@@ -349,7 +366,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_PROGRESS:
             # Intent processing progress
             if data.get("tts_start_streaming") == "1":
-                # Start playing TTS early
+                self._set_phase('replying')
                 self.play_tts()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END:
@@ -357,6 +374,10 @@ class ESPHomeProtocol(asyncio.Protocol):
             self._processing = False
             if data.get("continue_conversation") == "1":
                 self._continue_conversation = True
+
+        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START:
+            # TTS generation started, emit phase for UI feedback
+            self._set_phase('replying')
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END:
             # TTS generation ended
@@ -372,6 +393,14 @@ class ESPHomeProtocol(asyncio.Protocol):
             if not self._tts_played:
                 self._tts_finished()
             self._tts_played = False
+            self._set_phase('idle')
+
+        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_ERROR:
+            logger.error(f"Voice assistant error: {data}")
+            self._is_streaming_audio = False
+            self._processing = False
+            self._stop_audio_streaming()
+            self._set_phase('error')
 
         else:
             logger.info(f"Unhandled voice assistant event: {event_type.name} (type={event_type.value})")
@@ -976,6 +1005,12 @@ class ESPHomeServer:
         self.server: Optional[asyncio.Server] = None
         self._is_running = False
         self._protocol: Optional[ESPHomeProtocol] = None
+        self._phase_callback: Optional[Callable[[str], None]] = None
+
+    def set_phase_callback(self, callback: Optional[Callable[[str], None]]) -> None:
+        self._phase_callback = callback
+        if self._protocol:
+            self._protocol.set_phase_callback(callback)
 
     async def start(self) -> bool:
         """Start server"""
@@ -986,6 +1021,8 @@ class ESPHomeServer:
 
             def protocol_factory():
                 self._protocol = ESPHomeProtocol(self.state)
+                if self._phase_callback:
+                    self._protocol.set_phase_callback(self._phase_callback)
                 return self._protocol
 
             self.server = await loop.create_server(

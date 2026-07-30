@@ -46,6 +46,46 @@ class SystemTrayIcon:
         self._on_quit: Optional[Callable] = None
         self._version = "0.0.0"
 
+    # Phase constants
+    PHASE_IDLE = 'idle'
+    PHASE_WAITING = 'waiting'
+    PHASE_LISTENING = 'listening'
+    PHASE_THINKING = 'thinking'
+    PHASE_REPLYING = 'replying'
+    PHASE_ERROR = 'error'
+    PHASE_NOT_READY = 'not_ready'
+
+    # Phase colors (RGB)
+    _PHASE_COLORS = {
+        PHASE_IDLE: (61, 174, 233),       # blue
+        PHASE_WAITING: (255, 200, 0),     # amber
+        PHASE_LISTENING: (76, 217, 100),  # green
+        PHASE_THINKING: (255, 149, 0),    # orange
+        PHASE_REPLYING: (90, 200, 250),   # cyan
+        PHASE_ERROR: (255, 59, 48),       # red
+        PHASE_NOT_READY: (142, 142, 147), # gray
+    }
+
+    def __init__(self, state=None):
+        """Initialize system tray icon"""
+        self.icon: Optional[pystray.Icon] = None
+        self._running = False
+        self._loop_thread: Optional[threading.Thread] = None
+        self._icon_ready = threading.Event()
+        self._state = state  # Reference to ServerState for saving preferences
+        self._current_phase = self.PHASE_IDLE
+
+        # Status information
+        self._status_info = {
+            'name': 'Unknown',
+            'ip': 'Unknown',
+            'port': 'Unknown',
+        }
+
+        # Callbacks
+        self._on_quit: Optional[Callable] = None
+        self._version = "0.0.0"
+
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
         """
         Create tray icon image
@@ -57,12 +97,14 @@ class SystemTrayIcon:
         Returns:
             Image: Icon image
         """
+        color = self._PHASE_COLORS.get(self._current_phase, self._PHASE_COLORS[self.PHASE_IDLE])
+
         image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
 
         draw.ellipse(
             [4, 4, width - 4, height - 4],
-            fill=(61, 174, 233, 255)
+            fill=(*color, 255)
         )
 
         house_margin = 16
@@ -82,6 +124,16 @@ class SystemTrayIcon:
     def set_version(self, version: str) -> None:
         """Set app version for dialogs"""
         self._version = version
+
+    def set_phase(self, phase: str) -> None:
+        """Update tray icon to reflect voice assistant phase"""
+        if phase not in self._PHASE_COLORS:
+            return
+        if self._current_phase == phase:
+            return
+        self._current_phase = phase
+        if self.icon:
+            self.icon.icon = self.create_icon_image()
 
     def _on_show_status(self, icon, item) -> None:
         """Handle show status menu item"""

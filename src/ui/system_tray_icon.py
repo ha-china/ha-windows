@@ -12,6 +12,7 @@ import pystray
 from PIL import Image, ImageDraw
 
 from src.i18n import get_i18n
+from src.ui.dialogs import show_status_dialog, show_about_dialog
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()
@@ -43,11 +44,7 @@ class SystemTrayIcon:
 
         # Callbacks
         self._on_quit: Optional[Callable] = None
-        self._webui = None
-
-    def set_webui(self, webui) -> None:
-        """Set WebUI server reference"""
-        self._webui = webui
+        self._version = "0.0.0"
 
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
         """
@@ -82,11 +79,15 @@ class SystemTrayIcon:
 
         return image
 
+    def set_version(self, version: str) -> None:
+        """Set app version for dialogs"""
+        self._version = version
+
     def _on_show_status(self, icon, item) -> None:
         """Handle show status menu item"""
         logger.info("Show status menu clicked")
-        if self._webui:
-            self._webui.open_status()
+        info = self._status_info
+        show_status_dialog(info['name'], info['ip'], info['port'], self._version)
 
     def _on_quit_menu(self, icon, item) -> None:
         """Handle quit menu item"""
@@ -102,8 +103,7 @@ class SystemTrayIcon:
     def _on_about_menu(self, icon, item) -> None:
         """Handle about menu item"""
         logger.info("About menu clicked")
-        if self._webui:
-            self._webui.open_about()
+        show_about_dialog(self._version)
 
     def _run_icon(self, icon: pystray.Icon) -> None:
         """Run icon in background thread"""
@@ -212,14 +212,7 @@ class SystemTrayIcon:
                 f"{_i18n.t('ip_label')}: {self._status_info['ip']}:{self._status_info['port']}"
             )
 
-        if self._webui:
-            self._webui.set_status_info(
-                self._status_info['name'],
-                self._status_info['ip'],
-                self._status_info['port'],
-            )
-
-    def set_callbacks(self, on_quit: Callable = None) -> None:
+        def set_callbacks(self, on_quit: Callable = None) -> None:
         """
         Set callback functions
 

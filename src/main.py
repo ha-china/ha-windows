@@ -8,7 +8,6 @@ Uses Windows native APIs - no external DLL dependencies required.
 from src.i18n import set_language
 from src.voice.audio_recorder import AudioRecorder
 from src.ui.system_tray_icon import get_tray
-from src.ui.webui import get_webui_server
 from src.core.esphome_protocol import ESPHomeServer
 from src.core.mdns_discovery import MDNSBroadcaster, DeviceInfo
 import sys
@@ -256,23 +255,13 @@ class HomeAssistantWindows:
         # Save local IP for tray display
         self._local_ip = self.mdns_broadcaster._get_local_ip()
 
-        # Set up WebUI server
-        from src import __version__
-        webui = get_webui_server()
-        webui.set_version(__version__)
-        display_name = device_info.name if device_info.name else self.device_name
-        webui.set_status_info(
-            name=display_name,
-            ip=self._local_ip or "Unknown",
-            port=str(self.port)
-        )
-        webui.start()
-
         # Set up tray callbacks
+        from src import __version__
+        self.tray.set_version(__version__)
         self.tray.set_callbacks(on_quit=self._request_quit)
-        self.tray.set_webui(webui)
 
         # Start system tray icon
+        display_name = device_info.name if device_info.name else self.device_name
         self.tray.start(
             name=display_name,
             ip=self._local_ip or "Unknown",
@@ -525,13 +514,6 @@ class HomeAssistantWindows:
 
         # Stop wake word detection
         self._stop_wake_word_detection()
-
-        # Stop WebUI server
-        from src.ui.webui import get_webui_server
-        try:
-            get_webui_server().stop()
-        except Exception as e:
-            logger.error(f"Failed to stop WebUI server: {e}")
 
         # Stop system tray icon
         if self.tray:

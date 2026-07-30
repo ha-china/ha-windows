@@ -320,19 +320,10 @@ class AudioPlayer:
         self._playback_id = 0
         self._temp_file_path: Optional[str] = None
 
-        # Try VLC first (best for streaming, requires VLC installed)
+        # VLC (lazy init on first use)
         self._vlc_instance: Optional[Any] = None
         self._vlc_player: Optional[Any] = None
         self._vlc_available = False
-
-        try:
-            import vlc
-            self._vlc_instance = vlc.Instance('--no-xlib')
-            self._vlc_player = self._vlc_instance.media_player_new()
-            self._vlc_available = True
-            logger.debug("VLC player initialized (streaming supported)")
-        except Exception as e:
-            logger.debug(f"VLC not available (install VLC for streaming): {e}")
 
         # Fallback to pygame
         self._pygame_available = False
@@ -346,8 +337,21 @@ class AudioPlayer:
         except Exception as e:
             logger.warning(f"pygame not available: {e}")
 
+    def _ensure_vlc(self) -> None:
+        if self._vlc_available or self._vlc_instance is not None:
+            return
+        try:
+            import vlc
+            self._vlc_instance = vlc.Instance('--no-xlib')
+            self._vlc_player = self._vlc_instance.media_player_new()
+            self._vlc_available = True
+            logger.debug("VLC player initialized (streaming supported)")
+        except Exception as e:
+            logger.debug(f"VLC not available (install VLC for streaming): {e}")
+
     @property
     def is_playing(self) -> bool:
+        self._ensure_vlc()
         if self._vlc_available and self._vlc_player:
             import vlc
             state = self._vlc_player.get_state()
@@ -365,8 +369,8 @@ class AudioPlayer:
             self._is_playing = True
             self._done_callback = done_callback
 
+        self._ensure_vlc()
         if self._vlc_available:
-            # VLC handles streaming natively
             self._play_vlc(url, playback_id)
         else:
             # Fallback to pygame in background thread without buffering URL in memory
@@ -502,6 +506,7 @@ class AudioPlayer:
             self._done_callback = None
             temp_path = self._temp_file_path
             self._temp_file_path = None
+        self._ensure_vlc()
         try:
             if self._vlc_available and self._vlc_player:
                 self._vlc_player.stop()
@@ -516,6 +521,7 @@ class AudioPlayer:
     def pause(self) -> None:
         """Pause playback"""
         logger.debug("Pausing playback")
+        self._ensure_vlc()
         try:
             if self._vlc_available and self._vlc_player:
                 self._vlc_player.pause()
@@ -529,6 +535,7 @@ class AudioPlayer:
     def resume(self) -> None:
         """Resume playback"""
         logger.debug("Resuming playback")
+        self._ensure_vlc()
         try:
             if self._vlc_available and self._vlc_player:
                 self._vlc_player.pause()  # VLC toggle pause
@@ -550,6 +557,7 @@ class AudioPlayer:
     def set_volume(self, volume: int) -> None:
         """Set volume (0-100)"""
         self._volume = max(0, min(100, volume))
+        self._ensure_vlc()
         try:
             if self._vlc_available and self._vlc_player:
                 self._vlc_player.audio_set_volume(self._volume)

@@ -59,6 +59,8 @@ class NotificationHandler:
 
     def __init__(self, app_name: str = "Home Assistant"):
         self.app_name = app_name
+        self._ha_host: Optional[str] = None
+        self._ha_port: int = 8123
         self._toaster: Optional["InteractableWindowsToaster"] = None
         self._temp_dir = Path(tempfile.gettempdir()) / "ha_notifications"
         self._temp_dir.mkdir(parents=True, exist_ok=True)
@@ -214,6 +216,23 @@ class NotificationHandler:
         except Exception as e:
             logger.error(f"Failed to download image: {e}")
         return None
+
+    def set_ha_host(self, host: Optional[str]) -> None:
+        """Set Home Assistant host for relative image URL resolution."""
+        self._ha_host = host
+
+    def _resolve_image_url(self, url: str) -> str:
+        """Resolve relative image URLs against the HA host."""
+        if not url or not self._ha_host:
+            return url
+        if url.startswith(("http://", "https://", "file://", "data:")):
+            return url
+        if url.startswith("/"):
+            host = self._ha_host
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+            return f"http://{host}:{self._ha_port}{url}"
+        return url
 
     def cleanup(self) -> None:
         """Cleanup temporary files"""

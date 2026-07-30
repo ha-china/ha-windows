@@ -6,8 +6,6 @@ Provides Windows system tray icon for the application
 import logging
 import socket
 import threading
-import tkinter as tk
-from tkinter import ttk
 from typing import Optional, Callable
 
 import pystray
@@ -25,7 +23,6 @@ class SystemTrayIcon:
 
     Features:
     - Display tray icon
-    - Toggle floating mic button visibility
     - Status notifications
     """
 
@@ -46,13 +43,11 @@ class SystemTrayIcon:
 
         # Callbacks
         self._on_quit: Optional[Callable] = None
+        self._webui = None
 
-        # Dedicated tkinter UI thread for About/Status dialogs
-        self._dialog_root: Optional[tk.Tk] = None
-        self._dialog_thread: Optional[threading.Thread] = None
-        self._dialog_ready = threading.Event()
-        self._about_window: Optional[tk.Toplevel] = None
-        self._status_window: Optional[tk.Toplevel] = None
+    def set_webui(self, webui) -> None:
+        """Set WebUI server reference"""
+        self._webui = webui
 
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
         """
@@ -65,39 +60,33 @@ class SystemTrayIcon:
         Returns:
             Image: Icon image
         """
-        # Create a simple HA-style icon
         image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
 
-        # Draw circular background (HA blue)
-        padding = 4
         draw.ellipse(
-            [padding, padding, width - padding, height - padding],
-            fill=(61, 174, 233, 255)  # Home Assistant blue
+            [4, 4, width - 4, height - 4],
+            fill=(61, 174, 233, 255)
         )
 
-        # Draw simple house shape
         house_margin = 16
-        roof_points = [
+        draw.polygon([
             (house_margin, height // 2),
             (width // 2, house_margin),
             (width - house_margin, height // 2),
-        ]
-        draw.polygon(roof_points, fill=(255, 255, 255, 255))
+        ], fill=(255, 255, 255, 255))
 
-        # House body
-        house_body = [
+        draw.rectangle([
             (house_margin + 4, height // 2),
             (width - house_margin - 4, height - house_margin),
-        ]
-        draw.rectangle(house_body, fill=(255, 255, 255, 255))
+        ], fill=(255, 255, 255, 255))
 
         return image
 
     def _on_show_status(self, icon, item) -> None:
         """Handle show status menu item"""
         logger.info("Show status menu clicked")
-        self.show_status()
+        if self._webui:
+            self._webui.open_status()
 
     def _on_quit_menu(self, icon, item) -> None:
         """Handle quit menu item"""
@@ -107,22 +96,17 @@ class SystemTrayIcon:
                 self._on_quit()
             except Exception as e:
                 logger.error(f"Error in quit callback: {e}")
-        # Stop icon after callback (callback should set running=False)
         self._running = False
         icon.stop()
 
     def _on_about_menu(self, icon, item) -> None:
         """Handle about menu item"""
         logger.info("About menu clicked")
-        self.show_about()
+        if self._webui:
+            self._webui.open_about()
 
     def _run_icon(self, icon: pystray.Icon) -> None:
-        """
-        Run icon in background thread
-
-        Args:
-            icon: pystray Icon instance
-        """
+        """Run icon in background thread"""
         self._icon_ready.set()
         icon.run()
 
@@ -139,7 +123,6 @@ class SystemTrayIcon:
             logger.warning("Tray icon already running")
             return
 
-        # Auto-detect values if not provided
         if name is None:
             name = socket.gethostname()
         if ip is None:
@@ -151,7 +134,6 @@ class SystemTrayIcon:
             'port': str(port) if port else 'Unknown',
         }
 
-        # Create icon with menu
         self.icon = pystray.Icon(
             name='HomeAssistant Windows',
             icon=self.create_icon_image(),
@@ -162,10 +144,8 @@ class SystemTrayIcon:
             )
         )
 
-        # Set tooltip
         self.icon.title = f"HA Windows: {name}\n{_i18n.t('ip_label')}: {ip}:{port if port else 'Unknown'}"
 
-        # Run in background thread
         self._running = True
         self._icon_ready.clear()
         self._loop_thread = threading.Thread(
@@ -175,7 +155,6 @@ class SystemTrayIcon:
         )
         self._loop_thread.start()
 
-        # Wait for icon to be ready
         self._icon_ready.wait(timeout=5)
 
         if not self._icon_ready.is_set():
@@ -191,7 +170,6 @@ class SystemTrayIcon:
             str: Local IP address
         """
         try:
-            # Use UDP to local network (doesn't actually send data)
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("10.255.255.255", 1))
             ip = s.getsockname()[0]
@@ -203,7 +181,6 @@ class SystemTrayIcon:
             pass
 
         try:
-            # Fallback: use hostname
             hostname = socket.gethostname()
             ip = socket.gethostbyname(hostname)
             if ip and not ip.startswith("127.") and not ip.startswith("169.254."):
@@ -229,11 +206,17 @@ class SystemTrayIcon:
         if port is not None:
             self._status_info['port'] = str(port)
 
-        # Update tooltip with i18n support
         if self.icon:
             self.icon.title = (
                 f"HA Windows: {self._status_info['name']}\n"
                 f"{_i18n.t('ip_label')}: {self._status_info['ip']}:{self._status_info['port']}"
+            )
+
+        if self._webui:
+            self._webui.set_status_info(
+                self._status_info['name'],
+                self._status_info['ip'],
+                self._status_info['port'],
             )
 
     def set_callbacks(self, on_quit: Callable = None) -> None:
@@ -245,219 +228,6 @@ class SystemTrayIcon:
         """
         self._on_quit = on_quit
 
-    def _run_dialog_loop(self) -> None:
-        """Run tkinter event loop for tray dialogs."""
-        try:
-            root = tk.Tk()
-            root.withdraw()
-            self._dialog_root = root
-            self._dialog_ready.set()
-            root.mainloop()
-        except Exception as e:
-            logger.error(f"Dialog loop failed: {e}")
-        finally:
-            self._dialog_root = None
-            self._about_window = None
-            self._status_window = None
-            self._dialog_ready.clear()
-
-    def _ensure_dialog_thread(self) -> bool:
-        """Ensure dialog thread is running and ready."""
-        if self._dialog_root is not None:
-            return True
-
-        if self._dialog_thread and self._dialog_thread.is_alive():
-            return self._dialog_ready.wait(timeout=2)
-
-        self._dialog_ready.clear()
-        self._dialog_thread = threading.Thread(target=self._run_dialog_loop, daemon=True)
-        self._dialog_thread.start()
-        ready = self._dialog_ready.wait(timeout=2)
-        if not ready:
-            logger.error("Dialog thread did not start in time")
-        return ready
-
-    def _run_on_dialog_thread(self, callback: Callable[[], None]) -> None:
-        """Schedule callback on dialog thread."""
-        if not self._ensure_dialog_thread() or self._dialog_root is None:
-            return
-        try:
-            self._dialog_root.after(0, callback)
-        except Exception as e:
-            logger.error(f"Failed to schedule dialog callback: {e}")
-
-    def show_status(self) -> None:
-        """Show status window with i18n support"""
-        def _show_status_window() -> None:
-            try:
-                if self._dialog_root is None:
-                    return
-
-                if self._status_window and self._status_window.winfo_exists():
-                    self._status_window.deiconify()
-                    self._status_window.lift()
-                    self._status_window.focus_force()
-                    return
-
-                status_window = tk.Toplevel(self._dialog_root)
-                self._status_window = status_window
-                status_window.title("Status")
-                status_window.geometry("450x280")
-                status_window.resizable(False, False)
-
-                status_window.update_idletasks()
-                width = status_window.winfo_width()
-                height = status_window.winfo_height()
-                x = (status_window.winfo_screenwidth() // 2) - (width // 2)
-                y = (status_window.winfo_screenheight() // 2) - (height // 2)
-                status_window.geometry(f'{width}x{height}+{x}+{y}')
-
-                main_frame = ttk.Frame(status_window, padding="25")
-                main_frame.pack(fill=tk.BOTH, expand=True)
-
-                ttk.Label(
-                    main_frame,
-                    text="Device Status",
-                    font=("Segoe UI", 14, "bold") if self._is_windows() else ("Arial", 14, "bold"),
-                ).pack(pady=(0, 25))
-
-                ttk.Label(
-                    main_frame,
-                    text=f"{_i18n.t('device_label')}: {self._status_info['name']}",
-                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
-                ).pack(pady=8, anchor="w")
-
-                ttk.Label(
-                    main_frame,
-                    text=f"{_i18n.t('ip_label')}: {self._status_info['ip']}",
-                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
-                ).pack(pady=8, anchor="w")
-
-                ttk.Label(
-                    main_frame,
-                    text=f"{_i18n.t('port_label')}: {self._status_info['port']}",
-                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
-                ).pack(pady=8, anchor="w")
-
-                ttk.Label(
-                    main_frame,
-                    text=f"{_i18n.t('status_running')}",
-                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
-                    foreground="green",
-                ).pack(pady=(25, 0), anchor="w")
-
-                def _on_close() -> None:
-                    if self._status_window is status_window:
-                        self._status_window = None
-                    status_window.destroy()
-
-                ttk.Button(
-                    main_frame,
-                    text=self._get_close_text(),
-                    command=_on_close,
-                    width=20,
-                ).pack(pady=(25, 0))
-
-                status_window.protocol("WM_DELETE_WINDOW", _on_close)
-
-                logger.info("Status dialog shown")
-            except Exception as e:
-                logger.error(f"Failed to show status: {e}")
-
-        self._run_on_dialog_thread(_show_status_window)
-
-    def show_about(self) -> None:
-        """Show about dialog with version and repository info"""
-        def _show_about_window() -> None:
-            try:
-                try:
-                    from src import __version__
-                except Exception:
-                    __version__ = "unknown"
-
-                import webbrowser
-
-                if self._dialog_root is None:
-                    return
-
-                if self._about_window and self._about_window.winfo_exists():
-                    self._about_window.deiconify()
-                    self._about_window.lift()
-                    self._about_window.focus_force()
-                    return
-
-                repo_url = "https://github.com/ha-china/ha-windows"
-
-                about_window = tk.Toplevel(self._dialog_root)
-                self._about_window = about_window
-                about_window.title("About")
-                about_window.geometry("450x350")
-                about_window.resizable(False, False)
-
-                about_window.update_idletasks()
-                width = about_window.winfo_width()
-                height = about_window.winfo_height()
-                x = (about_window.winfo_screenwidth() // 2) - (width // 2)
-                y = (about_window.winfo_screenheight() // 2) - (height // 2)
-                about_window.geometry(f'{width}x{height}+{x}+{y}')
-
-                main_frame = ttk.Frame(about_window, padding="25")
-                main_frame.pack(fill=tk.BOTH, expand=True)
-
-                ttk.Label(
-                    main_frame,
-                    text="Home Assistant Windows",
-                    font=("Segoe UI", 16, "bold") if self._is_windows() else ("Arial", 16, "bold"),
-                ).pack(pady=(0, 25))
-
-                ttk.Label(
-                    main_frame,
-                    text=f"Version: {__version__}",
-                    font=("Segoe UI", 10) if self._is_windows() else ("Arial", 10),
-                ).pack(pady=8)
-
-                ttk.Label(
-                    main_frame,
-                    text="Repository:",
-                    font=("Segoe UI", 10, "bold") if self._is_windows() else ("Arial", 10, "bold"),
-                ).pack(pady=(25, 8))
-
-                repo_url_label = ttk.Label(
-                    main_frame,
-                    text=repo_url,
-                    font=("Segoe UI", 9) if self._is_windows() else ("Arial", 9),
-                    foreground="blue",
-                    cursor="hand2",
-                )
-                repo_url_label.pack(pady=8)
-                repo_url_label.bind("<Button-1>", lambda _e: webbrowser.open(repo_url))
-
-                ttk.Label(
-                    main_frame,
-                    text="© 2024 ha-china",
-                    font=("Segoe UI", 9) if self._is_windows() else ("Arial", 9),
-                ).pack(pady=(35, 0))
-
-                def _on_close() -> None:
-                    if self._about_window is about_window:
-                        self._about_window = None
-                    about_window.destroy()
-
-                ttk.Button(
-                    main_frame,
-                    text=self._get_close_text(),
-                    command=_on_close,
-                    width=20,
-                ).pack(pady=(25, 0))
-
-                about_window.protocol("WM_DELETE_WINDOW", _on_close)
-
-                logger.info("About dialog shown")
-            except Exception as e:
-                logger.error(f"Failed to show about: {e}")
-
-        self._run_on_dialog_thread(_show_about_window)
-
     def stop(self) -> None:
         """Stop system tray icon"""
         if self.icon and self._running:
@@ -465,45 +235,9 @@ class SystemTrayIcon:
             try:
                 self.icon.stop()
             except Exception:
-                pass  # May already be stopped
-
-            if self._dialog_root:
-                try:
-                    self._dialog_root.after(0, self._dialog_root.quit)
-                except Exception:
-                    pass
+                pass
 
             logger.info("System tray icon stopped")
-
-    def _is_windows(self) -> bool:
-        """Check if running on Windows"""
-        import platform
-        return platform.system() == 'Windows'
-
-    def _get_close_text(self) -> str:
-        """Get localized close button text"""
-        try:
-            # Try to use i18n if available
-            return _i18n.t('close')
-        except Exception:
-            # Fallback to English
-            return "Close"
-
-    def notify(self, message: str, title: str = None) -> None:
-        """
-        Show notification
-
-        Args:
-            message: Notification message
-            title: Notification title (default: app_name)
-        """
-        if self.icon:
-            try:
-                if title is None:
-                    title = _i18n.t('app_name')
-                self.icon.notify(message, title=title)
-            except Exception as e:
-                logger.error(f"Failed to show notification: {e}")
 
 
 # Global singleton

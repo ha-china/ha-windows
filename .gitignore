@@ -93,6 +93,8 @@ dmypy.json
 
 # Local only
 TODO.md
+CROSSPLATFORM_MIGRATION.md
+IMPROVEMENT_REPORT.md
 
 # User preferences (contains local device config)
 preferences.json

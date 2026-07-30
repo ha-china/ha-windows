@@ -153,7 +153,7 @@ class AudioRecorder:
         com_initialized = False
         try:
             import pythoncom
-            pythoncom.CoInitializeEx(pythoncom.COINIT_MULTITHREADED)
+            pythoncom.CoInitialize()
             com_initialized = True
         except ImportError:
             pass

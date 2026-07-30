@@ -149,12 +149,14 @@ class AudioRecorder:
         Args:
             audio_callback: Audio data callback function
         """
-        # Initialize COM for this thread (required on Windows)
+        # Initialize COM for this thread (required on Windows for soundcard/MediaFoundation)
+        com_initialized = False
         try:
             import pythoncom
-            pythoncom.CoInitialize()
+            pythoncom.CoInitializeEx(pythoncom.COINIT_MULTITHREADED)
+            com_initialized = True
         except ImportError:
-            pass  # pythoncom not available, might work without it
+            pass
         except Exception:
             pass
 
@@ -166,13 +168,9 @@ class AudioRecorder:
                 blocksize=self.BLOCK_SIZE
             ) as recorder:
                 while self.is_recording:
-                    # Record audio block
                     audio_array = recorder.record(numframes=self.BLOCK_SIZE)
-
-                    # Convert to 16-bit signed integer PCM format
                     audio_pcm = self._array_to_pcm(audio_array)
 
-                    # Call callback function or put in queue
                     if audio_callback:
                         audio_callback(audio_pcm)
                     else:
@@ -185,9 +183,16 @@ class AudioRecorder:
                             except (Empty, Full):
                                 pass
 
-        except Exception as e:
+        except Exception:
             logger.error(f"Recording loop error", exc_info=True)
             self.is_recording = False
+        finally:
+            if com_initialized:
+                try:
+                    import pythoncom
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
 
     def _array_to_pcm(self, audio_array: np.ndarray) -> bytes:
         """

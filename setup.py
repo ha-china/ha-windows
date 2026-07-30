@@ -166,7 +166,6 @@ def build_exe():
         "--exclude-module=numpy.emath",
         "--exclude-module=numpy.rec",
         "--exclude-module=win10toast",
-        "--upx-dir=/tmp/upx-4.2.4-win64",
         "--strip",
     ])
 

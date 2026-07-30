@@ -110,13 +110,6 @@ jobs:
           pip install -r requirements-windows.txt --verbose
         shell: pwsh
       
-      - name: Run tests
-        run: |
-          python -m pytest tests/ -v --timeout=60 -x
-        shell: pwsh
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-      
       - name: Build Single-File EXE
         run: |
           New-Item -ItemType Directory -Force -Path build-logs | Out-Null

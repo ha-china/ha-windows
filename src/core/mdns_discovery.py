@@ -148,7 +148,7 @@ class MDNSBroadcaster:
 
         txt_record = {
             # Reference linux-voice-assistant TXT record format
-            "version": "2025.9.0",
+            "version": "2026.7.0",
             "mac": mac_no_colons,
             "board": "host",
             "platform": "HOST",

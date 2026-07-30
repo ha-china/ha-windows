@@ -585,7 +585,7 @@ class ServerState:
     mac_address: str
     friendly_name: str = ""
     version: str = "unknown"
-    esphome_version: str = "2025.9.0"
+    esphome_version: str = "2026.7.0"
     manufacturer: str = "ha-china"
     model: str = "Home Assistant Windows"
 

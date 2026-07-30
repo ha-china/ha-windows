@@ -6,7 +6,7 @@ import logging
 import threading
 from typing import Optional
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QObject, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
@@ -19,6 +19,32 @@ APP_NAME = "Home Assistant Windows"
 REPO_URL = "https://github.com/ha-china/ha-windows"
 
 
+class _DialogProxy(QObject):
+    """Receiver object that lives on the Qt thread for cross-thread dialog dispatch."""
+
+    _show_requested = Signal(str, str, str, str, str)  # type, name, ip, port, version
+
+    def __init__(self):
+        super().__init__()
+        self._show_requested.connect(self._on_show_requested, Qt.QueuedConnection)
+
+    def request_show_status(self, name: str, ip: str, port: str, version: str):
+        self._show_requested.emit("status", name, ip, port, version)
+
+    def request_show_about(self, version: str):
+        self._show_requested.emit("about", "", "", "", version)
+
+    def _on_show_requested(self, dtype: str, name: str, ip: str, port: str, version: str):
+        if dtype == "status":
+            dialog = _StatusDialog(name, ip, port, version)
+        else:
+            dialog = _AboutDialog(version)
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+
 class _DialogManager:
     """Manages a hidden QApplication + dialog lifecycle in a dedicated thread."""
 
@@ -26,10 +52,12 @@ class _DialogManager:
         self._app: Optional[QApplication] = None
         self._thread: Optional[threading.Thread] = None
         self._ready = threading.Event()
+        self._proxy: Optional[_DialogProxy] = None
 
     def _run(self):
         self._app = QApplication([])
         self._app.setStyle("Fusion")
+        self._proxy = _DialogProxy()
         self._ready.set()
         self._app.exec()
 
@@ -43,29 +71,19 @@ class _DialogManager:
         self._thread.start()
         return self._ready.wait(timeout=3)
 
-    def _show_on_qt_thread(self, dialog_factory):
-        """Schedule dialog creation on the Qt event loop thread."""
-        QTimer.singleShot(0, lambda: self._create_and_show(dialog_factory))
-
-    def _create_and_show(self, dialog_factory):
-        """Create and show dialog (runs on Qt thread)."""
-        dialog = dialog_factory()
-        dialog.setAttribute(Qt.WA_DeleteOnClose)
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
-
     def show_status(self, name: str, ip: str, port: str, version: str):
         if not self._ensure_app():
             logger.error("Failed to start Qt app")
             return
-        self._show_on_qt_thread(lambda: _StatusDialog(name, ip, port, version))
+        if self._proxy:
+            self._proxy.request_show_status(name, ip, port, version)
 
     def show_about(self, version: str):
         if not self._ensure_app():
             logger.error("Failed to start Qt app")
             return
-        self._show_on_qt_thread(lambda: _AboutDialog(version))
+        if self._proxy:
+            self._proxy.request_show_about(version)
 
 
 class _StatusDialog(QDialog):

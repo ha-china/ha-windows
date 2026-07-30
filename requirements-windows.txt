@@ -19,5 +19,11 @@ pycaw>=0.0.1
 pystray>=0.19.0
 keyboard>=0.13.5
 
+# Test dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-timeout>=2.0.0
+hypothesis>=6.0.0
+
 # Build dependencies
 pyinstaller>=6.0.0

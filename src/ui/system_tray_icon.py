@@ -106,7 +106,6 @@ class SystemTrayIcon:
     def set_phase(self, phase: str) -> None:
         if phase not in self._PHASE_COLORS:
             return
-        logger.info(f"UI Phase: {phase}")
         self._current_phase = phase
         if self.icon:
             hwnd = getattr(self.icon, '_hwnd', None)

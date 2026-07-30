@@ -6,8 +6,8 @@ import logging
 import threading
 from typing import Optional
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QFont, QDesktopServices
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QWidget, QFrame,
@@ -43,23 +43,29 @@ class _DialogManager:
         self._thread.start()
         return self._ready.wait(timeout=3)
 
+    def _show_on_qt_thread(self, dialog_factory):
+        """Schedule dialog creation on the Qt event loop thread."""
+        QTimer.singleShot(0, lambda: self._create_and_show(dialog_factory))
+
+    def _create_and_show(self, dialog_factory):
+        """Create and show dialog (runs on Qt thread)."""
+        dialog = dialog_factory()
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
     def show_status(self, name: str, ip: str, port: str, version: str):
         if not self._ensure_app():
             logger.error("Failed to start Qt app")
             return
-        dialog = _StatusDialog(name, ip, port, version)
-        dialog.show()
-        self._app.activateWindow()
-        dialog.raise_()
+        self._show_on_qt_thread(lambda: _StatusDialog(name, ip, port, version))
 
     def show_about(self, version: str):
         if not self._ensure_app():
             logger.error("Failed to start Qt app")
             return
-        dialog = _AboutDialog(version)
-        dialog.show()
-        self._app.activateWindow()
-        dialog.raise_()
+        self._show_on_qt_thread(lambda: _AboutDialog(version))
 
 
 class _StatusDialog(QDialog):

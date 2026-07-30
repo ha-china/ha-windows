@@ -22,7 +22,7 @@ jobs:
       tag_name: ${{ steps.detect.outputs.tag_name }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -73,10 +73,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -166,7 +166,7 @@ jobs:
 
       - name: Upload Windows build logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-build-logs
           path: |
@@ -176,14 +176,14 @@ jobs:
           if-no-files-found: warn
       
       - name: Upload Windows EXE
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ha-assistant-windows-exe
           path: dist/HomeAssistantWindows.exe
           retention-days: 30
       
       - name: Upload Windows Installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ha-assistant-windows-installer
           path: dist/HomeAssistantWindows_Setup.exe
@@ -196,16 +196,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       
       - name: Download Windows EXE
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ha-assistant-windows-exe
           path: dist/
       
       - name: Download Windows Installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ha-assistant-windows-installer
           path: dist/
@@ -330,7 +330,7 @@ jobs:
           CURRENT_SHA: ${{ github.sha }}
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.detect-release.outputs.tag_name }}
           target_commitish: ${{ github.sha }}

@@ -74,7 +74,7 @@ class SystemTrayIcon:
         PHASE_WAITING: (255, 200, 0),
         PHASE_LISTENING: (76, 217, 100),
         PHASE_THINKING: (255, 149, 0),
-        PHASE_REPLYING: (90, 200, 250),
+        PHASE_REPLYING: (255, 45, 85),
         PHASE_ERROR: (255, 59, 48),
         PHASE_NOT_READY: (142, 142, 147),
     }
@@ -106,6 +106,7 @@ class SystemTrayIcon:
     def set_phase(self, phase: str) -> None:
         if phase not in self._PHASE_COLORS:
             return
+        logger.info(f"UI Phase: {phase}")
         self._current_phase = phase
         if self.icon:
             hwnd = getattr(self.icon, '_hwnd', None)

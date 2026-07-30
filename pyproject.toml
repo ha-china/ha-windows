@@ -31,7 +31,6 @@ dependencies = [
     "webrtcvad-wheels>=2.0.10",
     "psutil>=5.9.0",
     "zeroconf>=0.100.0",
-    "PySide6>=6.6.0",
     "windows-toasts>=1.3.0; sys_platform == 'win32'",
     "pycaw>=0.0.1; sys_platform == 'win32'",
     "keyboard>=0.13.5; sys_platform == 'win32'",
@@ -112,7 +111,6 @@ disallow_incomplete_defs = false
 [[tool.mypy.overrides]]
 module = [
     "sounddevice.*",
-    "PySide6.*",
     "pycaw.*",
     "webrtcvad.*",
     "pystray.*",

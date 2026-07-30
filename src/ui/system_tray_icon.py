@@ -172,7 +172,6 @@ class SystemTrayIcon:
                 nid = _NOTIFYICONDATAW(
                     cbSize=ctypes.sizeof(_NOTIFYICONDATAW),
                     hWnd=hwnd,
-                    uID=id(self.icon) & 0xFFFFFFFF,
                     uFlags=_NIF_ICON,
                     hIcon=hicon,
                 )

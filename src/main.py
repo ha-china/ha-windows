@@ -35,7 +35,7 @@ def check_dependencies():
     modules_to_check = [
         ('aioesphomeapi', 'ESPHome protocol'),
         ('aiohttp', 'HTTP server'),
-        ('sounddevice', 'Audio recording'),
+        ('soundcard', 'Audio recording'),
         ('psutil', 'System monitoring'),
         ('zeroconf', 'mDNS discovery'),
         ('numpy', 'Audio processing'),

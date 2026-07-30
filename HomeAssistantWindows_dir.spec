@@ -11,7 +11,7 @@ datas += collect_all('pycaw')[0]
 datas += collect_all('comtypes')[0]
 datas += collect_data_files('pymicro_wakeword', include_py_files=False)
 datas += collect_data_files('pyopen_wakeword', include_py_files=False)
-datas += collect_data_files('sounddevice', include_py_files=False)
+datas += collect_data_files('soundcard', include_py_files=False)
 datas += collect_data_files('webrtcvad', include_py_files=False)
 datas += collect_data_files('zeroconf', include_py_files=False)
 datas += collect_data_files('ifaddr', include_py_files=False)
@@ -34,7 +34,7 @@ binaries += collect_all('pycaw')[1]
 binaries += collect_all('comtypes')[1]
 binaries += collect_dynamic_libs('pymicro_wakeword')
 binaries += collect_dynamic_libs('pyopen_wakeword')
-binaries += collect_dynamic_libs('sounddevice')
+binaries += collect_dynamic_libs('soundcard')
 binaries += collect_dynamic_libs('webrtcvad')
 binaries += collect_dynamic_libs('zeroconf')
 binaries += collect_dynamic_libs('ifaddr')
@@ -48,7 +48,7 @@ binaries += collect_dynamic_libs('pystray')
 # Hidden imports (only modules that PyInstaller cannot auto-detect)
 hiddenimports = [
     'aioesphomeapi',
-    'sounddevice',
+    'soundcard',
     'numpy',
     'psutil',
     'pymicro_wakeword',
@@ -124,7 +124,7 @@ hiddenimports += collect_all('pycaw')[2]
 hiddenimports += collect_all('comtypes')[2]
 hiddenimports += collect_submodules('pymicro_wakeword')
 hiddenimports += collect_submodules('pyopen_wakeword')
-hiddenimports += collect_submodules('sounddevice')
+hiddenimports += collect_submodules('soundcard')
 hiddenimports += collect_submodules('pygame')
 hiddenimports += collect_submodules('vlc')
 hiddenimports += collect_submodules('webrtcvad')

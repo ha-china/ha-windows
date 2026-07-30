@@ -20,7 +20,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "aioesphomeapi>=2026.7.0",
+    "aioesphomeapi>=45.7.0",
     "aiohttp>=3.8.0",
     "sounddevice>=0.5.0",
     "numpy>=1.24.0",

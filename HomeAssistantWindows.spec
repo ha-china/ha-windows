@@ -1,72 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec file for single-file mode (one-file)
-# Portable version - no autostart functionality
 from PyInstaller.utils.hooks import collect_all
 
-# Collect data files from packages
 datas = [('src', 'src')]
-
-# Collect binaries
 binaries = []
-
-# Hidden imports (only modules that PyInstaller cannot auto-detect)
-hiddenimports = [
-    'aioesphomeapi',
-    'sounddevice',
-    'numpy',
-    'psutil',
-    'pymicro_wakeword',
-    'pyopen_wakeword',
-    'comtypes',
-    'webrtcvad',
-    'zeroconf',
-    'pycaw',
-    'PIL',
-    'pystray',
-    'windows_toasts',
-    # src modules (excluding autostart for portable version)
-    'src.i18n',
-    'src.core.mdns_discovery',
-    'src.core.esphome_protocol',
-    'src.ui.system_tray_icon',
-    'src.voice.audio_recorder',
-    'src.voice.mpv_player',
-    'src.voice.wake_word',
-    'src.voice.vad',
-    'src.commands.command_executor',
-    'src.commands.system_commands',
-    'src.commands.media_commands',
-    'src.commands.audio_commands',
-    'src.sensors.windows_monitor',
-    'src.notify.announcement',
-    'src.notify.toast_notification',
-    'src.notify.service_entity',
-    'src.ui.main_window',
-    # Note: src.autostart is NOT included in portable version
-]
-
-# Collect all dependencies for key packages
+hiddenimports = ['windows_toasts', 'pycaw', 'comtypes', 'pystray', 'win10toast', 'src.platforms.windows', 'aioesphomeapi', 'sounddevice', 'numpy', 'psutil', 'pymicro_wakeword', 'pyopen_wakeword', 'webrtcvad', 'zeroconf', 'PIL', 'src.i18n', 'src.core.mdns_discovery', 'src.core.esphome_protocol', 'src.ui.system_tray_icon', 'src.voice.audio_recorder', 'src.voice.mpv_player', 'src.voice.wake_word', 'src.voice.vad', 'src.commands.command_executor', 'src.commands.system_commands', 'src.commands.media_commands', 'src.commands.audio_commands', 'src.sensors.windows_monitor', 'src.notify.announcement', 'src.notify.toast_notification', 'src.notify.service_entity', 'src.ui.main_window', 'src.autostart', 'src.platforms', 'src.platforms.base']
 tmp_ret = collect_all('aioesphomeapi')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
 tmp_ret = collect_all('pycaw')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
 tmp_ret = collect_all('comtypes')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
 tmp_ret = collect_all('pymicro_wakeword')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
 tmp_ret = collect_all('pyopen_wakeword')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
-tmp_ret = collect_all('sounddevice')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
-tmp_ret = collect_all('vlc')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 a = Analysis(
     ['src\\__main__.py'],
@@ -77,11 +25,10 @@ a = Analysis(
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['matplotlib', 'pandas', 'scipy', 'pytest', 'IPython', 'jupyter'],
+    excludes=['matplotlib', 'pandas', 'scipy', 'pytest'],
     noarchive=False,
     optimize=0,
 )
-
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -97,7 +44,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # No console window (GUI mode)
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

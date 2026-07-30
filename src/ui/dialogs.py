@@ -36,10 +36,10 @@ class _DialogProxy(QObject):
         self._show_requested.emit("about", "", "", "", version)
 
     def _on_show_requested(self, dtype: str, name: str, ip: str, port: str, version: str):
-        if self._current_dialog:
-            self._current_dialog.close()
-            self._current_dialog.deleteLater()
-            self._current_dialog = None
+        if self._current_dialog and self._current_dialog.isVisible():
+            self._current_dialog.raise_()
+            self._current_dialog.activateWindow()
+            return
         if dtype == "status":
             dialog = _StatusDialog(name, ip, port, version)
         else:

@@ -148,9 +148,9 @@ class MDNSBroadcaster:
 
         try:
             import aioesphomeapi
-            esphome_ver = getattr(aioesphomeapi, "__version__", "2026.7.0")
+            esphome_ver = getattr(aioesphomeapi, "__version__", "2025.9.0")
         except ImportError:
-            esphome_ver = "2026.7.0"
+            esphome_ver = "2025.9.0"
 
         txt_record = {
             "version": esphome_ver,

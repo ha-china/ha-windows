@@ -24,9 +24,9 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Any, Callable
 
 try:
     import aioesphomeapi
-    _ESPHOME_CORE_VERSION = getattr(aioesphomeapi, "__version__", "2026.7.0")
+    _ESPHOME_CORE_VERSION = getattr(aioesphomeapi, "__version__", "2025.9.0")
 except ImportError:
-    _ESPHOME_CORE_VERSION = "2026.7.0"
+    _ESPHOME_CORE_VERSION = "45.7.0"
 
 if TYPE_CHECKING:
     from .esphome_protocol import ESPHomeProtocol

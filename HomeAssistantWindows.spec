@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('src', 'src')]
 binaries = []
-hiddenimports = ['windows_toasts', 'pycaw', 'comtypes', 'pystray', 'win10toast', 'src.platforms.windows', 'aioesphomeapi', 'soundcard', 'numpy', 'psutil', 'pymicro_wakeword', 'pyopen_wakeword', 'webrtcvad', 'zeroconf', 'PIL', 'src.i18n', 'src.core.mdns_discovery', 'src.core.esphome_protocol', 'src.ui.system_tray_icon', 'src.voice.audio_recorder', 'src.voice.mpv_player', 'src.voice.wake_word', 'src.voice.vad', 'src.commands.command_executor', 'src.commands.system_commands', 'src.commands.media_commands', 'src.commands.audio_commands', 'src.sensors.windows_monitor', 'src.notify.announcement', 'src.notify.toast_notification', 'src.notify.service_entity', 'src.ui.main_window', 'src.autostart', 'src.platforms', 'src.platforms.base']
+hiddenimports = ['windows_toasts', 'pycaw', 'comtypes', 'pystray', 'win10toast', 'src.platforms.windows', 'aioesphomeapi', 'sounddevice', 'numpy', 'psutil', 'pymicro_wakeword', 'pyopen_wakeword', 'webrtcvad', 'zeroconf', 'PIL', 'src.i18n', 'src.core.mdns_discovery', 'src.core.esphome_protocol', 'src.ui.system_tray_icon', 'src.voice.audio_recorder', 'src.voice.mpv_player', 'src.voice.wake_word', 'src.voice.vad', 'src.commands.command_executor', 'src.commands.system_commands', 'src.commands.media_commands', 'src.commands.audio_commands', 'src.sensors.windows_monitor', 'src.notify.announcement', 'src.notify.toast_notification', 'src.notify.service_entity', 'src.ui.main_window', 'src.autostart', 'src.platforms', 'src.platforms.base']
 tmp_ret = collect_all('aioesphomeapi')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('pycaw')

@@ -131,7 +131,7 @@ class WindowsPlatform(PlatformBase):
             Dict with 'input_devices' and 'output_devices' lists
         """
         try:
-            import soundcard
+            import sounddevice as sd
             
             # Get all output devices
             speakers = soundcard.all_speakers()

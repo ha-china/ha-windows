@@ -99,7 +99,7 @@ def build_exe():
     # Common hidden imports (these modules may not be automatically detected)
     pyinstaller_args.extend([
         "--hidden-import=aioesphomeapi",
-        "--hidden-import=soundcard",
+        "--hidden-import=sounddevice",
         "--hidden-import=numpy",
         "--hidden-import=psutil",
         "--hidden-import=pymicro_wakeword",

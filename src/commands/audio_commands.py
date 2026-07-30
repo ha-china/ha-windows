@@ -117,7 +117,7 @@ class AudioCommands:
     def _list_devices_soundcard() -> dict:
         """List audio devices using soundcard library directly"""
         try:
-            import soundcard
+            import sounddevice as sd
 
             # Get all output devices
             speakers = soundcard.all_speakers()

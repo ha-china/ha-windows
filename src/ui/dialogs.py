@@ -27,6 +27,7 @@ class _DialogProxy(QObject):
     def __init__(self):
         super().__init__()
         self._show_requested.connect(self._on_show_requested, Qt.QueuedConnection)
+        self._current_dialog: Optional[QDialog] = None
 
     def request_show_status(self, name: str, ip: str, port: str, version: str):
         self._show_requested.emit("status", name, ip, port, version)
@@ -35,14 +36,24 @@ class _DialogProxy(QObject):
         self._show_requested.emit("about", "", "", "", version)
 
     def _on_show_requested(self, dtype: str, name: str, ip: str, port: str, version: str):
+        if self._current_dialog:
+            self._current_dialog.close()
+            self._current_dialog.deleteLater()
+            self._current_dialog = None
         if dtype == "status":
             dialog = _StatusDialog(name, ip, port, version)
         else:
             dialog = _AboutDialog(version)
         dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.finished.connect(lambda: self._on_dialog_closed(dialog))
+        self._current_dialog = dialog
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+
+    def _on_dialog_closed(self, dialog):
+        if self._current_dialog is dialog:
+            self._current_dialog = None
 
 
 class _DialogManager:

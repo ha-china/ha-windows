@@ -19,8 +19,9 @@ from src.i18n import get_i18n
 # Windows API constants
 _NIM_MODIFY = 1
 _NIF_ICON = 2
+_NIF_TIP = 4
+_NIF_SHOWTIP = 0x40
 _IMAGE_ICON = 1
-_LR_DEFAULTSIZE = 0x0040
 _LR_LOADFROMFILE = 0x0010
 
 class _NOTIFYICONDATAW(ctypes.Structure):
@@ -116,38 +117,39 @@ class SystemTrayIcon:
             return
         self._current_phase = phase
         if self.icon:
-            self._update_tray_icon(image=self.create_icon_image(), phase=phase)
+            hwnd = getattr(self.icon, '_hwnd', None)
+            if hwnd:
+                self._update_tray_icon(hwnd)
             info = self._status_info
             self.icon.title = (
                 f"HA Windows: {info['name']} [{phase}]\n"
                 f"{_i18n.t('ip_label')}: {info['ip']}:{info['port']}"
             )
 
-    def _update_tray_icon(self, image: Image.Image, phase: str = "") -> None:
-        """Update tray icon via Windows API and pystray fallback"""
-        hwnd = getattr(self.icon, '_hwnd', None)
-        if not hwnd:
-            return
+    def _update_tray_icon(self, hwnd: int) -> None:
+        """Update icon via single Shell_NotifyIconW call with icon+hover"""
+        image = self.create_icon_image()
+        info = self._status_info
+        title = f"HA Windows: {info['name']} [{self._current_phase}]\n{_i18n.t('ip_label')}: {info['ip']}:{info['port']}"
 
         fd, path = tempfile.mkstemp('.ico')
         try:
             with os.fdopen(fd, 'wb') as f:
                 image.save(f, 'ICO')
-            hicon = _user32.LoadImageW(
-                None, path, _IMAGE_ICON, 32, 32,
-                _LR_LOADFROMFILE)
+            hicon = _user32.LoadImageW(None, path, _IMAGE_ICON, 32, 32, _LR_LOADFROMFILE)
             if not hicon:
-                logger.debug(f"LoadImageW failed: {ctypes.get_last_error()}")
+                logger.debug(f"LoadImageW error={ctypes.get_last_error()}")
                 return
             result = _shell32.Shell_NotifyIconW(_NIM_MODIFY, ctypes.byref(
                 _NOTIFYICONDATAW(
                     cbSize=ctypes.sizeof(_NOTIFYICONDATAW),
                     hWnd=hwnd,
-                    uFlags=_NIF_ICON,
+                    uFlags=_NIF_ICON | _NIF_TIP | _NIF_SHOWTIP,
                     hIcon=hicon,
+                    szTip=title,
                 )))
             if not result:
-                logger.debug(f"Shell_NotifyIconW failed: {ctypes.get_last_error()}")
+                logger.debug(f"Shell_NotifyIconW error={ctypes.get_last_error()}")
             _user32.DestroyIcon(hicon)
         finally:
             try:

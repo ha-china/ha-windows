@@ -146,9 +146,14 @@ class MDNSBroadcaster:
         mac_address = self.device_info.mac_address or "00:00:00:00:00:01"
         mac_no_colons = mac_address.replace(":", "").lower()
 
+        try:
+            import aioesphomeapi
+            esphome_ver = getattr(aioesphomeapi, "__version__", "2026.7.0")
+        except ImportError:
+            esphome_ver = "2026.7.0"
+
         txt_record = {
-            # Reference linux-voice-assistant TXT record format
-            "version": "2026.7.0",
+            "version": esphome_ver,
             "mac": mac_no_colons,
             "board": "host",
             "platform": "HOST",

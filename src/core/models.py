@@ -22,6 +22,12 @@ from queue import Queue
 from threading import Lock
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Any, Callable
 
+try:
+    import aioesphomeapi
+    _ESPHOME_CORE_VERSION = getattr(aioesphomeapi, "__version__", "2026.7.0")
+except ImportError:
+    _ESPHOME_CORE_VERSION = "2026.7.0"
+
 if TYPE_CHECKING:
     from .esphome_protocol import ESPHomeProtocol
 
@@ -585,7 +591,7 @@ class ServerState:
     mac_address: str
     friendly_name: str = ""
     version: str = "unknown"
-    esphome_version: str = "2026.7.0"
+    esphome_version: str = field(default_factory=lambda: _ESPHOME_CORE_VERSION)
     manufacturer: str = "ha-china"
     model: str = "Home Assistant Windows"
 

@@ -18,7 +18,7 @@ permissions:
 jobs:
   detect-release:
     name: Detect Release Version Change
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.detect.outputs.should_release }}

@@ -3,8 +3,11 @@ System Tray Icon Module
 Provides Windows system tray icon for the application
 """
 
+import ctypes
 import logging
+import os
 import socket
+import tempfile
 import threading
 from typing import Optional, Callable
 
@@ -12,6 +15,35 @@ import pystray
 from PIL import Image, ImageDraw
 
 from src.i18n import get_i18n
+
+# Windows API constants
+_NIM_MODIFY = 1
+_NIF_ICON = 2
+_IMAGE_ICON = 1
+_LR_DEFAULTSIZE = 0x0040
+_LR_LOADFROMFILE = 0x0010
+
+class _NOTIFYICONDATAW(ctypes.Structure):
+    _fields_ = [
+        ('cbSize', ctypes.wintypes.DWORD),
+        ('hWnd', ctypes.wintypes.HWND),
+        ('uID', ctypes.wintypes.UINT),
+        ('uFlags', ctypes.wintypes.UINT),
+        ('uCallbackMessage', ctypes.wintypes.UINT),
+        ('hIcon', ctypes.wintypes.HANDLE),
+        ('szTip', ctypes.wintypes.WCHAR * 128),
+        ('dwState', ctypes.wintypes.DWORD),
+        ('dwStateMask', ctypes.wintypes.DWORD),
+        ('szInfo', ctypes.wintypes.WCHAR * 256),
+        ('uVersion', ctypes.wintypes.UINT),
+        ('szInfoTitle', ctypes.wintypes.WCHAR * 64),
+        ('dwInfoFlags', ctypes.wintypes.DWORD),
+        ('guidItem', ctypes.c_byte * 16),
+        ('hBalloonIcon', ctypes.wintypes.HANDLE),
+    ]
+
+_user32 = ctypes.windll.user32
+_shell32 = ctypes.windll.shell32
 from src.ui.dialogs import show_status_dialog, show_about_dialog
 
 logger = logging.getLogger(__name__)
@@ -26,25 +58,6 @@ class SystemTrayIcon:
     - Display tray icon
     - Status notifications
     """
-
-    def __init__(self, state=None):
-        """Initialize system tray icon"""
-        self.icon: Optional[pystray.Icon] = None
-        self._running = False
-        self._loop_thread: Optional[threading.Thread] = None
-        self._icon_ready = threading.Event()
-        self._state = state  # Reference to ServerState for saving preferences
-
-        # Status information
-        self._status_info = {
-            'name': 'Unknown',
-            'ip': 'Unknown',
-            'port': 'Unknown',
-        }
-
-        # Callbacks
-        self._on_quit: Optional[Callable] = None
-        self._version = "0.0.0"
 
     # Phase constants
     PHASE_IDLE = 'idle'
@@ -131,15 +144,46 @@ class SystemTrayIcon:
             return
         self._current_phase = phase
         if self.icon:
-            try:
-                self.icon.icon = self.create_icon_image()
-            except Exception as e:
-                logger.debug(f"Icon update failed: {e}")
+            self._update_tray_icon(image=self.create_icon_image(), phase=phase)
             info = self._status_info
             self.icon.title = (
                 f"HA Windows: {info['name']} [{phase}]\n"
                 f"{_i18n.t('ip_label')}: {info['ip']}:{info['port']}"
             )
+
+    def _update_tray_icon(self, image: Image.Image, phase: str = "") -> None:
+        """Force tray icon update via direct Windows API"""
+        hwnd = getattr(self.icon, '_hwnd', None)
+        if not hwnd:
+            logger.debug("No HWND available for icon update")
+            return
+
+        fd, path = tempfile.mkstemp('.ico')
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                image.save(f, 'ICO')
+            hicon = _user32.LoadImageW(
+                None, path, _IMAGE_ICON, 0, 0,
+                _LR_DEFAULTSIZE | _LR_LOADFROMFILE)
+            if not hicon:
+                logger.debug(f"LoadImageW failed: {ctypes.get_last_error()}")
+                return
+            try:
+                nid = _NOTIFYICONDATAW(
+                    cbSize=ctypes.sizeof(_NOTIFYICONDATAW),
+                    hWnd=hwnd,
+                    uID=id(self.icon) & 0xFFFFFFFF,
+                    uFlags=_NIF_ICON,
+                    hIcon=hicon,
+                )
+                _shell32.Shell_NotifyIconW(_NIM_MODIFY, ctypes.byref(nid))
+            finally:
+                _user32.DestroyIcon(hicon)
+        finally:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
 
     def _on_show_status(self, icon, item) -> None:
         """Handle show status menu item"""

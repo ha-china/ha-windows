@@ -40,10 +40,8 @@ def check_for_updates(timeout: int = 5) -> Optional[Tuple[bool, str, str]]:
         current_version = get_current_version()
         logger.debug(f"Current version: {current_version}")
 
-        # Create SSL context that doesn't verify (for compatibility)
+        # Create SSL context with proper certificate verification
         ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
 
         # Fetch latest version info
         request = urllib.request.Request(

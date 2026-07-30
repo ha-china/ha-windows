@@ -32,13 +32,6 @@ if CURRENT_PLATFORM == "Windows":
     ICON_FILE = "src/logo.ico"
     VERSION_FILE = "version_info.txt"
     OUTPUT_EXT = ".exe"
-elif CURRENT_PLATFORM == "Darwin":  # macOS
-    APP_NAME = "HomeAssistant"
-    APP_AUTHOR = "ha-china"
-    APP_DESCRIPTION = "Zero-config Home Assistant macOS native client"
-    ICON_FILE = "src/logo.icns"  # macOS icon format
-    VERSION_FILE = None
-    OUTPUT_EXT = ".app"
 else:
     # Fallback
     APP_NAME = "HomeAssistant"
@@ -78,19 +71,7 @@ def get_platform_specific_args():
             "--hidden-import=src.platforms.windows",
         ])
         
-    elif CURRENT_PLATFORM == "Darwin":  # macOS
-        # macOS-specific arguments
-        if ICON_FILE and os.path.exists(ICON_FILE):
-            args.append(f"--icon={ICON_FILE}")
-        
-        # macOS-specific hidden imports
-        args.extend([
-            "--hidden-import=rumps",
-            "--hidden-import=src.platforms.macos",
-        ])
-        
-        # macOS bundle identifier
-        args.append("--osx-bundle-identifier=com.homeassistant.agent")
+    
     
     return args
 
@@ -117,9 +98,8 @@ def build_exe():
     
     # Common hidden imports (these modules may not be automatically detected)
     pyinstaller_args.extend([
-        "--hidden-import=customtkinter",
         "--hidden-import=aioesphomeapi",
-        "--hidden-import=soundcard",
+        "--hidden-import=sounddevice",
         "--hidden-import=numpy",
         "--hidden-import=psutil",
         "--hidden-import=pymicro_wakeword",
@@ -136,7 +116,7 @@ def build_exe():
         "--hidden-import=src.voice.mpv_player",
         "--hidden-import=src.voice.wake_word",
         "--hidden-import=src.voice.vad",
-        "--hidden-import=src.voice.voice_assistant",
+        
         "--hidden-import=src.commands.command_executor",
         "--hidden-import=src.commands.system_commands",
         "--hidden-import=src.commands.media_commands",
@@ -151,7 +131,6 @@ def build_exe():
         "--hidden-import=src.platforms",
         "--hidden-import=src.platforms.base",
         # Collect all submodules
-        "--collect-all=customtkinter",
         "--collect-all=aioesphomeapi",
         "--collect-all=pycaw",
         "--collect-all=comtypes",

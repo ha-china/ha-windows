@@ -131,15 +131,11 @@ class WindowsPlatform(PlatformBase):
             Dict with 'input_devices' and 'output_devices' lists
         """
         try:
-            import soundcard
+            import sounddevice as sd
             
-            # Get all output devices
-            speakers = soundcard.all_speakers()
-            output_devices = [speaker.name for speaker in speakers]
-            
-            # Get all input devices
-            mics = soundcard.all_microphones()
-            input_devices = [mic.name for mic in mics]
+            devices = sd.query_devices()
+            input_devices = [d["name"] for d in devices if d["max_input_channels"] > 0]
+            output_devices = [d["name"] for d in devices if d["max_output_channels"] > 0]
             
             logger.info(f"Found {len(output_devices)} output devices, {len(input_devices)} input devices")
             

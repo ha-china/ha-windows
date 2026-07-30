@@ -106,9 +106,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "numpy>=1.24.0,<2.0.0" --only-binary=:all:
+          pip install "numpy>=1.24.0" --only-binary=:all:
           pip install -r requirements-windows.txt --verbose
         shell: pwsh
+      
+      - name: Run tests
+        run: |
+          python -m pytest tests/ -v --timeout=60 -x
+        shell: pwsh
+        env:
+          PYTHONPATH: ${{ github.workspace }}
       
       - name: Build Single-File EXE
         run: |
@@ -189,76 +196,9 @@ jobs:
           path: dist/HomeAssistantWindows_Setup.exe
           retention-days: 30
 
-  build-macos:
-    name: Build macOS App
-    runs-on: macos-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements-macos.txt
-            pyproject.toml
-
-      - name: Validate version consistency
-        run: |
-          python - <<'PY'
-          import pathlib
-          import re
-          import sys
-          import tomllib
-
-          py = tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8'))
-          v1 = py['project']['version']
-          txt = pathlib.Path('src/__init__.py').read_text(encoding='utf-8')
-          m = re.search(r'__version__\s*=\s*"([^"]+)"', txt)
-          v2 = m.group(1) if m else None
-          print(f'pyproject={v1}, src={v2}')
-          raise SystemExit(0 if (v1 and v1 == v2) else 1)
-          PY
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-macos.txt
-      
-      - name: Build macOS App
-        run: |
-          mkdir -p build-logs
-          set -o pipefail
-          python setup.py --build 2>&1 | tee build-logs/pyinstaller-macos.log
-      
-      - name: Create DMG
-        run: |
-          set -o pipefail
-          hdiutil create -volname "Home Assistant" -srcfolder dist/HomeAssistant.app -ov -format UDZO dist/HomeAssistant-macOS.dmg 2>&1 | tee build-logs/dmg.log
-
-      - name: Upload macOS build logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build-logs
-          path: |
-            build-logs/**
-            build/**
-          retention-days: 14
-          if-no-files-found: warn
-      
-      - name: Upload macOS DMG
-        uses: actions/upload-artifact@v4
-        with:
-          name: ha-assistant-macos
-          path: dist/HomeAssistant-macOS.dmg
-          retention-days: 30
-
   release:
     name: Create Release
-    needs: [detect-release, build-windows, build-macos]
+    needs: [detect-release, build-windows]
     if: needs.detect-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -275,12 +215,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ha-assistant-windows-installer
-          path: dist/
-      
-      - name: Download macOS DMG
-        uses: actions/download-artifact@v4
-        with:
-          name: ha-assistant-macos
           path: dist/
       
       - name: Generate latest.json
@@ -411,7 +345,6 @@ jobs:
           files: |
             dist/HomeAssistantWindows.exe
             dist/HomeAssistantWindows_Setup.exe
-            dist/HomeAssistant-macOS.dmg
             dist/latest.json
           body_path: dist/release_notes.md
           draft: false

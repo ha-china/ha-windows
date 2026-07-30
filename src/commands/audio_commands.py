@@ -54,8 +54,8 @@ class AudioCommands:
             except Exception as e:
                 logger.error(f"Platform audio listing failed: {e}")
         
-        # Fallback to direct soundcard usage
-        return self._list_devices_soundcard()
+        # Fallback to direct sounddevice usage
+        return self._list_devices()
 
     def set_audio_output(self, device_name: str) -> dict:
         """
@@ -114,18 +114,14 @@ class AudioCommands:
     # ========== Fallback methods ==========
 
     @staticmethod
-    def _list_devices_soundcard() -> dict:
-        """List audio devices using soundcard library directly"""
+    def _list_devices() -> dict:
+        """List audio devices using sounddevice library"""
         try:
-            import soundcard
+            import sounddevice as sd
 
-            # Get all output devices
-            speakers = soundcard.all_speakers()
-            output_devices = [speaker.name for speaker in speakers]
-
-            # Get all input devices
-            mics = soundcard.all_microphones()
-            input_devices = [mic.name for mic in mics]
+            devices = sd.query_devices()
+            input_devices = [d["name"] for d in devices if d["max_input_channels"] > 0]
+            output_devices = [d["name"] for d in devices if d["max_output_channels"] > 0]
 
             logger.info(f"Output devices: {len(output_devices)}")
             logger.info(f"Input devices: {len(input_devices)}")
@@ -152,7 +148,7 @@ class AudioCommands:
             logger.info(f"Set audio output device: {device_name}")
             # TODO: Actually switch audio output device
             # This requires calling platform-specific APIs
-            # or reinitializing player with soundcard library
+            # or reinitializing player with sounddevice library
 
             return {
                 'success': True,

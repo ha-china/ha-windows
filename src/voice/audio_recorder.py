@@ -1,39 +1,18 @@
 """
 Audio Recording Module
-Uses soundcard library to record microphone audio
+Uses sounddevice library to record microphone audio
 """
 
 import asyncio
 import logging
 import threading
-import warnings
 from typing import Optional, Callable
 from queue import Empty, Full, Queue
 
 import numpy as np
+import sounddevice as sd
 
-# Fix numpy.fromstring deprecation for soundcard compatibility
-if not hasattr(np, 'fromstring'):
-    def _fromstring_wrapper(s, dtype=None, count=-1, sep=''):
-        """Wrapper for np.frombuffer to replace deprecated np.fromstring"""
-        return np.frombuffer(s, dtype=dtype, count=count)
-    np.fromstring = _fromstring_wrapper  # type: ignore[assignment]
-
-import soundcard  # noqa: E402
-
-# Suppress soundcard recording discontinuity warnings (common under load)
-try:
-    from soundcard.mediafoundation import SoundcardRuntimeWarning  # type: ignore
-
-    warnings.filterwarnings(
-        "ignore",
-        message=r".*data discontinuity in recording.*",
-        category=SoundcardRuntimeWarning,
-    )
-except Exception:
-    warnings.filterwarnings("ignore", message=r".*data discontinuity in recording.*")
-
-from src.i18n import get_i18n  # noqa: E402
+from src.i18n import get_i18n
 
 logger = logging.getLogger(__name__)
 _i18n = get_i18n()
@@ -52,41 +31,49 @@ class AudioRecorder:
         Initialize audio recorder
 
         Args:
-            device: Audio device name (None = default microphone)
+            device: Audio device name or index (None = default microphone)
         """
         self.device = device
-        self.mic = None
+        self.device_id: Optional[int] = None
         self.is_recording = False
         self.audio_queue: Queue[bytes] = Queue(maxsize=200)
         self.recording_thread: Optional[threading.Thread] = None
+        self._stream: Optional[sd.InputStream] = None
 
     @staticmethod
     def list_microphones() -> list[str]:
         """
-        List all available microphones
+        List all available microphones (input devices)
 
         Returns:
             list[str]: List of microphone names
         """
         try:
-            mics = soundcard.all_microphones()
-            return [mic.name for mic in mics]
+            devices = sd.query_devices()
+            inputs = [d["name"] for d in devices if d["max_input_channels"] > 0]
+            return inputs
         except Exception as e:
             logger.error(f"Failed to get microphone list: {e}")
             return []
 
-    def _get_microphone(self):
-        """Get microphone device"""
-        if self.device:
-            # Find microphone by name
-            mics = soundcard.all_microphones()
-            for mic in mics:
-                if mic.name == self.device:
-                    return mic
-            logger.warning(f"Specified microphone not found: {self.device}, using default microphone")
+    def _resolve_device(self) -> Optional[int]:
+        """Resolve device name to device ID"""
+        if self.device is None:
+            return None
 
-        # Use default microphone
-        return soundcard.default_microphone()
+        try:
+            device_id = int(self.device)
+            return device_id
+        except (ValueError, TypeError):
+            pass
+
+        devices = sd.query_devices()
+        for i, dev in enumerate(devices):
+            if dev["name"] == self.device and dev["max_input_channels"] > 0:
+                return i
+
+        logger.warning(f"Specified microphone not found: {self.device}, using default")
+        return None
 
     def start_recording(self, audio_callback: Optional[Callable[[bytes], None]] = None):
         """
@@ -100,10 +87,10 @@ class AudioRecorder:
             return
 
         try:
-            self.mic = self._get_microphone()
-            if self.mic is None:
-                raise RuntimeError("Failed to get microphone device")
-            logger.debug(f"Using microphone: {self.mic.name}")
+            self.device_id = self._resolve_device()
+            if self.device_id is not None:
+                dev_info = sd.query_devices(self.device_id)
+                logger.debug(f"Using microphone: {dev_info['name']}")
 
             self.is_recording = True
 
@@ -129,7 +116,14 @@ class AudioRecorder:
 
         self.is_recording = False
 
-        # Wait for recording thread to finish
+        if self._stream:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception as e:
+                logger.debug(f"Error closing stream: {e}")
+            self._stream = None
+
         if self.recording_thread:
             self.recording_thread.join(timeout=2.0)
             self.recording_thread = None
@@ -149,44 +143,50 @@ class AudioRecorder:
         Args:
             audio_callback: Audio data callback function
         """
-        # Initialize COM for this thread (required on Windows)
         try:
-            import pythoncom
-            pythoncom.CoInitialize()
-        except ImportError:
-            pass  # pythoncom not available, might work without it
-        except Exception:
-            pass
+            def callback(indata, frames, time_info, status):
+                if status:
+                    logger.debug(f"Recording status: {status}")
+                if not self.is_recording:
+                    raise sd.CallbackStop
 
-        try:
-            assert self.mic is not None, "Microphone not initialized"
-            with self.mic.recorder(
+                audio_pcm = self._array_to_pcm(indata)
+
+                if audio_callback:
+                    audio_callback(audio_pcm)
+                else:
+                    try:
+                        self.audio_queue.put_nowait(audio_pcm)
+                    except Full:
+                        try:
+                            self.audio_queue.get_nowait()
+                            self.audio_queue.put_nowait(audio_pcm)
+                        except (Empty, Full):
+                            pass
+
+            self._stream = sd.InputStream(
+                device=self.device_id,
                 samplerate=self.SAMPLE_RATE,
                 channels=self.CHANNELS,
-                blocksize=self.BLOCK_SIZE
-            ) as recorder:
-                while self.is_recording:
-                    # Record audio block
-                    audio_array = recorder.record(numframes=self.BLOCK_SIZE)
+                dtype='float32',
+                blocksize=self.BLOCK_SIZE,
+                callback=callback,
+            )
+            self._stream.start()
 
-                    # Convert to 16-bit signed integer PCM format
-                    audio_pcm = self._array_to_pcm(audio_array)
-
-                    # Call callback function or put in queue
-                    if audio_callback:
-                        audio_callback(audio_pcm)
-                    else:
-                        try:
-                            self.audio_queue.put_nowait(audio_pcm)
-                        except Full:
-                            try:
-                                self.audio_queue.get_nowait()
-                                self.audio_queue.put_nowait(audio_pcm)
-                            except (Empty, Full):
-                                pass
+            while self.is_recording:
+                sd.sleep(100)
 
         except Exception as e:
             logger.error(f"Recording loop error: {e}")
+        finally:
+            if self._stream:
+                try:
+                    self._stream.stop()
+                    self._stream.close()
+                except Exception:
+                    pass
+                self._stream = None
             self.is_recording = False
 
     def _array_to_pcm(self, audio_array: np.ndarray) -> bytes:
@@ -194,18 +194,14 @@ class AudioRecorder:
         Convert NumPy audio array to PCM byte stream
 
         Args:
-            audio_array: Audio array (float32, range -1.0 to 1.0)
+            audio_array: Audio array (float32, shape (frames, channels))
 
         Returns:
             bytes: PCM format audio data (16-bit signed little-endian)
         """
-        # Clip range to -1.0 to 1.0
+        audio_array = np.squeeze(audio_array)
         clipped = np.clip(audio_array, -1.0, 1.0)
-
-        # Convert to 16-bit signed integer
         int16_data = (clipped * 32767.0).astype(np.int16)
-
-        # Convert to byte stream (little-endian)
         return int16_data.tobytes()
 
     def get_audio_chunk(self, timeout: float = 1.0) -> Optional[bytes]:
@@ -289,7 +285,6 @@ class AsyncAudioRecorder:
         Args:
             audio_data: Audio data
         """
-        # Called in recording thread, put data in async queue
         try:
             if self._loop is None:
                 return

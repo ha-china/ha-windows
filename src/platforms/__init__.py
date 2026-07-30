@@ -24,9 +24,6 @@ def get_platform_implementation() -> PlatformBase:
     if current_platform == "Windows":
         from src.platforms.windows import WindowsPlatform
         return WindowsPlatform()
-    elif current_platform == "Darwin":  # macOS
-        from src.platforms.macos import MacOSPlatform
-        return MacOSPlatform()
     else:
         raise RuntimeError(f"Unsupported platform: {current_platform}")
 

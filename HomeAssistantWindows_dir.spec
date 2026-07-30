@@ -6,15 +6,12 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_sub
 
 # Collect data files from packages (all dependencies)
 datas = []
-datas += collect_data_files('customtkinter', include_py_files=False)
 datas += collect_data_files('aioesphomeapi', include_py_files=False)
 datas += collect_all('pycaw')[0]
 datas += collect_all('comtypes')[0]
 datas += collect_data_files('pymicro_wakeword', include_py_files=False)
 datas += collect_data_files('pyopen_wakeword', include_py_files=False)
-datas += collect_data_files('soundcard', include_py_files=False)
-datas += collect_data_files('pygame', include_py_files=False)
-datas += collect_data_files('vlc', include_py_files=False)
+datas += collect_data_files('sounddevice', include_py_files=False)
 datas += collect_data_files('webrtcvad', include_py_files=False)
 datas += collect_data_files('zeroconf', include_py_files=False)
 datas += collect_data_files('ifaddr', include_py_files=False)
@@ -32,15 +29,12 @@ datas += [('src', 'src')]
 
 # Collect binaries (all DLLs and libraries)
 binaries = []
-binaries += collect_dynamic_libs('customtkinter')
 binaries += collect_dynamic_libs('aioesphomeapi')
 binaries += collect_all('pycaw')[1]
 binaries += collect_all('comtypes')[1]
 binaries += collect_dynamic_libs('pymicro_wakeword')
 binaries += collect_dynamic_libs('pyopen_wakeword')
-binaries += collect_dynamic_libs('soundcard')
-binaries += collect_dynamic_libs('pygame')
-binaries += collect_dynamic_libs('vlc')
+binaries += collect_dynamic_libs('sounddevice')
 binaries += collect_dynamic_libs('webrtcvad')
 binaries += collect_dynamic_libs('zeroconf')
 binaries += collect_dynamic_libs('ifaddr')
@@ -53,19 +47,10 @@ binaries += collect_dynamic_libs('pystray')
 
 # Hidden imports (only modules that PyInstaller cannot auto-detect)
 hiddenimports = [
-    # GUI framework
-    'tkinter',
-    # Core dependencies
-    'customtkinter',
     'aioesphomeapi',
-    'soundcard',
-    'pygame',
-    'pygame.mixer',
-    'pygame.mixer.music',
-    'vlc',
+    'sounddevice',
     'numpy',
     'psutil',
-    'win10toast',
     'pymicro_wakeword',
     'pyopen_wakeword',
     'webrtcvad',
@@ -83,7 +68,6 @@ hiddenimports = [
     'src.voice.mpv_player',
     'src.voice.wake_word',
     'src.voice.vad',
-    'src.voice.voice_assistant',
     'src.commands.command_executor',
     'src.commands.system_commands',
     'src.commands.media_commands',
@@ -135,13 +119,12 @@ hiddenimports = [
 ]
 
 # Collect submodules (only for packages that need it)
-hiddenimports += collect_submodules('customtkinter')
 hiddenimports += collect_submodules('aioesphomeapi')
 hiddenimports += collect_all('pycaw')[2]
 hiddenimports += collect_all('comtypes')[2]
 hiddenimports += collect_submodules('pymicro_wakeword')
 hiddenimports += collect_submodules('pyopen_wakeword')
-hiddenimports += collect_submodules('soundcard')
+hiddenimports += collect_submodules('sounddevice')
 hiddenimports += collect_submodules('pygame')
 hiddenimports += collect_submodules('vlc')
 hiddenimports += collect_submodules('webrtcvad')

@@ -93,3 +93,6 @@ dmypy.json
 
 # Local only
 TODO.md
+
+# User preferences (contains local device config)
+preferences.json

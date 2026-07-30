@@ -183,7 +183,10 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Read preamble (must be 0x00)
             preamble = self._read_varuint()
             if preamble != 0x00:
-                logger.error(f"Invalid preamble: {preamble}")
+                logger.error(f"Invalid preamble: {preamble}, clearing buffer")
+                self._buffer = None
+                self._buffer_len = 0
+                self._pos = 0
                 return
 
             length = self._read_varuint()
@@ -370,7 +373,8 @@ class ESPHomeProtocol(asyncio.Protocol):
                 self._tts_finished()
             self._tts_played = False
 
-        # TODO: Handle error events
+        else:
+            logger.info(f"Unhandled voice assistant event: {event_type.name} (type={event_type.value})")
 
     def _handle_timer_event(self, msg: VoiceAssistantTimerEventResponse) -> None:
         """Handle timer event"""
@@ -752,12 +756,16 @@ class ESPHomeProtocol(asyncio.Protocol):
             self.unduck()
             return
 
-        # Loop play timer sound
-        def on_done():
-            import time
+        # Loop play timer sound with async delay
+        loop = asyncio.get_event_loop()
 
-            time.sleep(1.0)
-            self._play_timer_finished()
+        async def on_done_async():
+            await asyncio.sleep(1.0)
+            if self._timer_finished:
+                loop.call_soon_threadsafe(self._play_timer_finished)
+
+        def on_done():
+            asyncio.run_coroutine_threadsafe(on_done_async(), loop)
 
         if self.state.timer_finished_sound:
             self.state.tts_player.play(self.state.timer_finished_sound, done_callback=on_done)

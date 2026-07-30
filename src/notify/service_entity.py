@@ -210,16 +210,35 @@ class ServiceEntityManager:
 
         logger.info(f"Showing notification (with image): {title} - {message}")
 
+    # Whitelist of safe commands (executable names only)
+    SAFE_COMMANDS = frozenset({
+        "notepad", "calc", "explorer", "cmd", "powershell", "write",
+        "mspaint", "snippingtool", "taskmgr", "control", "regedit",
+        "chrome", "firefox", "msedge", "opera", "brave",
+        "code", "wt", "terminal", "windows-terminal",
+    })
+
     def _handle_run_command(self, args: Dict) -> None:
-        """Handle run command service"""
+        """Handle run command service (whitelist only, no shell)"""
         import subprocess
+        import shlex
         command = args.get('command', '')
         if not command:
             logger.warning("run_command service missing command parameter")
             return
 
+        parts = shlex.split(command)
+        if not parts:
+            logger.warning("run_command: empty command after parsing")
+            return
+
+        executable = parts[0].lower().strip()
+        if executable not in self.SAFE_COMMANDS:
+            logger.warning(f"run_command: '{executable}' not in whitelist, rejected")
+            return
+
         try:
-            subprocess.Popen(command, shell=True)
+            subprocess.Popen(parts, shell=False)
             logger.info(f"Run command: {command}")
         except Exception as e:
             logger.error(f"Failed to run command: {e}")

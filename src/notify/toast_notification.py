@@ -163,11 +163,30 @@ class NotificationHandler:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.show, notification)
 
+    @staticmethod
+    def _is_private_ip(host: str) -> bool:
+        """Check if a host resolves to a private/local IP address."""
+        try:
+            import ipaddress
+            import socket
+            addr = socket.gethostbyname(host)
+            ip = ipaddress.ip_address(addr)
+            return ip.is_private or ip.is_loopback or ip.is_link_local
+        except Exception:
+            return False
+
     async def _download_image(self, url: str) -> Optional[str]:
-        """Download image from URL"""
+        """Download image from URL (SSRF-safe)"""
         try:
             import aiohttp
             import hashlib
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            host = parsed.hostname or ""
+            if self._is_private_ip(host):
+                logger.warning(f"Blocked download from private IP: {host}")
+                return None
 
             url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
             url_path = url.split('?')[0]

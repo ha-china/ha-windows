@@ -11,16 +11,10 @@ binaries = []
 
 # Hidden imports (only modules that PyInstaller cannot auto-detect)
 hiddenimports = [
-    'customtkinter',
     'aioesphomeapi',
-    'soundcard',
-    'pygame',
-    'pygame.mixer',
-    'pygame.mixer.music',
-    'vlc',
+    'sounddevice',
     'numpy',
     'psutil',
-    'win10toast',
     'pymicro_wakeword',
     'pyopen_wakeword',
     'comtypes',
@@ -39,7 +33,6 @@ hiddenimports = [
     'src.voice.mpv_player',
     'src.voice.wake_word',
     'src.voice.vad',
-    'src.voice.voice_assistant',
     'src.commands.command_executor',
     'src.commands.system_commands',
     'src.commands.media_commands',
@@ -53,9 +46,6 @@ hiddenimports = [
 ]
 
 # Collect all dependencies for key packages
-tmp_ret = collect_all('customtkinter')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
 tmp_ret = collect_all('aioesphomeapi')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
@@ -71,10 +61,8 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('pyopen_wakeword')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
-tmp_ret = collect_all('soundcard')
+tmp_ret = collect_all('sounddevice')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
-tmp_ret = collect_all('pygame')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 tmp_ret = collect_all('vlc')

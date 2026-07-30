@@ -24,8 +24,6 @@ class I18n:
                 'status_connecting': '连接中...',
                 'status_recording': '录音中',
 
-                # 主窗口 UI
-                'mic_button': '麦克风',
                 'settings': '设置',
                 'quit': '退出',
                 'volume': '音量',
@@ -97,9 +95,7 @@ class I18n:
                 'ready': '准备就绪',
                 'starting_voice_assistant': '正在启动语音助手...',
                 'status_error': '错误',
-                'open_window': '打开窗口',
-                'show_icon': '显示图标',
-                'hide_icon': '隐藏图标',
+                
                 'client_hello': '客户端发送 Hello',
                 'client_auth': '客户端请求认证',
                 'client_authenticated': '客户端已认证',
@@ -132,8 +128,6 @@ class I18n:
                 'status_connecting': 'Connecting...',
                 'status_recording': 'Recording',
 
-                # Main Window UI
-                'mic_button': 'Microphone',
                 'settings': 'Settings',
                 'quit': 'Quit',
                 'volume': 'Volume',
@@ -205,9 +199,7 @@ class I18n:
                 'ready': 'Ready',
                 'starting_voice_assistant': 'Starting voice assistant...',
                 'status_error': 'Error',
-                'open_window': 'Open Window',
-                'show_icon': 'Show Icon',
-                'hide_icon': 'Hide Icon',
+                
                 'client_hello': 'Client sent Hello',
                 'client_auth': 'Client requested authentication',
                 'client_authenticated': 'Client authenticated',

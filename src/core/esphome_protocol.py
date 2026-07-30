@@ -111,6 +111,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._thinking_sound_entity = None
         self._state_update_task: Optional[asyncio.Task] = None
         self._processing = False
+        self._ha_host: Optional[str] = None
 
         logger.debug(f"ESPHome protocol initialized: {self.state.name}")
 
@@ -129,6 +130,10 @@ class ESPHomeProtocol(asyncio.Protocol):
         else:
             self._loop_thread_id = threading.get_ident()
         peername = transport.get_extra_info("peername")
+        if peername:
+            self._ha_host = peername[0]
+            if self._service_manager is not None:
+                self._service_manager.set_ha_host(self._ha_host)
         logger.info(f"📱 New client connected: {peername}")
 
     def connection_lost(self, exc) -> None:
@@ -837,6 +842,8 @@ class ESPHomeProtocol(asyncio.Protocol):
             self._service_manager = ServiceEntityManager()
             # Set hotkey callback
             self._service_manager.set_hotkey_callback(self._on_hotkey_changed)
+            if self._ha_host:
+                self._service_manager.set_ha_host(self._ha_host)
 
         # Get config sensor manager
         if self._config_sensor_manager is None:

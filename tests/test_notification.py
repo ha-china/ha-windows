@@ -418,3 +418,58 @@ class TestNotificationEdgeCases:
         assert notification.actions is None
         assert notification.on_click is None
         assert notification.on_dismiss is None
+
+
+# =============================================================================
+# Relative image URL resolution (camera entity_picture support)
+# Allows HA to send a short template like
+#   {{ state_attr('camera.front_door', 'entity_picture') }}
+# which expands to "/api/camera_proxy/...?token=...". The client resolves it
+# against the connected HA host (learned from the ESPHome socket peername) so
+# no long-lived access token is required on the client.
+# =============================================================================
+
+class TestImageUrlResolution:
+    """Tests for NotificationHandler._resolve_image_url."""
+
+    def test_absolute_http_url_unchanged(self):
+        handler = NotificationHandler(app_name="Test App")
+        handler.set_ha_host("192.168.1.10")
+        url = "http://example.com/img.png"
+        assert handler._resolve_image_url(url) == url
+
+    def test_absolute_https_url_unchanged(self):
+        handler = NotificationHandler(app_name="Test App")
+        handler.set_ha_host("192.168.1.10")
+        url = "https://example.com/img.png"
+        assert handler._resolve_image_url(url) == url
+
+    def test_relative_url_resolved_with_ha_host(self):
+        handler = NotificationHandler(app_name="Test App")
+        handler.set_ha_host("192.168.1.10")
+        relative = "/api/camera_proxy/camera.front_door?token=abc"
+        assert handler._resolve_image_url(relative) == \
+            "http://192.168.1.10:8123/api/camera_proxy/camera.front_door?token=abc"
+
+    def test_relative_url_without_ha_host_left_unchanged(self):
+        handler = NotificationHandler(app_name="Test App")
+        relative = "/api/camera_proxy/camera.front_door?token=abc"
+        assert handler._resolve_image_url(relative) == relative
+
+    def test_ipv6_host_is_bracketed(self):
+        handler = NotificationHandler(app_name="Test App")
+        handler.set_ha_host("fd00::1")
+        relative = "/api/camera_proxy/cam?token=x"
+        assert handler._resolve_image_url(relative) == \
+            "http://[fd00::1]:8123/api/camera_proxy/cam?token=x"
+
+    def test_empty_url_unchanged(self):
+        handler = NotificationHandler(app_name="Test App")
+        handler.set_ha_host("192.168.1.10")
+        assert handler._resolve_image_url("") == ""
+
+    def test_set_ha_host_none_does_not_resolve(self):
+        handler = NotificationHandler(app_name="Test App")
+        handler.set_ha_host(None)
+        relative = "/api/camera_proxy/cam?token=x"
+        assert handler._resolve_image_url(relative) == relative

@@ -7,7 +7,6 @@ Uses Windows native APIs - no external DLL dependencies required.
 
 from src.i18n import set_language
 from src.voice.audio_recorder import AudioRecorder
-from src.ui.main_window import MainWindow
 from src.ui.system_tray_icon import get_tray
 from src.core.esphome_protocol import ESPHomeServer
 from src.core.mdns_discovery import MDNSBroadcaster, DeviceInfo
@@ -174,9 +173,6 @@ class HomeAssistantWindows:
         self.mdns_broadcaster: MDNSBroadcaster = None
         self.api_server: ESPHomeServer = None
         self.tray = None
-        self.main_window: MainWindow = None
-        self._main_window_lock = threading.Lock()
-        self._main_window_creating = False
         self._local_ip = None  # Save local IP for tray display
 
         # Wake word detection
@@ -261,11 +257,7 @@ class HomeAssistantWindows:
         self._local_ip = self.mdns_broadcaster._get_local_ip()
 
         # Set up tray callbacks
-        self.tray.set_callbacks(
-            on_show_floating=self._show_floating_button,
-            on_hide_floating=self._hide_floating_button,
-            on_quit=self._request_quit
-        )
+        self.tray.set_callbacks(on_quit=self._request_quit)
 
         # Start system tray icon
         display_name = device_info.name if device_info.name else self.device_name
@@ -274,12 +266,6 @@ class HomeAssistantWindows:
             ip=self._local_ip or "Unknown",
             port=self.port
         )
-
-        # Show floating button on startup if preference is True
-        if self.api_server.state.preferences.show_floating_button:
-            self._show_floating_button()
-        else:
-            logger.info("Floating button hidden (preference: show_floating_button=False)")
 
         self._mdns_refresh_task = asyncio.create_task(self._refresh_mdns_periodically())
 
@@ -299,61 +285,6 @@ class HomeAssistantWindows:
             return
         except Exception as e:
             logger.error(f"mDNS refresh loop failed: {e}")
-
-    def _show_floating_button(self) -> None:
-        """Show the floating mic button"""
-        logger.info("Showing floating button...")
-
-        if self.main_window is None:
-            with self._main_window_lock:
-                if self.main_window is not None or self._main_window_creating:
-                    return
-                self._main_window_creating = True
-
-            def create_window():
-                try:
-                    self.main_window = MainWindow(on_mic_press=self._on_mic_button_press)
-                    self.main_window.mainloop()
-                except Exception as e:
-                    logger.error(f"Failed to create floating button: {e}")
-                finally:
-                    with self._main_window_lock:
-                        self._main_window_creating = False
-                    self.main_window = None
-
-            window_thread = threading.Thread(target=create_window, daemon=True)
-            window_thread.start()
-        else:
-            try:
-                self.main_window.after(0, self.main_window.show)
-            except Exception as e:
-                logger.error(f"Failed to show floating button: {e}")
-
-    def _hide_floating_button(self) -> None:
-        """Hide the floating mic button"""
-        logger.info("Hiding floating button...")
-        if self.main_window:
-            try:
-                self.main_window.after(0, self.main_window.hide)
-            except Exception as e:
-                logger.error(f"Failed to hide floating button: {e}")
-
-    def _on_mic_button_press(self) -> None:
-        """Handle microphone button press - trigger voice assistant"""
-        logger.info("🎤 Manual voice assistant trigger (push-to-talk)")
-
-        # Get the protocol instance
-        if self.api_server and self.api_server.protocol:
-            protocol = self.api_server.protocol
-            # Trigger wakeup (manual trigger, no wake word phrase)
-            protocol.wakeup("")
-        else:
-            logger.warning("No active connection to trigger voice assistant")
-
-    def _on_window_close(self) -> None:
-        """Handle window close button - hide instead of destroy"""
-        if self.main_window:
-            self.main_window.withdraw()  # Hide window instead of destroying
 
     def _request_quit(self) -> None:
         """Request application quit"""
@@ -582,14 +513,6 @@ class HomeAssistantWindows:
 
         # Stop wake word detection
         self._stop_wake_word_detection()
-
-        # Close main window
-        if self.main_window:
-            try:
-                self.main_window.after(0, self.main_window.destroy)
-                self.main_window = None
-            except Exception as e:
-                logger.error(f"Failed to close main window: {e}")
 
         # Stop system tray icon
         if self.tray:

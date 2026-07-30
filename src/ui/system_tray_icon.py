@@ -35,7 +35,6 @@ class SystemTrayIcon:
         self._running = False
         self._loop_thread: Optional[threading.Thread] = None
         self._icon_ready = threading.Event()
-        self._floating_visible = False  # Track floating button visibility
         self._state = state  # Reference to ServerState for saving preferences
 
         # Status information
@@ -46,8 +45,6 @@ class SystemTrayIcon:
         }
 
         # Callbacks
-        self._on_show_floating: Optional[Callable] = None
-        self._on_hide_floating: Optional[Callable] = None
         self._on_quit: Optional[Callable] = None
 
         # Dedicated tkinter UI thread for About/Status dialogs
@@ -97,61 +94,10 @@ class SystemTrayIcon:
 
         return image
 
-    def _on_icon_clicked(self, icon, item) -> None:
-        """Handle icon click event - toggle floating button"""
-        self._toggle_floating()
-
-    def _toggle_floating(self) -> None:
-        """Toggle floating button visibility"""
-        if self._floating_visible:
-            # Hide floating button
-            if self._on_hide_floating:
-                try:
-                    self._on_hide_floating()
-                    self._floating_visible = False
-                    logger.info("Floating button hidden")
-                    # Save preference
-                    self._save_floating_preference()
-                except Exception as e:
-                    logger.error(f"Error hiding floating button: {e}")
-        else:
-            # Show floating button
-            if self._on_show_floating:
-                try:
-                    self._on_show_floating()
-                    self._floating_visible = True
-                    logger.info("Floating button shown")
-                    # Save preference
-                    self._save_floating_preference()
-                except Exception as e:
-                    logger.error(f"Error showing floating button: {e}")
-
-    def _open_window(self) -> None:
-        """Open the main window (show floating button)"""
-        if not self._floating_visible and self._on_show_floating:
-            try:
-                self._on_show_floating()
-                self._floating_visible = True
-            except Exception as e:
-                logger.error(f"Error showing floating button: {e}")
-
-    def _save_floating_preference(self) -> None:
-        """Save floating button visibility preference"""
-        if self._state:
-            try:
-                self._state.preferences.show_floating_button = self._floating_visible
-                self._state.save_preferences()
-            except Exception as e:
-                logger.error(f"Error saving floating button preference: {e}")
-
     def _on_show_status(self, icon, item) -> None:
         """Handle show status menu item"""
         logger.info("Show status menu clicked")
         self.show_status()
-
-    def _on_toggle_floating_menu(self, icon, item) -> None:
-        """Handle toggle floating button menu item"""
-        self._toggle_floating()
 
     def _on_quit_menu(self, icon, item) -> None:
         """Handle quit menu item"""
@@ -210,13 +156,7 @@ class SystemTrayIcon:
             name='HomeAssistant Windows',
             icon=self.create_icon_image(),
             menu=pystray.Menu(
-                pystray.MenuItem(
-                    lambda item: _i18n.t('hide_icon') if self._floating_visible else _i18n.t('show_icon'),
-                    self._on_toggle_floating_menu,
-                    default=True
-                ),
                 pystray.MenuItem(_i18n.t('status_running'), self._on_show_status),
-                pystray.Menu.SEPARATOR,
                 pystray.MenuItem('About', self._on_about_menu),
                 pystray.MenuItem(_i18n.t('quit'), self._on_quit_menu),
             )
@@ -296,18 +236,13 @@ class SystemTrayIcon:
                 f"{_i18n.t('ip_label')}: {self._status_info['ip']}:{self._status_info['port']}"
             )
 
-    def set_callbacks(self, on_show_floating: Callable = None,
-                      on_hide_floating: Callable = None, on_quit: Callable = None) -> None:
+    def set_callbacks(self, on_quit: Callable = None) -> None:
         """
         Set callback functions
 
         Args:
-            on_show_floating: Called to show floating button
-            on_hide_floating: Called to hide floating button
             on_quit: Called when quit is requested
         """
-        self._on_show_floating = on_show_floating
-        self._on_hide_floating = on_hide_floating
         self._on_quit = on_quit
 
     def _run_dialog_loop(self) -> None:

@@ -6,7 +6,7 @@ Exposes notification and other features as services in Home Assistant
 import logging
 import platform
 from collections.abc import Iterable
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 # pylint: disable=no-name-in-module
 from aioesphomeapi.api_pb2 import (
@@ -261,6 +261,10 @@ class ServiceEntityManager:
     def set_hotkey_callback(self, callback) -> None:
         """Set hotkey change callback"""
         self._set_hotkey_callback = callback
+
+    def set_ha_host(self, host: Optional[str]) -> None:
+        """Set Home Assistant host so relative image URLs (camera entity_picture) can be resolved."""
+        self._notification_handler.set_ha_host(host)
 
     def _handle_set_voice_input_hotkey(self, args: Dict) -> None:
         """Handle set voice input hotkey service"""

@@ -189,7 +189,6 @@ class Preferences:
     thinking_sound: int = 0
     volume: Optional[float] = None
     voice_input_hotkey: str = ""
-    show_floating_button: bool = True
 
 
 class WindowsVolumeController:
@@ -637,8 +636,7 @@ class ServerState:
                     "active_wake_words": self.preferences.active_wake_words,
                     "thinking_sound": self.preferences.thinking_sound,
                     "volume": self.preferences.volume,
-                    "voice_input_hotkey": self.preferences.voice_input_hotkey,
-                    "show_floating_button": self.preferences.show_floating_button
+                    "voice_input_hotkey": self.preferences.voice_input_hotkey
                 }, f, ensure_ascii=False, indent=4)
         except Exception as e:
             logger.error(f"Failed to save preferences: {e}")
@@ -656,7 +654,7 @@ class ServerState:
                 volume = data.get("volume")
                 self.preferences.volume = float(volume) if volume is not None else None
                 self.preferences.voice_input_hotkey = data.get("voice_input_hotkey", "")
-                self.preferences.show_floating_button = data.get("show_floating_button", True)
+                
         except Exception as e:
             logger.error(f"Failed to load preferences: {e}")
 

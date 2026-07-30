@@ -186,7 +186,7 @@ class AudioRecorder:
                                 pass
 
         except Exception as e:
-            logger.error(f"Recording loop error: {e}")
+            logger.error(f"Recording loop error", exc_info=True)
             self.is_recording = False
 
     def _array_to_pcm(self, audio_array: np.ndarray) -> bytes:

@@ -12,6 +12,7 @@ datas += collect_all('comtypes')[0]
 datas += collect_data_files('pymicro_wakeword', include_py_files=False)
 datas += collect_data_files('pyopen_wakeword', include_py_files=False)
 datas += collect_data_files('sounddevice', include_py_files=False)
+datas += collect_all('pygame')[0]
 datas += collect_data_files('webrtcvad', include_py_files=False)
 datas += collect_data_files('zeroconf', include_py_files=False)
 datas += collect_data_files('ifaddr', include_py_files=False)
@@ -35,6 +36,7 @@ binaries += collect_all('comtypes')[1]
 binaries += collect_dynamic_libs('pymicro_wakeword')
 binaries += collect_dynamic_libs('pyopen_wakeword')
 binaries += collect_dynamic_libs('sounddevice')
+binaries += collect_all('pygame')[1]
 binaries += collect_dynamic_libs('webrtcvad')
 binaries += collect_dynamic_libs('zeroconf')
 binaries += collect_dynamic_libs('ifaddr')
@@ -59,6 +61,9 @@ hiddenimports = [
     'PIL',
     'pystray',
     'windows_toasts',
+    'pygame',
+    'pygame.mixer',
+    'pygame.mixer_music',
     # src modules
     'src.i18n',
     'src.core.mdns_discovery',

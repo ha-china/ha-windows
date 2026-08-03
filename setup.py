@@ -107,6 +107,9 @@ def build_exe():
         "--hidden-import=webrtcvad",
         "--hidden-import=zeroconf",
         "--hidden-import=PIL",
+        "--hidden-import=pygame",
+        "--hidden-import=pygame.mixer",
+        "--hidden-import=pygame.mixer_music",
         # src module hidden imports (important!)
         "--hidden-import=src.i18n",
         "--hidden-import=src.core.mdns_discovery",
@@ -136,6 +139,7 @@ def build_exe():
         "--collect-all=comtypes",
         "--collect-all=pymicro_wakeword",  # Include tensorflowlite_c.dll
         "--collect-all=pyopen_wakeword",
+        "--collect-all=pygame",  # SDL2_mixer.dll etc - audio playback/volume backend
         # Add src directory to Python path
         "--add-data=src;src" if CURRENT_PLATFORM == "Windows" else "--add-data=src:src",
         # Exclude unnecessary modules (reduce size)

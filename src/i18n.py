@@ -64,6 +64,8 @@ class I18n:
                 # 设置
                 'settings_language': '语言',
                 'settings_audio_device': '音频设备',
+                'settings_microphone': '麦克风',
+                'settings_default_device': '系统默认',
                 'settings_wake_word_model': '唤醒词模型',
                 'settings_log_level': '日志级别',
 
@@ -168,6 +170,8 @@ class I18n:
                 # Settings
                 'settings_language': 'Language',
                 'settings_audio_device': 'Audio Device',
+                'settings_microphone': 'Microphone',
+                'settings_default_device': 'System Default',
                 'settings_wake_word_model': 'Wake Word Model',
                 'settings_log_level': 'Log Level',
 

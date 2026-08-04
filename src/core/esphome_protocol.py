@@ -93,8 +93,6 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._is_playing_tts = False  # Flag to pause wake word detection during TTS playback
         self._volume_ducking_enabled = False  # User preference: do not lower global system volume
 
-        # Audio recorder (lazy load)
-        self._audio_recorder = None
         self._audio_streaming_task: Optional[asyncio.Task] = None
         self._event_loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -552,15 +550,6 @@ class ESPHomeProtocol(asyncio.Protocol):
         self.state.tts_player.play(url, done_callback=on_done)
 
     # ========== Audio Control ==========
-
-    def _get_audio_recorder(self):
-        """Get or create audio recorder"""
-        if self._audio_recorder is None:
-            from src.voice.audio_recorder import AudioRecorder
-
-            self._audio_recorder = AudioRecorder()
-            logger.debug("🎤 Audio recorder initialized")
-        return self._audio_recorder
 
     def _start_audio_streaming(self) -> None:
         """Start audio streaming (audio is handled by main program's recorder)"""

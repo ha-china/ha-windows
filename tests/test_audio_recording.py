@@ -309,6 +309,23 @@ class TestAudioRecordingEdgeCases:
         
         assert isinstance(mics, list), "list_microphones should return a list"
 
+    def test_list_microphones_has_no_duplicates(self):
+        """
+        list_microphones() SHALL NOT repeat a device name across host APIs.
+        """
+        mics = AudioRecorder.list_microphones()
+
+        assert len(mics) == len(set(mics)), f"Duplicate microphone names: {mics}"
+
+    def test_listed_microphone_resolves_to_an_input_device(self):
+        """
+        Every listed microphone name SHALL resolve to a real input device index.
+        """
+        for name in AudioRecorder.list_microphones():
+            device_id = AudioRecorder(name)._resolve_device()
+
+            assert device_id is not None, f"Listed mic did not resolve: {name}"
+
     def test_zero_duration_silence(self):
         """
         Zero duration silence SHALL produce empty bytes.

@@ -2,7 +2,7 @@
 ; Supports auto-startup and clean uninstall
 
 !define PRODUCT_NAME "Home Assistant Windows"
-!define PRODUCT_VERSION "0.6.1"
+!define PRODUCT_VERSION "0.6.2"
 !define PRODUCT_PUBLISHER "HA-China"
 !define PRODUCT_WEB_SITE "https://github.com/ha-china/ha-windows"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\HomeAssistantWindows.exe"

@@ -179,6 +179,7 @@ class HomeAssistantWindows:
         self._stop_word_detector = None
         self._wake_word_callback = None
         self._audio_recorder: AudioRecorder = None
+        self._audio_callback = None
         self._wake_word_listening = False
         self._event_loop = None  # Event loop reference for callbacks
         self._mdns_refresh_task: asyncio.Task | None = None
@@ -238,6 +239,22 @@ class HomeAssistantWindows:
         # Run server in background
         asyncio.create_task(self.api_server.serve_forever())
 
+    def _set_microphone(self, device_name: str) -> None:
+        """Switch the recording microphone ("" = system default) and persist it."""
+        state = self.api_server.state
+        state.preferences.mic_device = device_name
+        state.save_preferences()
+
+        if not self._audio_recorder:
+            return
+
+        was_recording = self._audio_recorder.is_recording
+        self._audio_recorder.stop_recording()
+        self._audio_recorder.device = device_name or None
+        if was_recording:
+            self._audio_recorder.start_recording(audio_callback=self._audio_callback)
+        logger.info(f"🎤 Microphone set to: {device_name or 'system default'}")
+
     async def _register_mdns_service(self):
         """Register mDNS service broadcast"""
         logger.info("Registering mDNS service broadcast...")
@@ -261,7 +278,7 @@ class HomeAssistantWindows:
         # Set up tray callbacks
         from src import __version__
         self.tray.set_version(__version__)
-        self.tray.set_callbacks(on_quit=self._request_quit)
+        self.tray.set_callbacks(on_quit=self._request_quit, on_mic_change=self._set_microphone)
 
         # Start system tray icon
         display_name = device_info.name if device_info.name else self.device_name
@@ -353,8 +370,10 @@ class HomeAssistantWindows:
             for detector in self._wake_word_detectors.values():
                 detector.on_wake_word(on_wake_word)
 
-            # Initialize audio recorder
-            self._audio_recorder = AudioRecorder()
+            # Initialize audio recorder (empty preference = system default)
+            self._audio_recorder = AudioRecorder(
+                self.api_server.state.preferences.mic_device or None
+            )
 
             # Audio callback for wake word detection
             def on_audio_chunk(audio_data: bytes):
@@ -384,6 +403,7 @@ class HomeAssistantWindows:
 
             # Start recording
             self._wake_word_listening = True
+            self._audio_callback = on_audio_chunk
             self._audio_recorder.start_recording(audio_callback=on_audio_chunk)
 
             wake_phrases = [det.wake_word_phrase for det in self._wake_word_detectors.values()]

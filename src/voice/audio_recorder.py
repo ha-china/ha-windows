@@ -35,12 +35,38 @@ class AudioRecorder:
 
     @staticmethod
     def list_microphones() -> list[str]:
+        """Input device names, deduplicated and preferring WASAPI.
+
+        Every mic shows up once per host API (MME/DirectSound/WASAPI/WDM-KS),
+        and MME truncates names to 31 chars, so listing everything is unusable.
+        """
         try:
             devices = sd.query_devices()
-            return [d["name"] for d in devices if d["max_input_channels"] > 0]
         except Exception as e:
             logger.error(f"Failed to get microphone list: {e}")
             return []
+
+        wasapi = None
+        try:
+            for i, api in enumerate(sd.query_hostapis()):
+                if "WASAPI" in api["name"]:
+                    wasapi = i
+                    break
+        except Exception:
+            pass
+
+        def collect(hostapi: Optional[int]) -> list[str]:
+            names: list[str] = []
+            for d in devices:
+                if d["max_input_channels"] <= 0:
+                    continue
+                if hostapi is not None and d["hostapi"] != hostapi:
+                    continue
+                if d["name"] not in names:
+                    names.append(d["name"])
+            return names
+
+        return collect(wasapi) or collect(None)
 
     def _resolve_device(self) -> Optional[int]:
         if self.device is None:

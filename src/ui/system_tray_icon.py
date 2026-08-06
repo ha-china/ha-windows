@@ -88,6 +88,7 @@ class SystemTrayIcon:
         self._current_phase = self.PHASE_IDLE
         self._status_info = {'name': 'Unknown', 'ip': 'Unknown', 'port': 'Unknown'}
         self._on_quit: Optional[Callable] = None
+        self._on_mic_change: Optional[Callable] = None
         self._version = "0.0.0"
 
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
@@ -165,6 +166,34 @@ class SystemTrayIcon:
         self._running = False
         icon.stop()
 
+    def _current_mic(self) -> str:
+        if self._state is None:
+            return ""
+        return getattr(self._state.preferences, 'mic_device', "")
+
+    def _select_mic(self, device_name: str) -> None:
+        logger.info(f"Microphone menu selected: {device_name or 'system default'}")
+        if self._on_mic_change:
+            try:
+                self._on_mic_change(device_name)
+            except Exception as e:
+                logger.error(f"Failed to switch microphone: {e}")
+
+    def _mic_menu_items(self):
+        """Build the microphone radio list (rebuilt each time the menu opens)."""
+        from src.voice.audio_recorder import AudioRecorder
+
+        def item_for(name: str):
+            return pystray.MenuItem(
+                name or _i18n.t('settings_default_device'),
+                lambda icon, item: self._select_mic(name),
+                checked=lambda item: self._current_mic() == name,
+                radio=True,
+            )
+
+        for name in [""] + AudioRecorder.list_microphones():
+            yield item_for(name)
+
     def _on_about_menu(self, icon, item) -> None:
         logger.info("About menu clicked")
         show_about_dialog(self._version)
@@ -194,6 +223,7 @@ class SystemTrayIcon:
             icon=self.create_icon_image(),
             menu=pystray.Menu(
                 pystray.MenuItem(_i18n.t('status_running'), self._on_show_status),
+                pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
                 pystray.MenuItem('About', self._on_about_menu),
                 pystray.MenuItem(_i18n.t('quit'), self._on_quit_menu),
             )
@@ -249,8 +279,10 @@ class SystemTrayIcon:
                 f"{_i18n.t('ip_label')}: {self._status_info['ip']}:{self._status_info['port']}"
             )
 
-    def set_callbacks(self, on_quit: Callable = None) -> None:
+    def set_callbacks(self, on_quit: Callable = None, on_mic_change: Callable = None) -> None:
         self._on_quit = on_quit
+        if on_mic_change is not None:
+            self._on_mic_change = on_mic_change
 
     def stop(self) -> None:
         if self.icon and self._running:

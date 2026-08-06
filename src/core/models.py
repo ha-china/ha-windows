@@ -195,6 +195,7 @@ class Preferences:
     thinking_sound: int = 0
     volume: Optional[float] = None
     voice_input_hotkey: str = ""
+    mic_device: str = ""  # microphone name, "" = system default
 
 
 class WindowsVolumeController:
@@ -345,6 +346,12 @@ class AudioPlayer:
                 logger.debug("Using pygame for audio (no streaming)")
         except Exception as e:
             logger.warning(f"pygame not available: {e}")
+
+        if not (self._vlc_available or self._pygame_available):
+            logger.error(
+                "No audio backend available (neither VLC nor pygame) - "
+                "playback and volume control are disabled"
+            )
 
     @property
     def is_playing(self) -> bool:
@@ -642,7 +649,8 @@ class ServerState:
                     "active_wake_words": self.preferences.active_wake_words,
                     "thinking_sound": self.preferences.thinking_sound,
                     "volume": self.preferences.volume,
-                    "voice_input_hotkey": self.preferences.voice_input_hotkey
+                    "voice_input_hotkey": self.preferences.voice_input_hotkey,
+                    "mic_device": self.preferences.mic_device
                 }, f, ensure_ascii=False, indent=4)
         except Exception as e:
             logger.error(f"Failed to save preferences: {e}")
@@ -660,6 +668,7 @@ class ServerState:
                 volume = data.get("volume")
                 self.preferences.volume = float(volume) if volume is not None else None
                 self.preferences.voice_input_hotkey = data.get("voice_input_hotkey", "")
+                self.preferences.mic_device = data.get("mic_device", "")
                 
         except Exception as e:
             logger.error(f"Failed to load preferences: {e}")

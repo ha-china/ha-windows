@@ -236,6 +236,10 @@ class HomeAssistantWindows:
         # Connect voice assistant phase changes to tray icon updates
         self.api_server.set_phase_callback(self.tray.set_phase)
 
+        # Wire microphone mute and conversation callbacks to the server
+        self.api_server.set_muted_callback(self._set_muted)
+        self.api_server.set_conversation_callback(self._on_conversation_text)
+
         # Run server in background
         asyncio.create_task(self.api_server.serve_forever())
 
@@ -254,6 +258,35 @@ class HomeAssistantWindows:
         if was_recording:
             self._audio_recorder.start_recording(audio_callback=self._audio_callback)
         logger.info(f"🎤 Microphone set to: {device_name or 'system default'}")
+
+    def _set_muted(self, muted: bool) -> None:
+        """Set microphone mute state and persist it (called by protocol callback)."""
+        state = self.api_server.state
+        state.preferences.muted = muted
+        state.save_preferences()
+
+        if self._audio_recorder:
+            self._audio_recorder.muted = muted
+            logger.info(f"🎤 Microphone {'muted' if muted else 'unmuted'}")
+
+        # Refresh the tray menu so the checkmark reflects the current state
+        if self.tray:
+            self.tray.refresh_menu()
+
+    def _on_tray_mute_toggle(self, muted: bool) -> None:
+        """Handle mute toggle from tray, syncing to HA if connected."""
+        if self.api_server and self.api_server.protocol:
+            self.api_server.protocol._set_muted_and_push(muted)
+        else:
+            self._set_muted(muted)
+
+    def _on_conversation_text(self, msg_type: str, text: str) -> None:
+        """Handle conversation text from voice assistant events."""
+        if self.tray:
+            try:
+                self.tray._show_conversation_balloon(msg_type, text)
+            except Exception as e:
+                logger.debug(f"Conversation balloon error: {e}")
 
     async def _register_mdns_service(self):
         """Register mDNS service broadcast"""
@@ -278,7 +311,11 @@ class HomeAssistantWindows:
         # Set up tray callbacks
         from src import __version__
         self.tray.set_version(__version__)
-        self.tray.set_callbacks(on_quit=self._request_quit, on_mic_change=self._set_microphone)
+        self.tray.set_callbacks(
+            on_quit=self._request_quit,
+            on_mic_change=self._set_microphone,
+            on_mute_change=self._on_tray_mute_toggle,
+        )
 
         # Start system tray icon
         display_name = device_info.name if device_info.name else self.device_name
@@ -325,7 +362,44 @@ class HomeAssistantWindows:
         threading.Thread(target=force_exit, daemon=True).start()
 
     async def _start_wake_word_detection(self):
-        """Start wake word detection in background"""
+        """Start voice recording and, if available, wake word detection."""
+        # The audio recorder is always created/started (used for voice input too).
+        self._audio_recorder = AudioRecorder(
+            self.api_server.state.preferences.mic_device or None
+        )
+        self._audio_recorder.muted = self.api_server.state.preferences.muted
+
+        # Audio callback for wake word detection
+        def on_audio_chunk(audio_data: bytes):
+            if not self._wake_word_listening:
+                return
+
+            # Always send audio to voice assistant (handle_audio will check _is_streaming_audio internally)
+            if self.api_server and self.api_server.protocol:
+                self.api_server.protocol.handle_audio(audio_data)
+
+            # Check if wake word changed
+            if self.api_server and self.api_server.state.wake_words_changed:
+                self.api_server.state.wake_words_changed = False
+                self._update_wake_word_detector()
+
+            # Skip wake word detection if TTS is playing (to avoid false positives)
+            if self.api_server and self.api_server.protocol and not self.api_server.protocol._is_playing_tts:
+                for detector in self._wake_word_detectors.values():
+                    detector.process_audio(audio_data)
+
+            if self._stop_word_detector and self.api_server:
+                stop_word = self.api_server.state.stop_word
+                stop_is_active = stop_word is not None and stop_word.id in self.api_server.state.active_wake_words
+                if stop_is_active and self._stop_word_detector.process_audio(audio_data):
+                    self.api_server.protocol.stop()
+
+        # Start recording
+        self._wake_word_listening = True
+        self._audio_callback = on_audio_chunk
+        self._audio_recorder.start_recording(audio_callback=on_audio_chunk)
+
+        # Wake word detection is optional
         try:
             from src.voice.wake_word import WakeWordDetector
 
@@ -370,42 +444,6 @@ class HomeAssistantWindows:
             for detector in self._wake_word_detectors.values():
                 detector.on_wake_word(on_wake_word)
 
-            # Initialize audio recorder (empty preference = system default)
-            self._audio_recorder = AudioRecorder(
-                self.api_server.state.preferences.mic_device or None
-            )
-
-            # Audio callback for wake word detection
-            def on_audio_chunk(audio_data: bytes):
-                if not self._wake_word_listening:
-                    return
-
-                # Always send audio to voice assistant (handle_audio will check _is_streaming_audio internally)
-                if self.api_server and self.api_server.protocol:
-                    self.api_server.protocol.handle_audio(audio_data)
-
-                # Check if wake word changed
-                if self.api_server and self.api_server.state.wake_words_changed:
-                    self.api_server.state.wake_words_changed = False
-                    self._update_wake_word_detector()
-
-                # Skip wake word detection if TTS is playing (to avoid false positives)
-                if self.api_server and self.api_server.protocol and not self.api_server.protocol._is_playing_tts:
-                    # Pass raw bytes to wake word detectors
-                    for detector in self._wake_word_detectors.values():
-                        detector.process_audio(audio_data)
-
-                if self._stop_word_detector and self.api_server:
-                    stop_word = self.api_server.state.stop_word
-                    stop_is_active = stop_word is not None and stop_word.id in self.api_server.state.active_wake_words
-                    if stop_is_active and self._stop_word_detector.process_audio(audio_data):
-                        self.api_server.protocol.stop()
-
-            # Start recording
-            self._wake_word_listening = True
-            self._audio_callback = on_audio_chunk
-            self._audio_recorder.start_recording(audio_callback=on_audio_chunk)
-
             wake_phrases = [det.wake_word_phrase for det in self._wake_word_detectors.values()]
             if wake_phrases:
                 logger.info(f"🎤 Wake word detection started (say one of: {', '.join(wake_phrases)})")
@@ -416,7 +454,7 @@ class HomeAssistantWindows:
             logger.warning(f"Wake word detection not available: {e}")
             logger.info("Manual trigger via mic button still works")
         except Exception as e:
-            logger.error(f"Failed to start wake word detection: {e}")
+            logger.error(f"Failed to set up wake word detection: {e}")
 
     def _get_active_wake_words(self) -> list[str]:
         """Get active wake words from server state in a stable order"""

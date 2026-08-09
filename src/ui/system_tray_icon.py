@@ -22,10 +22,16 @@ _i18n = get_i18n()
 
 _NIM_DELETE = 2
 _NIM_ADD = 0
+_NIM_MODIFY = 1
 _NIF_MESSAGE = 1
 _NIF_ICON = 2
 _NIF_TIP = 4
+_NIF_INFO = 0x10
 _NIF_SHOWTIP = 0x40
+_NIIF_INFO = 0x1
+_NIIF_WARNING = 0x2
+_NIIF_ERROR = 0x3
+_NIIF_NOSOUND = 0x10
 _IMAGE_ICON = 1
 _LR_LOADFROMFILE = 0x0010
 # pystray defines WM_NOTIFY as WM_USER + 11 = 1035
@@ -89,6 +95,8 @@ class SystemTrayIcon:
         self._status_info = {'name': 'Unknown', 'ip': 'Unknown', 'port': 'Unknown'}
         self._on_quit: Optional[Callable] = None
         self._on_mic_change: Optional[Callable] = None
+        self._on_mute_change: Optional[Callable] = None
+        self._on_conversation: Optional[Callable] = None
         self._version = "0.0.0"
 
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
@@ -194,6 +202,69 @@ class SystemTrayIcon:
         for name in [""] + AudioRecorder.list_microphones():
             yield item_for(name)
 
+    def _current_muted(self) -> bool:
+        if self._state is None:
+            return False
+        return getattr(self._state.preferences, 'muted', False)
+
+    def _toggle_mute(self) -> None:
+        new_state = not self._current_muted()
+        logger.info(f"Microphone mute toggled: {new_state}")
+        if self._on_mute_change:
+            try:
+                self._on_mute_change(new_state)
+            except Exception as e:
+                logger.error(f"Failed to toggle microphone mute: {e}")
+
+    def _show_conversation_balloon(self, msg_type: str, text: str) -> None:
+        """Show a balloon notification from the tray icon with STT/TTS text."""
+        if not self.icon:
+            return
+        hwnd = getattr(self.icon, '_hwnd', None)
+        if not hwnd:
+            return
+        if msg_type == "stt":
+            title = _i18n.t('conversation_you_said')
+            info_flag = _NIIF_INFO
+        else:
+            title = _i18n.t('conversation_assistant')
+            info_flag = _NIIF_WARNING
+        balloon_text = f"{title}：{text}"
+
+        # Delete and re-add the icon with balloon info (same pattern as _replace_icon)
+        _shell32.Shell_NotifyIconW(_NIM_DELETE, ctypes.byref(_NID(
+            cbSize=ctypes.sizeof(_NID), hWnd=hwnd)))
+
+        image = self.create_icon_image()
+        info = self._status_info
+        tip = f"HA Windows: {info['name']} [{self._current_phase}]\n{_i18n.t('ip_label')}: {info['ip']}:{info['port']}"
+
+        fd, path = tempfile.mkstemp('.ico')
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                image.save(f, 'ICO')
+            hicon = _user32.LoadImageW(None, path, _IMAGE_ICON, 32, 32, _LR_LOADFROMFILE)
+            if not hicon:
+                return
+            _shell32.Shell_NotifyIconW(_NIM_ADD, ctypes.byref(_NID(
+                cbSize=ctypes.sizeof(_NID),
+                hWnd=hwnd,
+                uID=0,
+                uFlags=_NIF_MESSAGE | _NIF_ICON | _NIF_TIP | _NIF_SHOWTIP | _NIF_INFO,
+                uCallbackMessage=_WM_NOTIFY,
+                hIcon=hicon,
+                szTip=tip,
+                szInfo=balloon_text[:255],
+                szInfoTitle="",
+                dwInfoFlags=info_flag | _NIIF_NOSOUND,
+            )))
+            _user32.DestroyIcon(hicon)
+        finally:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+
     def _on_about_menu(self, icon, item) -> None:
         logger.info("About menu clicked")
         show_about_dialog(self._version)
@@ -223,6 +294,11 @@ class SystemTrayIcon:
             icon=self.create_icon_image(),
             menu=pystray.Menu(
                 pystray.MenuItem(_i18n.t('status_running'), self._on_show_status),
+                pystray.MenuItem(
+                    _i18n.t('mute_microphone'),
+                    lambda icon, item: self._toggle_mute(),
+                    checked=lambda item: self._current_muted(),
+                ),
                 pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
                 pystray.MenuItem('About', self._on_about_menu),
                 pystray.MenuItem(_i18n.t('quit'), self._on_quit_menu),
@@ -279,10 +355,23 @@ class SystemTrayIcon:
                 f"{_i18n.t('ip_label')}: {self._status_info['ip']}:{self._status_info['port']}"
             )
 
-    def set_callbacks(self, on_quit: Callable = None, on_mic_change: Callable = None) -> None:
+    def set_callbacks(self, on_quit: Callable = None, on_mic_change: Callable = None,
+                      on_mute_change: Callable = None, on_conversation: Callable = None) -> None:
         self._on_quit = on_quit
         if on_mic_change is not None:
             self._on_mic_change = on_mic_change
+        if on_mute_change is not None:
+            self._on_mute_change = on_mute_change
+        if on_conversation is not None:
+            self._on_conversation = on_conversation
+
+    def refresh_menu(self) -> None:
+        """Rebuild the tray menu so checked states reflect the current values."""
+        if self.icon:
+            try:
+                self.icon.update_menu()
+            except Exception as e:
+                logger.debug(f"Menu refresh failed: {e}")
 
     def stop(self) -> None:
         if self.icon and self._running:

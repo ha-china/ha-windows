@@ -29,6 +29,7 @@ class AudioRecorder:
         self.device = device
         self.device_id: Optional[int] = None
         self.is_recording = False
+        self.muted = False
         self.audio_queue: Queue[bytes] = Queue(maxsize=200)
         self.recording_thread: Optional[threading.Thread] = None
         self._stream: Optional[sd.InputStream] = None
@@ -140,6 +141,8 @@ class AudioRecorder:
                     logger.debug(f"Recording status: {status}")
                 if not self.is_recording:
                     raise sd.CallbackStop
+                if self.muted:
+                    return
                 audio_pcm = self._array_to_pcm(indata)
                 if audio_callback:
                     audio_callback(audio_pcm)

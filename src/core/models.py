@@ -196,6 +196,7 @@ class Preferences:
     volume: Optional[float] = None
     voice_input_hotkey: str = ""
     mic_device: str = ""  # microphone name, "" = system default
+    muted: bool = False
 
 
 class WindowsVolumeController:
@@ -650,7 +651,8 @@ class ServerState:
                     "thinking_sound": self.preferences.thinking_sound,
                     "volume": self.preferences.volume,
                     "voice_input_hotkey": self.preferences.voice_input_hotkey,
-                    "mic_device": self.preferences.mic_device
+                    "mic_device": self.preferences.mic_device,
+                    "muted": self.preferences.muted
                 }, f, ensure_ascii=False, indent=4)
         except Exception as e:
             logger.error(f"Failed to save preferences: {e}")
@@ -669,6 +671,7 @@ class ServerState:
                 self.preferences.volume = float(volume) if volume is not None else None
                 self.preferences.voice_input_hotkey = data.get("voice_input_hotkey", "")
                 self.preferences.mic_device = data.get("mic_device", "")
+                self.preferences.muted = data.get("muted", False)
                 
         except Exception as e:
             logger.error(f"Failed to load preferences: {e}")

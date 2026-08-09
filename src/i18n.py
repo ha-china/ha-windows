@@ -66,6 +66,10 @@ class I18n:
                 'settings_audio_device': '音频设备',
                 'settings_microphone': '麦克风',
                 'settings_default_device': '系统默认',
+                'mute_microphone': '静音麦克风',
+                'unmute_microphone': '取消静音',
+                'conversation_you_said': '你',
+                'conversation_assistant': '助手',
                 'settings_wake_word_model': '唤醒词模型',
                 'settings_log_level': '日志级别',
 
@@ -172,6 +176,10 @@ class I18n:
                 'settings_audio_device': 'Audio Device',
                 'settings_microphone': 'Microphone',
                 'settings_default_device': 'System Default',
+                'mute_microphone': 'Mute Microphone',
+                'unmute_microphone': 'Unmute',
+                'conversation_you_said': 'You',
+                'conversation_assistant': 'Assistant',
                 'settings_wake_word_model': 'Wake Word Model',
                 'settings_log_level': 'Log Level',
 

@@ -107,6 +107,7 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._config_sensor_manager = None
         self._hotkey_manager = None
         self._thinking_sound_entity = None
+        self._mic_mute_entity = None
         self._state_update_task: Optional[asyncio.Task] = None
         self._processing = False
         self._ha_host: Optional[str] = None
@@ -114,10 +115,43 @@ class ESPHomeProtocol(asyncio.Protocol):
         # Phase callback for tray icon state updates
         self._phase_callback: Optional[Callable[[str], None]] = None
 
+        # Microphone mute callback (set by main program)
+        self._muted_callback: Optional[Callable[[bool], None]] = None
+
+        # Conversation text callback for tray balloon notifications
+        self._conversation_callback: Optional[Callable[[str, str], None]] = None
+
         logger.debug(f"ESPHome protocol initialized: {self.state.name}")
 
     def set_phase_callback(self, callback: Optional[Callable[[str], None]]) -> None:
         self._phase_callback = callback
+
+    def set_muted_callback(self, callback: Optional[Callable[[bool], None]]) -> None:
+        self._muted_callback = callback
+
+    def set_conversation_callback(self, callback: Optional[Callable[[str, str], None]]) -> None:
+        self._conversation_callback = callback
+
+    def _set_muted(self, muted: bool) -> None:
+        """Persist and apply microphone mute state (called by switch entity)."""
+        if self._muted_callback:
+            try:
+                self._muted_callback(muted)
+            except Exception as e:
+                logger.error(f"Failed to apply microphone mute: {e}")
+
+    def _push_mute_state(self) -> None:
+        """Push the current mute switch state to Home Assistant."""
+        if self._mic_mute_entity is not None:
+            from aioesphomeapi.api_pb2 import SubscribeHomeAssistantStatesRequest
+            self.send_messages(
+                list(self._mic_mute_entity.handle_message(SubscribeHomeAssistantStatesRequest()))
+            )
+
+    def _set_muted_and_push(self, muted: bool) -> None:
+        """Apply the mute state and push it to Home Assistant (tray path)."""
+        self._set_muted(muted)
+        self._push_mute_state()
 
     def _set_phase(self, phase: str) -> None:
         logger.info(f"Phase: {phase}")
@@ -361,6 +395,14 @@ class ESPHomeProtocol(asyncio.Protocol):
             self._is_streaming_audio = False
             self._stop_audio_streaming()
             logger.debug("🎤 Speech recognition ended, stopping recording")
+            # Capture STT text for conversation bubble
+            if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_STT_END:
+                stt_text = data.get("text", "")
+                if stt_text and self._conversation_callback:
+                    try:
+                        self._conversation_callback("stt", stt_text)
+                    except Exception as e:
+                        logger.error(f"Conversation callback error: {e}")
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_PROGRESS:
             # Intent processing progress
@@ -380,6 +422,13 @@ class ESPHomeProtocol(asyncio.Protocol):
             # TTS generation started, emit phase for UI feedback
             logger.info("🎤 Received TTS_START")
             self._set_phase('replying')
+            # Capture response text for conversation bubble
+            response_text = data.get("text", "")
+            if response_text and self._conversation_callback:
+                try:
+                    self._conversation_callback("tts", response_text)
+                except Exception as e:
+                    logger.error(f"Conversation callback error: {e}")
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END:
             # TTS generation ended
@@ -898,6 +947,17 @@ class ESPHomeProtocol(asyncio.Protocol):
                 set_enabled=self._set_thinking_sound_enabled,
             )
 
+        if self._mic_mute_entity is None:
+            from src.sensors.mic_mute_switch import MicMuteSwitchEntity
+
+            self._mic_mute_entity = MicMuteSwitchEntity(
+                key=600,
+                name="Microphone Mute",
+                object_id="microphone_mute",
+                get_muted=lambda: self.state.preferences.muted,
+                set_muted=self._set_muted,
+            )
+
         # Get hotkey manager
         if self._hotkey_manager is None:
             from src.core.hotkey_manager import get_hotkey_manager
@@ -924,6 +984,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             for cfg_def in self._config_sensor_manager.get_entity_definitions():
                 yield cfg_def
             yield from self._thinking_sound_entity.handle_message(msg)
+            yield from self._mic_mute_entity.handle_message(msg)
 
         elif isinstance(msg, SubscribeHomeAssistantStatesRequest):
             # Send sensor states
@@ -931,6 +992,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             yield self._media_player_entity.get_state()
             yield from self._config_sensor_manager.get_states()
             yield from self._thinking_sound_entity.handle_message(msg)
+            yield from self._mic_mute_entity.handle_message(msg)
             self._ensure_state_updates_started()
 
         elif isinstance(msg, MediaPlayerCommandRequest):
@@ -947,6 +1009,7 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         elif isinstance(msg, SwitchCommandRequest):
             yield from self._thinking_sound_entity.handle_message(msg)
+            yield from self._mic_mute_entity.handle_message(msg)
 
     # ========== Message Sending ==========
 
@@ -1003,11 +1066,23 @@ class ESPHomeServer:
         self._is_running = False
         self._protocol: Optional[ESPHomeProtocol] = None
         self._phase_callback: Optional[Callable[[str], None]] = None
+        self._muted_callback: Optional[Callable[[bool], None]] = None
+        self._conversation_callback: Optional[Callable[[str, str], None]] = None
 
     def set_phase_callback(self, callback: Optional[Callable[[str], None]]) -> None:
         self._phase_callback = callback
         if self._protocol:
             self._protocol.set_phase_callback(callback)
+
+    def set_muted_callback(self, callback: Optional[Callable[[bool], None]]) -> None:
+        self._muted_callback = callback
+        if self._protocol:
+            self._protocol.set_muted_callback(callback)
+
+    def set_conversation_callback(self, callback: Optional[Callable[[str, str], None]]) -> None:
+        self._conversation_callback = callback
+        if self._protocol:
+            self._protocol.set_conversation_callback(callback)
 
     async def start(self) -> bool:
         """Start server"""
@@ -1020,6 +1095,10 @@ class ESPHomeServer:
                 self._protocol = ESPHomeProtocol(self.state)
                 if self._phase_callback:
                     self._protocol.set_phase_callback(self._phase_callback)
+                if self._muted_callback:
+                    self._protocol.set_muted_callback(self._muted_callback)
+                if self._conversation_callback:
+                    self._protocol.set_conversation_callback(self._conversation_callback)
                 return self._protocol
 
             self.server = await loop.create_server(

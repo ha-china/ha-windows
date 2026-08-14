@@ -97,8 +97,10 @@ class SystemTrayIcon:
         self._on_mic_change: Optional[Callable] = None
         self._on_mute_change: Optional[Callable] = None
         self._on_bubble_toggle: Optional[Callable] = None
+        self._on_sendspin_toggle: Optional[Callable] = None
         self._on_conversation: Optional[Callable] = None
         self._version = "0.0.0"
+        self._sendspin_connected = False
 
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
         color = self._PHASE_COLORS.get(self._current_phase, self._PHASE_COLORS[self.PHASE_IDLE])
@@ -236,6 +238,47 @@ class SystemTrayIcon:
         from src.ui.conversation_bubble import show_conversation_bubble
         show_conversation_bubble(msg_type, text)
 
+    # --- Sendspin player ----------------------------------------------------
+
+    def _current_sendspin_enabled(self) -> bool:
+        if self._state is None:
+            return True
+        return getattr(self._state.preferences, 'sendspin_enabled', True)
+
+    def _toggle_sendspin(self) -> None:
+        new_state = not self._current_sendspin_enabled()
+        logger.info(f"Sendspin player toggled: {new_state}")
+        if self._on_sendspin_toggle:
+            try:
+                self._on_sendspin_toggle(new_state)
+            except Exception as e:
+                logger.error(f"Failed to toggle Sendspin player: {e}")
+
+    def _sendspin_connected_label(self) -> str:
+        if self._sendspin_connected:
+            return f"{_i18n.t('sendspin_player')}: {_i18n.t('sendspin_connected')}"
+        return f"{_i18n.t('sendspin_player')}: {_i18n.t('sendspin_disconnected')}"
+
+    def _sendspin_menu_items(self):
+        def disabled_item(label: str):
+            return pystray.MenuItem(label, lambda icon, item: None, enabled=False)
+
+        items = []
+        try:
+            from src.sendspin_player import SendspinReceiver  # noqa: F401
+        except ImportError:
+            return [disabled_item(_i18n.t('sendspin_not_available'))]
+
+        items.append(disabled_item(self._sendspin_connected_label()))
+        items.append(
+            pystray.MenuItem(
+                _i18n.t('sendspin_enabled'),
+                lambda icon, item: self._toggle_sendspin(),
+                checked=lambda item: self._current_sendspin_enabled(),
+            )
+        )
+        return items
+
     def _on_about_menu(self, icon, item) -> None:
         logger.info("About menu clicked")
         show_about_dialog(self._version)
@@ -274,6 +317,10 @@ class SystemTrayIcon:
                     _i18n.t('conversation_bubbles'),
                     lambda icon, item: self._toggle_bubbles(),
                     checked=lambda item: self._current_bubbles_enabled(),
+                ),
+                pystray.MenuItem(
+                    _i18n.t('sendspin_player'),
+                    pystray.Menu(self._sendspin_menu_items),
                 ),
                 pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
                 pystray.MenuItem('About', self._on_about_menu),
@@ -333,7 +380,8 @@ class SystemTrayIcon:
 
     def set_callbacks(self, on_quit: Callable = None, on_mic_change: Callable = None,
                       on_mute_change: Callable = None, on_conversation: Callable = None,
-                      on_bubble_toggle: Callable = None) -> None:
+                      on_bubble_toggle: Callable = None,
+                      on_sendspin_toggle: Callable = None) -> None:
         self._on_quit = on_quit
         if on_mic_change is not None:
             self._on_mic_change = on_mic_change
@@ -343,6 +391,13 @@ class SystemTrayIcon:
             self._on_conversation = on_conversation
         if on_bubble_toggle is not None:
             self._on_bubble_toggle = on_bubble_toggle
+        if on_sendspin_toggle is not None:
+            self._on_sendspin_toggle = on_sendspin_toggle
+
+    def set_sendspin_status(self, connected: bool) -> None:
+        """Update the displayed Sendspin connection status and refresh the menu."""
+        self._sendspin_connected = connected
+        self.refresh_menu()
 
     def refresh_menu(self) -> None:
         """Rebuild the tray menu so checked states reflect the current values."""

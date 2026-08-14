@@ -24,6 +24,10 @@ datas += collect_data_files('PIL', include_py_files=False)
 datas += collect_data_files('pystray', include_py_files=False)
 datas += collect_data_files('win10toast', include_py_files=False)
 datas += collect_data_files('windows_toasts', include_py_files=False)
+datas += collect_data_files('aiosendspin', include_py_files=False)
+datas += collect_data_files('mashumaro', include_py_files=False)
+datas += collect_data_files('orjson', include_py_files=False)
+datas += collect_data_files('typing_extensions', include_py_files=False)
 
 # Add source files
 datas += [('src', 'src')]
@@ -46,6 +50,8 @@ binaries += collect_dynamic_libs('attrs')
 binaries += collect_dynamic_libs('comtypes')
 binaries += collect_dynamic_libs('PIL')
 binaries += collect_dynamic_libs('pystray')
+binaries += collect_dynamic_libs('orjson')
+binaries += collect_dynamic_libs('mashumaro')
 
 # Hidden imports (only modules that PyInstaller cannot auto-detect)
 hiddenimports = [
@@ -61,6 +67,10 @@ hiddenimports = [
     'PIL',
     'pystray',
     'windows_toasts',
+    'aiosendspin',
+    'mashumaro',
+    'orjson',
+    'typing_extensions',
     'pygame',
     'pygame.mixer',
     'pygame.mixer_music',
@@ -143,6 +153,10 @@ hiddenimports += collect_submodules('PIL')
 hiddenimports += collect_submodules('pystray')
 hiddenimports += collect_submodules('win10toast')
 hiddenimports += collect_submodules('windows_toasts')
+hiddenimports += collect_submodules('aiosendspin')
+hiddenimports += collect_submodules('mashumaro')
+hiddenimports += collect_submodules('orjson')
+hiddenimports += collect_submodules('typing_extensions')
 hiddenimports += collect_submodules('aiohttp')
 hiddenimports += collect_submodules('yarl')
 hiddenimports += collect_submodules('multidict')

@@ -198,6 +198,7 @@ class Preferences:
     mic_device: str = ""  # microphone name, "" = system default
     muted: bool = False
     conversation_bubble_enabled: bool = True
+    sendspin_enabled: bool = True
 
 
 class WindowsVolumeController:
@@ -654,7 +655,8 @@ class ServerState:
                     "voice_input_hotkey": self.preferences.voice_input_hotkey,
                     "mic_device": self.preferences.mic_device,
                     "muted": self.preferences.muted,
-                    "conversation_bubble_enabled": self.preferences.conversation_bubble_enabled
+                    "conversation_bubble_enabled": self.preferences.conversation_bubble_enabled,
+                    "sendspin_enabled": self.preferences.sendspin_enabled
                 }, f, ensure_ascii=False, indent=4)
         except Exception as e:
             logger.error(f"Failed to save preferences: {e}")
@@ -675,6 +677,7 @@ class ServerState:
                 self.preferences.mic_device = data.get("mic_device", "")
                 self.preferences.muted = data.get("muted", False)
                 self.preferences.conversation_bubble_enabled = data.get("conversation_bubble_enabled", True)
+                self.preferences.sendspin_enabled = data.get("sendspin_enabled", True)
                 
         except Exception as e:
             logger.error(f"Failed to load preferences: {e}")

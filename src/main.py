@@ -183,6 +183,7 @@ class HomeAssistantWindows:
         self._wake_word_listening = False
         self._event_loop = None  # Event loop reference for callbacks
         self._mdns_refresh_task: asyncio.Task | None = None
+        self.sendspin = None  # SendspinReceiver instance
 
         self.running = False
 
@@ -203,6 +204,9 @@ class HomeAssistantWindows:
 
             # Step 3: Start wake word detection
             await self._start_wake_word_detection()
+
+            # Step 3.5: Start Sendspin audio receiver
+            await self._start_sendspin()
 
             # Step 4: Run main loop
             self.running = True
@@ -298,6 +302,53 @@ class HomeAssistantWindows:
             except Exception as e:
                 logger.debug(f"Conversation balloon error: {e}")
 
+    # ------------------------------------------------------------------ Sendspin
+
+    async def _start_sendspin(self) -> None:
+        """Start the Sendspin audio receiver (Music Assistant streams music to us)."""
+        if not getattr(self.api_server.state.preferences, 'sendspin_enabled', True):
+            logger.info("Sendspin player disabled by preference, skipping")
+            return
+
+        try:
+            from src.sendspin_player import SendspinReceiver
+
+            self.sendspin = SendspinReceiver(name=self.device_name)
+            self.sendspin.set_metadata_callback(self._on_sendspin_metadata)
+            await self.sendspin.start()
+            if self.tray:
+                self.tray.set_sendspin_status(self.sendspin.is_connected)
+        except ImportError as e:
+            logger.warning(f"Sendspin not available (pip install aiosendspin): {e}")
+            self.sendspin = None
+        except Exception as e:
+            logger.error(f"Failed to start Sendspin receiver: {e}")
+            self.sendspin = None
+
+    async def _stop_sendspin(self) -> None:
+        if self.sendspin:
+            try:
+                await self.sendspin.stop()
+            except Exception as e:
+                logger.error(f"Failed to stop Sendspin receiver: {e}")
+            self.sendspin = None
+
+    def _on_tray_sendspin_toggle(self, enabled: bool) -> None:
+        """Handle Sendspin enable/disable toggle from tray."""
+        state = self.api_server.state
+        state.preferences.sendspin_enabled = enabled
+        state.save_preferences()
+
+        if enabled and self.sendspin is None:
+            asyncio.create_task(self._start_sendspin())
+        elif not enabled and self.sendspin is not None:
+            asyncio.create_task(self._stop_sendspin())
+        logger.info(f"🔊 Sendspin player {'enabled' if enabled else 'disabled'}")
+
+    def _on_sendspin_metadata(self, title: str) -> None:
+        """Handle track metadata from the Sendspin stream."""
+        logger.info(f"🎵 Now playing: {title}")
+
     async def _register_mdns_service(self):
         """Register mDNS service broadcast"""
         logger.info("Registering mDNS service broadcast...")
@@ -326,6 +377,7 @@ class HomeAssistantWindows:
             on_mic_change=self._set_microphone,
             on_mute_change=self._on_tray_mute_toggle,
             on_bubble_toggle=self._on_tray_bubble_toggle,
+            on_sendspin_toggle=self._on_tray_sendspin_toggle,
         )
 
         # Apply saved conversation bubble preference
@@ -592,6 +644,9 @@ class HomeAssistantWindows:
 
         # Stop wake word detection
         self._stop_wake_word_detection()
+
+        # Stop Sendspin receiver
+        await self._stop_sendspin()
 
         # Stop system tray icon
         if self.tray:

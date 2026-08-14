@@ -121,6 +121,9 @@ class ESPHomeProtocol(asyncio.Protocol):
         # Conversation text callback for tray balloon notifications
         self._conversation_callback: Optional[Callable[[str, str], None]] = None
 
+        # Debug capture of the audio actually streamed to HA (last conversation)
+        self._debug_audio_chunks: List[bytes] = []
+
         logger.debug(f"ESPHome protocol initialized: {self.state.name}")
 
     def set_phase_callback(self, callback: Optional[Callable[[str], None]]) -> None:
@@ -377,6 +380,7 @@ class ESPHomeProtocol(asyncio.Protocol):
             self._tts_played = False
             self._continue_conversation = False
             self._processing = False
+            self._debug_audio_chunks = []
             self._set_phase('listening')
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START:
@@ -450,6 +454,23 @@ class ESPHomeProtocol(asyncio.Protocol):
                 self._set_phase('idle')
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_ERROR:
+            # Benign errors: user said nothing / pipeline idle timeouts. ESPHome
+            # itself returns to idle for these instead of flagging an error.
+            if data.get("code") in ("stt-no-text-recognized", "wake-word-timeout",
+                                    "no_wake_word", "wake_word_detection_aborted",
+                                    "timeout"):
+                logger.info(f"🎤 Voice assistant benign error: {data.get('code')}")
+                if data.get("code") == "stt-no-text-recognized":
+                    # Keep the audio that failed so it can be inspected
+                    self._dump_debug_audio(data.get("code"))
+                    # Tell the user instead of failing silently
+                    self._notify_no_speech()
+                self._is_streaming_audio = False
+                self._processing = False
+                self._stop_audio_streaming()
+                self._set_phase('idle')
+                return
+
             logger.error(f"Voice assistant error: {data}")
             self._is_streaming_audio = False
             self._processing = False
@@ -626,7 +647,43 @@ class ESPHomeProtocol(asyncio.Protocol):
         if self._audio_chunks_sent <= 5:
             logger.info(f"🎤 Sending audio chunk #{self._audio_chunks_sent}: {len(audio_chunk)} bytes")
 
+        # Capture streamed audio so failures can be diagnosed from real data
+        # (last conversation only, overwritten each time)
+        self._debug_audio_chunks.append(audio_chunk)
+
         self.send_messages([VoiceAssistantAudio(data=audio_chunk)])
+
+    def _notify_no_speech(self) -> None:
+        """Show a bubble telling the user no speech was recognized."""
+        try:
+            from src.i18n import get_i18n
+            from src.ui.conversation_bubble import show_conversation_bubble
+
+            show_conversation_bubble("info", get_i18n().t('error_no_speech'))
+        except Exception as e:
+            logger.debug(f"No-speech bubble failed: {e}")
+
+    def _dump_debug_audio(self, reason: str) -> None:
+        """Write the audio actually sent to HA as a WAV for diagnosis."""
+        if not getattr(self, "_debug_audio_chunks", None):
+            return
+        try:
+            import wave
+            from .models import get_user_data_dir
+
+            out_dir = get_user_data_dir() / "debug"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / "last_stt_stream.wav"
+            with wave.open(str(out_path), "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                wf.writeframes(b"".join(self._debug_audio_chunks))
+            logger.info(f"🎤 Debug audio dumped ({reason}): {out_path}")
+        except Exception as e:
+            logger.debug(f"Failed to dump debug audio: {e}")
+        finally:
+            self._debug_audio_chunks = []
 
     def wakeup(self, wake_word_phrase: str = "") -> None:
         """
@@ -639,6 +696,12 @@ class ESPHomeProtocol(asyncio.Protocol):
             self._timer_finished = False
             self.state.tts_player.stop()
             logger.debug("Stopped timer sound")
+            return
+
+        if self.state.preferences.muted:
+            # Muted: no audio would reach HA, the pipeline would fail with
+            # stt-no-text-recognized. Ignore the trigger instead.
+            logger.info("🎤 Wake word trigger ignored (microphone muted)")
             return
 
         logger.info(f"🎤 Wake word triggered: {wake_word_phrase}")

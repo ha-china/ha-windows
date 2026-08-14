@@ -96,6 +96,7 @@ class SystemTrayIcon:
         self._on_quit: Optional[Callable] = None
         self._on_mic_change: Optional[Callable] = None
         self._on_mute_change: Optional[Callable] = None
+        self._on_bubble_toggle: Optional[Callable] = None
         self._on_conversation: Optional[Callable] = None
         self._version = "0.0.0"
 
@@ -216,20 +217,24 @@ class SystemTrayIcon:
             except Exception as e:
                 logger.error(f"Failed to toggle microphone mute: {e}")
 
+    def _current_bubbles_enabled(self) -> bool:
+        if self._state is None:
+            return True
+        return getattr(self._state.preferences, 'conversation_bubble_enabled', True)
+
+    def _toggle_bubbles(self) -> None:
+        new_state = not self._current_bubbles_enabled()
+        logger.info(f"Conversation bubbles toggled: {new_state}")
+        if self._on_bubble_toggle:
+            try:
+                self._on_bubble_toggle(new_state)
+            except Exception as e:
+                logger.error(f"Failed to toggle conversation bubbles: {e}")
+
     def _show_conversation_balloon(self, msg_type: str, text: str) -> None:
-        """Show a toast notification with STT/TTS text."""
-        if msg_type == "stt":
-            label = _i18n.t('conversation_you_said')
-        else:
-            label = _i18n.t('conversation_assistant')
-        try:
-            from windows_toasts import Toast, InteractableWindowsToaster
-            toaster = InteractableWindowsToaster('Home Assistant Windows')
-            toast = Toast()
-            toast.text_fields = [f"{label}：{text}"]
-            toaster.show_toast(toast)
-        except Exception as e:
-            logger.debug(f"Conversation toast failed: {e}")
+        """Show a colored conversation bubble near the tray with STT/TTS text."""
+        from src.ui.conversation_bubble import show_conversation_bubble
+        show_conversation_bubble(msg_type, text)
 
     def _on_about_menu(self, icon, item) -> None:
         logger.info("About menu clicked")
@@ -264,6 +269,11 @@ class SystemTrayIcon:
                     _i18n.t('mute_microphone'),
                     lambda icon, item: self._toggle_mute(),
                     checked=lambda item: self._current_muted(),
+                ),
+                pystray.MenuItem(
+                    _i18n.t('conversation_bubbles'),
+                    lambda icon, item: self._toggle_bubbles(),
+                    checked=lambda item: self._current_bubbles_enabled(),
                 ),
                 pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
                 pystray.MenuItem('About', self._on_about_menu),
@@ -322,7 +332,8 @@ class SystemTrayIcon:
             )
 
     def set_callbacks(self, on_quit: Callable = None, on_mic_change: Callable = None,
-                      on_mute_change: Callable = None, on_conversation: Callable = None) -> None:
+                      on_mute_change: Callable = None, on_conversation: Callable = None,
+                      on_bubble_toggle: Callable = None) -> None:
         self._on_quit = on_quit
         if on_mic_change is not None:
             self._on_mic_change = on_mic_change
@@ -330,6 +341,8 @@ class SystemTrayIcon:
             self._on_mute_change = on_mute_change
         if on_conversation is not None:
             self._on_conversation = on_conversation
+        if on_bubble_toggle is not None:
+            self._on_bubble_toggle = on_bubble_toggle
 
     def refresh_menu(self) -> None:
         """Rebuild the tray menu so checked states reflect the current values."""

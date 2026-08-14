@@ -68,8 +68,10 @@ class I18n:
                 'settings_default_device': '系统默认',
                 'mute_microphone': '静音麦克风',
                 'unmute_microphone': '取消静音',
+                'conversation_bubbles': '显示对话气泡',
                 'conversation_you_said': '你',
                 'conversation_assistant': '助手',
+                'error_no_speech': '没识别到语音，请再试一次',
                 'settings_wake_word_model': '唤醒词模型',
                 'settings_log_level': '日志级别',
 
@@ -178,8 +180,10 @@ class I18n:
                 'settings_default_device': 'System Default',
                 'mute_microphone': 'Mute Microphone',
                 'unmute_microphone': 'Unmute',
+                'conversation_bubbles': 'Show Conversation Bubbles',
                 'conversation_you_said': 'You',
                 'conversation_assistant': 'Assistant',
+                'error_no_speech': 'No speech recognized, please try again',
                 'settings_wake_word_model': 'Wake Word Model',
                 'settings_log_level': 'Log Level',
 

@@ -280,6 +280,16 @@ class HomeAssistantWindows:
         else:
             self._set_muted(muted)
 
+    def _on_tray_bubble_toggle(self, enabled: bool) -> None:
+        """Handle conversation bubble toggle from tray."""
+        from src.ui import conversation_bubble
+
+        state = self.api_server.state
+        state.preferences.conversation_bubble_enabled = enabled
+        state.save_preferences()
+        conversation_bubble.set_enabled(enabled)
+        logger.info(f"💬 Conversation bubbles {'enabled' if enabled else 'disabled'}")
+
     def _on_conversation_text(self, msg_type: str, text: str) -> None:
         """Handle conversation text from voice assistant events."""
         if self.tray:
@@ -315,6 +325,13 @@ class HomeAssistantWindows:
             on_quit=self._request_quit,
             on_mic_change=self._set_microphone,
             on_mute_change=self._on_tray_mute_toggle,
+            on_bubble_toggle=self._on_tray_bubble_toggle,
+        )
+
+        # Apply saved conversation bubble preference
+        from src.ui import conversation_bubble
+        conversation_bubble.set_enabled(
+            self.api_server.state.preferences.conversation_bubble_enabled
         )
 
         # Start system tray icon

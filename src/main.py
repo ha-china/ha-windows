@@ -315,6 +315,7 @@ class HomeAssistantWindows:
 
             self.sendspin = SendspinReceiver(name=self.device_name)
             self.sendspin.set_metadata_callback(self._on_sendspin_metadata)
+            self.sendspin.set_connection_callback(self._on_sendspin_connection)
             await self.sendspin.start()
             if self.tray:
                 self.tray.set_sendspin_status(self.sendspin.is_connected)
@@ -348,6 +349,14 @@ class HomeAssistantWindows:
     def _on_sendspin_metadata(self, title: str) -> None:
         """Handle track metadata from the Sendspin stream."""
         logger.info(f"🎵 Now playing: {title}")
+
+    def _on_sendspin_connection(self, connected: bool) -> None:
+        """Handle Sendspin connection state changes (may run on any thread)."""
+        if self.tray:
+            try:
+                self.tray.set_sendspin_status(connected)
+            except Exception as e:
+                logger.debug(f"Sendspin status update error: {e}")
 
     async def _register_mdns_service(self):
         """Register mDNS service broadcast"""

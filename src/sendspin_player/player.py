@@ -91,6 +91,7 @@ class SendspinReceiver:
         self._connecting = False
         self._connected = False
         self._metadata_callback: Optional[Callable[[str], None]] = None
+        self._connection_callback: Optional[Callable[[bool], None]] = None
         self._audio_queue: Optional[asyncio.Queue] = None
         self._client_id: Optional[str] = None
 
@@ -107,6 +108,10 @@ class SendspinReceiver:
     def set_metadata_callback(self, callback: Callable[[str], None]) -> None:
         """Register a callback receiving current track metadata (title)."""
         self._metadata_callback = callback
+
+    def set_connection_callback(self, callback: Callable[[bool], None]) -> None:
+        """Register a callback notified on connection state changes (True=connected)."""
+        self._connection_callback = callback
 
     async def start(self) -> None:
         """Start the client listener and mDNS advertising."""
@@ -167,6 +172,7 @@ class SendspinReceiver:
 
                 logger.info("Sendspin: Music Assistant connected")
                 self._connected = True
+                self._notify_connection()
                 try:
                     # attach_websocket returns after the handshake; keep the
                     # connection alive until the server disconnects.
@@ -176,6 +182,7 @@ class SendspinReceiver:
                     self._connected = False
                     logger.info("Sendspin: Music Assistant disconnected")
                     self._stop_playback()
+                    self._notify_connection()
 
             self._listener = ClientListener(
                 client_id=self._client_id,
@@ -312,6 +319,14 @@ class SendspinReceiver:
             self._stream_task.cancel()
             self._stream_task = None
         self._audio_queue = None
+
+    def _notify_connection(self) -> None:
+        """Notify the registered callback of the current connection state."""
+        if self._connection_callback:
+            try:
+                self._connection_callback(self.is_connected)
+            except Exception as e:
+                logger.debug(f"Connection callback error: {e}")
 
     # ------------------------------------------------------------------ events
 

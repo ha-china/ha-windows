@@ -217,53 +217,19 @@ class SystemTrayIcon:
                 logger.error(f"Failed to toggle microphone mute: {e}")
 
     def _show_conversation_balloon(self, msg_type: str, text: str) -> None:
-        """Show a balloon notification from the tray icon with STT/TTS text."""
-        if not self.icon:
-            return
-        hwnd = getattr(self.icon, '_hwnd', None)
-        if not hwnd:
-            return
+        """Show a toast notification with STT/TTS text."""
         if msg_type == "stt":
-            title = _i18n.t('conversation_you_said')
-            info_flag = _NIIF_INFO
+            label = _i18n.t('conversation_you_said')
         else:
-            title = _i18n.t('conversation_assistant')
-            info_flag = _NIIF_WARNING
-        balloon_text = f"{title}：{text}"
-
-        # Delete and re-add the icon with balloon info (same pattern as _replace_icon)
-        _shell32.Shell_NotifyIconW(_NIM_DELETE, ctypes.byref(_NID(
-            cbSize=ctypes.sizeof(_NID), hWnd=hwnd)))
-
-        image = self.create_icon_image()
-        info = self._status_info
-        tip = f"HA Windows: {info['name']} [{self._current_phase}]\n{_i18n.t('ip_label')}: {info['ip']}:{info['port']}"
-
-        fd, path = tempfile.mkstemp('.ico')
+            label = _i18n.t('conversation_assistant')
         try:
-            with os.fdopen(fd, 'wb') as f:
-                image.save(f, 'ICO')
-            hicon = _user32.LoadImageW(None, path, _IMAGE_ICON, 32, 32, _LR_LOADFROMFILE)
-            if not hicon:
-                return
-            _shell32.Shell_NotifyIconW(_NIM_ADD, ctypes.byref(_NID(
-                cbSize=ctypes.sizeof(_NID),
-                hWnd=hwnd,
-                uID=0,
-                uFlags=_NIF_MESSAGE | _NIF_ICON | _NIF_TIP | _NIF_SHOWTIP | _NIF_INFO,
-                uCallbackMessage=_WM_NOTIFY,
-                hIcon=hicon,
-                szTip=tip,
-                szInfo=balloon_text[:255],
-                szInfoTitle="",
-                dwInfoFlags=info_flag | _NIIF_NOSOUND,
-            )))
-            _user32.DestroyIcon(hicon)
-        finally:
-            try:
-                os.unlink(path)
-            except Exception:
-                pass
+            from windows_toasts import Toast, InteractableWindowsToaster
+            toaster = InteractableWindowsToaster('Home Assistant Windows')
+            toast = Toast()
+            toast.text_fields = [f"{label}：{text}"]
+            toaster.show_toast(toast)
+        except Exception as e:
+            logger.debug(f"Conversation toast failed: {e}")
 
     def _on_about_menu(self, icon, item) -> None:
         logger.info("About menu clicked")

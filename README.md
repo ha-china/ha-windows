@@ -16,63 +16,74 @@ A Windows client that emulates an ESPHome device for seamless Home Assistant int
 - **TTS Playback**: Play voice responses from Home Assistant
 
 ### 📊 System Monitoring Sensors
-- **CPU Usage** (%)
-- **Memory Usage** (%)
-- **Memory Free** (GB)
-- **Disk Usage** (%) - per drive
-- **Disk Free** (GB) - per drive
-- **Battery Level/Status** (if available)
-- **IP Address** - Local IPv4 address
-- **Boot Time** - System boot timestamp
-- **Uptime** (hours)
-- **Process Count**
-- **Network Upload** (GB) - Total uploaded data
-- **Network Download** (GB) - Total downloaded data
 
-### 🖥️ GPU Monitoring (NVIDIA)
-- **GPU Name** - Model name
-- **GPU Temperature** (°C)
-- **GPU Usage** (%)
-- **GPU Memory Usage** (%)
-- **GPU Memory Used** (GB)
-- **GPU Power** (W)
-
-*Requires NVIDIA GPU with NVML driver (included in NVIDIA driver). Automatically hidden on non-NVIDIA systems.*
-
-### 🧊 Hardware Sensors (LibreHardwareMonitor)
-- **CPU Core Load** - Per-core utilization
-- **CPU Total Load** (%)
-- **CPU Core Max Load** (%)
-- **GPU Clock** (MHz)
-- **GPU Memory Clock** (MHz)
-- **GPU Hot Spot** (°C)
-- **GPU Core Voltage** (V)
-
-**Additional sensors available with admin rights or [PawnIO driver](https://github.com/namazso/PawnIO.Setup):**
-- **CPU Temperature** (°C)
-- **CPU Power** (W)
-- **Motherboard Temperature** (°C)
-- **Fan Speed** (RPM)
-- **Voltage rails** (V)
-
-Install PawnIO: `winget install PawnIO` (one-time, no admin required at runtime afterwards).
-
-### 📊 Sensor Comparison by Privilege
-
-| Sensor Type | Normal | Admin or PawnIO |
+**Always available (psutil):**
+| Entity | Type | Unit |
 |---|---|---|
-| CPU Core Load (per core) | ✅ | ✅ |
-| CPU Total / Max Load | ✅ | ✅ |
-| GPU Clocks, Voltage, Hot Spot | ✅ | ✅ |
-| CPU Temperature | ❌ | ✅ |
-| CPU Power | ❌ (shows 0) | ✅ (real value) |
-| Motherboard Temperature | ❌ | ✅ (if SuperIO detected) |
-| Fan Speed | ❌ | ✅ (if fans detected) |
-| Voltage Rails | ❌ | ✅ (if SuperIO detected) |
-| Disk/Network/Memory (psutil) | ✅ | ✅ |
-| GPU (NVML, NVIDIA only) | ✅ | ✅ |
+| CPU Usage | Sensor | % |
+| Memory Usage | Sensor | % |
+| Memory Free | Sensor | GB |
+| Disk Usage (per drive) | Sensor | % |
+| Disk Free (per drive) | Sensor | GB |
+| IP Address | Text Sensor | — |
+| Network Upload | Sensor | GB (total) |
+| Network Download | Sensor | GB (total) |
+| Boot Time | Text Sensor | — |
+| Uptime | Sensor | h |
+| Process Count | Sensor | — |
+| Process RSS | Sensor | MB |
+| Process Threads | Sensor | — |
+| Version | Text Sensor | — |
 
-*CPU temperature and motherboard sensors require ring0 driver access. Install PawnIO once, then run normally.*
+**Conditional (available when detected):**
+| Entity | Type | Condition |
+|---|---|---|
+| Battery Level | Sensor | Laptop with battery |
+| Battery Status | Text Sensor | Laptop with battery |
+| Process Handles | Sensor | Windows |
+| Process GDI Objects | Sensor | Windows |
+| Process USER Objects | Sensor | Windows |
+
+**NVIDIA GPU (NVML, hidden on non-NVIDIA):**
+| Entity | Type | Unit |
+|---|---|---|
+| GPU Name | Text Sensor | — |
+| GPU Temperature | Sensor | °C |
+| GPU Usage | Sensor | % |
+| GPU Memory Usage | Sensor | % |
+| GPU Memory Used | Sensor | GB |
+| GPU Power | Sensor | W |
+
+**LibreHardwareMonitor (no admin needed):**
+| Entity | Type | Unit |
+|---|---|---|
+| CPU Core #1~N Load | Sensor | % |
+| CPU Total Load | Sensor | % |
+| CPU Core Max Load | Sensor | % |
+| GPU Clock | Sensor | MHz |
+| GPU Memory Clock | Sensor | MHz |
+| GPU Hot Spot | Sensor | °C |
+| GPU Core Voltage | Sensor | V |
+
+**Extra with admin rights or [PawnIO driver](https://github.com/namazso/PawnIO.Setup):**
+`winget install PawnIO` (one-time, then run normally)
+| Entity | Type | Unit |
+|---|---|---|
+| CPU Temperature | Sensor | °C |
+| CPU Power | Sensor | W |
+| Motherboard Temperature | Sensor | °C |
+| Fan Speed | Sensor | RPM |
+| Voltage Rails | Sensor | V |
+
+**Controls exposed to Home Assistant:**
+| Entity | Type | Purpose |
+|---|---|---|
+| Media Player | Media Player | TTS, audio playback |
+| Microphone Mute | Switch | Mute/unmute mic |
+| Thinking Sound | Switch | Toggle processing sound |
+| Shutdown | Button | Shut down PC |
+| Restart | Button | Restart PC |
+| Screenshot | Button | Take screenshot |
 
 ### 🎮 Remote Control Buttons
 - **Shutdown** - Shutdown the computer

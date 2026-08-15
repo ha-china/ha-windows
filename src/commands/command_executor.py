@@ -34,7 +34,7 @@ class CommandExecutor:
         'audio_input', 'audio_output', 'list_audio_devices',
 
         # Application commands
-        'launch', 'url', 'screenshot',
+        'launch', 'url',
 
         # Notification commands
         'notify',
@@ -91,7 +91,6 @@ class CommandExecutor:
         self._command_handlers.update({
             'launch': self._launch_app,
             'url': self._open_url,
-            'screenshot': self._screenshot,
         })
 
         # Notification commands
@@ -184,35 +183,6 @@ class CommandExecutor:
                 'success': True,
                 'message': _i18n.t('command_executed'),
                 'url': url
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'message': _i18n.t('command_failed'),
-                'error': str(e)
-            }
-
-    def _screenshot(self, args: Optional[str] = None) -> Dict:
-        """Take screenshot"""
-        try:
-            from PIL import ImageGrab
-
-            # Take screenshot
-            screenshot = ImageGrab.grab()
-
-            # Save file
-            if args:
-                filename = args
-            else:
-                import datetime
-                filename = f"screenshot_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-
-            screenshot.save(filename)
-
-            return {
-                'success': True,
-                'message': _i18n.t('command_executed'),
-                'file': filename
             }
         except Exception as e:
             return {

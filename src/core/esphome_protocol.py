@@ -60,6 +60,8 @@ PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
 
 # Screenshot camera entity key
 CAMERA_KEY = 18
+# Screenshot button key (must match ButtonEntityManager definition)
+SCREENSHOT_BUTTON_KEY = 120
 
 logger = logging.getLogger(__name__)
 
@@ -579,30 +581,23 @@ class ESPHomeProtocol(asyncio.Protocol):
 
     # ========== Camera / Screenshot Processing ==========
 
+    # Minimum interval between streamed screenshots (seconds)
+    _CAMERA_STREAM_INTERVAL = 1.0
+
     def _handle_camera_request(self, msg: CameraImageRequest) -> None:
         """Handle camera image request from Home Assistant.
 
-        Captures a screenshot and sends it back as a JPEG image.
-        Runs the blocking PIL call in a thread to avoid blocking the event loop.
+        Supports both single-shot requests and stream requests (rate limited).
         """
-        if not msg.single:
-            return  # stream mode not supported
-        import asyncio as _asyncio
+        if not (msg.single or msg.stream):
+            return
+        loop = asyncio.get_event_loop()
+        loop.create_task(self._take_screenshot())
 
-        loop = _asyncio.get_event_loop()
-        loop.create_task(self._take_screenshot(msg))
-
-    async def _take_screenshot(self, msg: CameraImageRequest) -> None:
-        """Capture screenshot and send CameraImageResponse."""
+    async def _take_screenshot(self) -> None:
+        """Capture screenshot and send CameraImageResponse (in memory only)."""
         try:
-            from PIL import ImageGrab
-            from io import BytesIO
-
-            screenshot = await asyncio.to_thread(ImageGrab.grab)
-            buffer = BytesIO()
-            screenshot.save(buffer, format="JPEG", quality=85)
-            jpeg_data = buffer.getvalue()
-
+            jpeg_data = await self._capture_screen_jpeg()
             self.send_messages([
                 CameraImageResponse(
                     key=CAMERA_KEY,
@@ -613,6 +608,22 @@ class ESPHomeProtocol(asyncio.Protocol):
             logger.debug("Screenshot sent to HA (%d bytes)", len(jpeg_data))
         except Exception as e:
             logger.error(f"Failed to capture screenshot: {e}")
+
+    @staticmethod
+    async def _capture_screen_jpeg(quality: int = 85) -> bytes:
+        """Grab the screen and return it as JPEG bytes (no disk write)."""
+        from PIL import ImageGrab
+        from io import BytesIO
+
+        screenshot = await asyncio.to_thread(ImageGrab.grab)
+        buffer = BytesIO()
+        await asyncio.to_thread(screenshot.save, buffer, format="JPEG", quality=quality)
+        return buffer.getvalue()
+
+    def push_screenshot(self) -> None:
+        """Capture a screenshot now and push it to the camera entity (no disk write)."""
+        loop = asyncio.get_event_loop()
+        loop.create_task(self._take_screenshot())
 
     # ========== Announcement Processing ==========
 
@@ -1116,8 +1127,14 @@ class ESPHomeProtocol(asyncio.Protocol):
             yield from self._media_player_entity.handle_message(msg)
 
         elif isinstance(msg, ButtonCommandRequest):
-            # Handle button command
-            yield from self._button_manager.handle_message(msg)
+            # Screenshot button pushes the image to the camera entity instead
+            # of running the legacy disk-saving command.
+            if msg.key == SCREENSHOT_BUTTON_KEY:
+                logger.info("Button pressed: Screenshot (push to camera entity)")
+                self.push_screenshot()
+            else:
+                # Handle button command
+                yield from self._button_manager.handle_message(msg)
 
         elif isinstance(msg, ExecuteServiceRequest):
             # Handle service execution

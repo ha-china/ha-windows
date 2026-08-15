@@ -29,6 +29,34 @@ A Windows client that emulates an ESPHome device for seamless Home Assistant int
 - **Network Upload** (GB) - Total uploaded data
 - **Network Download** (GB) - Total downloaded data
 
+### 🖥️ GPU Monitoring (NVIDIA)
+- **GPU Name** - Model name
+- **GPU Temperature** (°C)
+- **GPU Usage** (%)
+- **GPU Memory Usage** (%)
+- **GPU Memory Used** (GB)
+- **GPU Power** (W)
+
+*Requires NVIDIA GPU with NVML driver (included in NVIDIA driver). Automatically hidden on non-NVIDIA systems.*
+
+### 🧊 Hardware Sensors (LibreHardwareMonitor)
+- **CPU Core Load** - Per-core utilization
+- **CPU Total Load** (%)
+- **CPU Core Max Load** (%)
+- **GPU Clock** (MHz)
+- **GPU Memory Clock** (MHz)
+- **GPU Hot Spot** (°C)
+- **GPU Core Voltage** (V)
+
+**Additional sensors available with admin rights or [PawnIO driver](https://github.com/namazso/PawnIO.Setup):**
+- **CPU Temperature** (°C)
+- **CPU Power** (W)
+- **Motherboard Temperature** (°C)
+- **Fan Speed** (RPM)
+- **Voltage rails** (V)
+
+Install PawnIO: `winget install PawnIO` (one-time, no admin required at runtime afterwards).
+
 ### 🎮 Remote Control Buttons
 - **Shutdown** - Shutdown the computer
 - **Restart** - Restart the computer

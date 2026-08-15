@@ -31,6 +31,9 @@ from aioesphomeapi.api_pb2 import (
     ExecuteServiceRequest,
     SubscribeHomeAssistantStatesRequest,
     SwitchCommandRequest,
+    CameraImageRequest,
+    CameraImageResponse,
+    ListEntitiesCameraResponse,
     VoiceAssistantConfigurationRequest,
     VoiceAssistantConfigurationResponse,
     VoiceAssistantEventResponse,
@@ -54,6 +57,9 @@ from .models import ServerState, create_default_state
 
 # Message type mapping
 PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
+
+# Screenshot camera entity key
+CAMERA_KEY = 18
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +329,9 @@ class ESPHomeProtocol(asyncio.Protocol):
             self._handle_voice_config(msg_inst)
         elif isinstance(msg_inst, VoiceAssistantSetConfiguration):
             self._handle_set_voice_config(msg_inst)
+        # Camera screenshot request
+        elif isinstance(msg_inst, CameraImageRequest):
+            self._handle_camera_request(msg_inst)
         # Entity messages
         else:
             msgs = list(self.handle_message(msg_inst))
@@ -567,6 +576,43 @@ class ESPHomeProtocol(asyncio.Protocol):
         self.state.wake_words_changed = True
 
         logger.info(f"🎤 Active wake words updated: {self.state.active_wake_words}")
+
+    # ========== Camera / Screenshot Processing ==========
+
+    def _handle_camera_request(self, msg: CameraImageRequest) -> None:
+        """Handle camera image request from Home Assistant.
+
+        Captures a screenshot and sends it back as a JPEG image.
+        Runs the blocking PIL call in a thread to avoid blocking the event loop.
+        """
+        if not msg.single:
+            return  # stream mode not supported
+        import asyncio as _asyncio
+
+        loop = _asyncio.get_event_loop()
+        loop.create_task(self._take_screenshot(msg))
+
+    async def _take_screenshot(self, msg: CameraImageRequest) -> None:
+        """Capture screenshot and send CameraImageResponse."""
+        try:
+            from PIL import ImageGrab
+            from io import BytesIO
+
+            screenshot = await asyncio.to_thread(ImageGrab.grab)
+            buffer = BytesIO()
+            screenshot.save(buffer, format="JPEG", quality=85)
+            jpeg_data = buffer.getvalue()
+
+            self.send_messages([
+                CameraImageResponse(
+                    key=CAMERA_KEY,
+                    data=jpeg_data,
+                    done=True,
+                )
+            ])
+            logger.debug("Screenshot sent to HA (%d bytes)", len(jpeg_data))
+        except Exception as e:
+            logger.error(f"Failed to capture screenshot: {e}")
 
     # ========== Announcement Processing ==========
 
@@ -1046,6 +1092,13 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Send config sensor entity definitions
             for cfg_def in self._config_sensor_manager.get_entity_definitions():
                 yield cfg_def
+            # Send camera/screenshot entity definition
+            yield ListEntitiesCameraResponse(
+                key=CAMERA_KEY,
+                name="Screenshot",
+                object_id="screenshot",
+                icon="mdi:camera",
+            )
             yield from self._thinking_sound_entity.handle_message(msg)
             yield from self._mic_mute_entity.handle_message(msg)
 

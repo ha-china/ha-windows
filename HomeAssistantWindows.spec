@@ -1,37 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_all
-
-datas = [('src', 'src')]
-binaries = []
-hiddenimports = ['windows_toasts', 'pycaw', 'comtypes', 'pystray', 'win10toast', 'src.platforms.windows', 'aioesphomeapi', 'aiosendspin', 'mashumaro', 'orjson', 'typing_extensions', 'sounddevice', 'numpy', 'psutil', 'pymicro_wakeword', 'pyopen_wakeword', 'webrtcvad', 'zeroconf', 'PIL', 'pygame', 'pygame.mixer', 'pygame.mixer_music', 'src.i18n', 'src.core.mdns_discovery', 'src.core.esphome_protocol', 'src.ui.system_tray_icon', 'src.voice.audio_recorder', 'src.voice.mpv_player', 'src.voice.wake_word', 'src.voice.vad', 'src.commands.command_executor', 'src.commands.system_commands', 'src.commands.media_commands', 'src.commands.audio_commands', 'src.sensors.windows_monitor', 'src.notify.announcement', 'src.notify.toast_notification', 'src.notify.service_entity', 'src.ui.main_window', 'src.autostart', 'src.platforms', 'src.platforms.base']
-tmp_ret = collect_all('aioesphomeapi')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('pycaw')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('comtypes')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('pymicro_wakeword')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('pyopen_wakeword')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('pygame')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('orjson')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('mashumaro')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# One-file build. All shared configuration lives in spec_common.py.
+from spec_common import BINARIES, DATAS, EXCLUDES, HIDDEN_IMPORTS
 
 
 a = Analysis(
     ['src\\__main__.py'],
     pathex=[],
-    binaries=binaries,
-    datas=datas,
-    hiddenimports=hiddenimports,
+    binaries=BINARIES,
+    datas=DATAS,
+    hiddenimports=HIDDEN_IMPORTS,
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['matplotlib', 'pandas', 'scipy', 'pytest', 'numpy.random', 'numpy.fft', 'numpy.linalg', 'numpy.f2py', 'numpy.ma', 'numpy.matrixlib', 'numpy.polynomial', 'numpy.distutils', 'numpy.doc', 'numpy.testing', 'numpy.compat', 'numpy.records', 'numpy._core._multiarray_tests', 'numpy._core._simd', 'numpy._core.memmap', 'numpy._core.defchararray', 'numpy.ctypeslib', 'numpy.version', 'numpy.strings', 'numpy.char', 'numpy.emath', 'numpy.rec', 'win10toast'],
+    excludes=EXCLUDES,
     noarchive=False,
     optimize=0,
 )
@@ -46,8 +27,10 @@ exe = EXE(
     name='HomeAssistantWindows',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,
-    upx=True,
+    # UPX-compressed python DLL breaks one-file mode ("Failed to load Python
+    # DLL"); strip is unsafe on Windows binaries.
+    strip=False,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,

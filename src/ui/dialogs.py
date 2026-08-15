@@ -8,7 +8,11 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional
 
+from src.i18n import get_i18n
+
 logger = logging.getLogger(__name__)
+
+_i18n = get_i18n()
 
 REPO_URL = "https://github.com/ha-china/ha-windows"
 
@@ -55,7 +59,7 @@ _dialog_mgr = _DialogManager()
 def _show_status(parent, name: str, ip: str, port: str, version: str):
     try:
         win = tk.Toplevel(parent)
-        win.title("Device Status")
+        win.title(_i18n.t('device_status'))
         win.geometry("380x250")
         win.resizable(False, False)
         win.lift()
@@ -70,11 +74,11 @@ def _show_status(parent, name: str, ip: str, port: str, version: str):
         frame.pack(fill=tk.BOTH, expand=True)
 
         rows = [
-            ("Device", name),
-            ("IP", ip),
-            ("Port", port),
-            ("Version", version),
-            ("Status", "Running"),
+            (_i18n.t('device_label'), name),
+            (_i18n.t('ip_label'), ip),
+            (_i18n.t('port_label'), port),
+            (_i18n.t('version_label'), version),
+            (_i18n.t('status_label'), _i18n.t('ready')),
         ]
         for label, value in rows:
             row = ttk.Frame(frame)
@@ -82,7 +86,7 @@ def _show_status(parent, name: str, ip: str, port: str, version: str):
             ttk.Label(row, text=f"{label}:", font=("", 10)).pack(side=tk.LEFT)
             ttk.Label(row, text=value, font=("", 10, "bold")).pack(side=tk.RIGHT)
 
-        ttk.Button(frame, text="Close", command=win.destroy).pack(pady=(20, 0))
+        ttk.Button(frame, text=_i18n.t('close'), command=win.destroy).pack(pady=(20, 0))
     except Exception as e:
         logger.error(f"Failed to show status dialog: {e}")
 
@@ -92,7 +96,7 @@ def _show_about(parent, version: str):
         import webbrowser
 
         win = tk.Toplevel(parent)
-        win.title("About")
+        win.title(_i18n.t('about_title'))
         win.geometry("380x240")
         win.resizable(False, False)
         win.lift()
@@ -107,9 +111,9 @@ def _show_about(parent, version: str):
         frame.pack(fill=tk.BOTH, expand=True)
 
         ttk.Label(frame, text="Home Assistant Windows", font=("", 14, "bold")).pack(pady=(0, 10))
-        ttk.Label(frame, text=f"Version {version}", font=("", 10)).pack()
+        ttk.Label(frame, text=f"{_i18n.t('version_label')} {version}", font=("", 10)).pack()
         ttk.Label(
-            frame, text="Windows native client for Home Assistant voice assistant.",
+            frame, text=_i18n.t('about_description'),
             wraplength=320, justify=tk.CENTER,
         ).pack(pady=(10, 5))
 
@@ -117,8 +121,8 @@ def _show_about(parent, version: str):
         link.pack()
         link.bind("<Button-1>", lambda e: webbrowser.open(REPO_URL))
 
-        ttk.Label(frame, text="© 2024 ha-china", foreground="gray").pack(pady=(10, 0))
-        ttk.Button(frame, text="Close", command=win.destroy).pack(pady=(10, 0))
+        ttk.Label(frame, text=_i18n.t('about_copyright'), foreground="gray").pack(pady=(10, 0))
+        ttk.Button(frame, text=_i18n.t('close'), command=win.destroy).pack(pady=(10, 0))
     except Exception as e:
         logger.error(f"Failed to show about dialog: {e}")
 

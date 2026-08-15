@@ -92,7 +92,11 @@ class SystemTrayIcon:
         self._icon_ready = threading.Event()
         self._state = state
         self._current_phase = self.PHASE_IDLE
-        self._status_info = {'name': 'Unknown', 'ip': 'Unknown', 'port': 'Unknown'}
+        self._status_info = {
+            'name': _i18n.t('unknown'),
+            'ip': _i18n.t('unknown'),
+            'port': _i18n.t('unknown'),
+        }
         self._on_quit: Optional[Callable] = None
         self._on_mic_change: Optional[Callable] = None
         self._on_mute_change: Optional[Callable] = None
@@ -300,7 +304,7 @@ class SystemTrayIcon:
         self._status_info = {
             'name': name,
             'ip': ip,
-            'port': str(port) if port else 'Unknown',
+            'port': str(port) if port else _i18n.t('unknown'),
         }
 
         self.icon = pystray.Icon(
@@ -323,12 +327,12 @@ class SystemTrayIcon:
                     pystray.Menu(self._sendspin_menu_items),
                 ),
                 pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
-                pystray.MenuItem('About', self._on_about_menu),
+                pystray.MenuItem(_i18n.t('about'), self._on_about_menu),
                 pystray.MenuItem(_i18n.t('quit'), self._on_quit_menu),
             )
         )
 
-        self.icon.title = f"HA Windows: {name}\n{_i18n.t('ip_label')}: {ip}:{port if port else 'Unknown'}"
+        self.icon.title = f"HA Windows: {name}\n{_i18n.t('ip_label')}: {ip}:{port if port else _i18n.t('unknown')}"
 
         self._running = True
         self._icon_ready.clear()

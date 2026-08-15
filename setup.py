@@ -80,6 +80,24 @@ def build_exe():
     """
     Build a single executable file using PyInstaller (one-file mode)
     """
+    # Use spec file on Windows (keeps build config in one place);
+    # fall back to CLI args on other platforms where no spec exists.
+    spec_file = "HomeAssistantWindows.spec" if CURRENT_PLATFORM == "Windows" else None
+
+    if spec_file and os.path.exists(spec_file):
+        pyinstaller_args = [
+            spec_file,
+            "--clean",  # Clean temporary files
+            "--noconfirm",  # Overwrite output directory without asking
+        ]
+        print(f"Building {APP_NAME} v{APP_VERSION} for {CURRENT_PLATFORM} (single-file mode)...")
+        print(f"Using spec file: {spec_file}")
+        run(pyinstaller_args)
+        print(f"\nBuild completed!")
+        print(f"Output file: dist/{APP_NAME}{OUTPUT_EXT}")
+        return
+
+    # Fallback: CLI-based build (non-Windows platforms without a spec file)
     # Common PyInstaller arguments
     pyinstaller_args = [
         MAIN_SCRIPT,
@@ -92,10 +110,10 @@ def build_exe():
         "--workpath=build",  # Build directory
         "--additional-hooks-dir=hooks",  # Custom hooks directory (fix webrtcvad issue)
     ]
-    
+
     # Add platform-specific arguments
     pyinstaller_args.extend(get_platform_specific_args())
-    
+
     # Common hidden imports (these modules may not be automatically detected)
     pyinstaller_args.extend([
         "--hidden-import=aioesphomeapi",
@@ -107,6 +125,10 @@ def build_exe():
         "--hidden-import=webrtcvad",
         "--hidden-import=zeroconf",
         "--hidden-import=PIL",
+        "--hidden-import=aiosendspin",
+        "--hidden-import=mashumaro",
+        "--hidden-import=orjson",
+        "--hidden-import=typing_extensions",
         "--hidden-import=pygame",
         "--hidden-import=pygame.mixer",
         "--hidden-import=pygame.mixer_music",
@@ -119,7 +141,7 @@ def build_exe():
         "--hidden-import=src.voice.mpv_player",
         "--hidden-import=src.voice.wake_word",
         "--hidden-import=src.voice.vad",
-        
+
         "--hidden-import=src.commands.command_executor",
         "--hidden-import=src.commands.system_commands",
         "--hidden-import=src.commands.media_commands",
@@ -140,6 +162,7 @@ def build_exe():
         "--collect-all=pymicro_wakeword",  # Include tensorflowlite_c.dll
         "--collect-all=pyopen_wakeword",
         "--collect-all=pygame",  # SDL2_mixer.dll etc - audio playback/volume backend
+        "--collect-all=orjson",  # orjson is a compiled .pyd, must be collected
         # Add src directory to Python path
         "--add-data=src;src" if CURRENT_PLATFORM == "Windows" else "--add-data=src:src",
         # Exclude unnecessary modules (reduce size)
@@ -170,7 +193,10 @@ def build_exe():
         "--exclude-module=numpy.emath",
         "--exclude-module=numpy.rec",
         "--exclude-module=win10toast",
-        "--strip",
+        # UPX-compressed python DLL breaks one-file mode ("Failed to load
+        # Python DLL") when extracted to %TEMP% under antivirus scanning;
+        # --strip is unsafe on Windows binaries as well.
+        "--noupx",
     ])
 
     # Filter empty arguments

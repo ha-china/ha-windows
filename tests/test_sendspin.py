@@ -8,6 +8,7 @@ callbacks, audio chunk queueing and device info parsing.
 import asyncio
 import os
 import sys
+import winreg
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -36,23 +37,19 @@ class TestClientId:
 
 
 class TestDeviceInfo:
-    @patch(
-        "src.sendspin_player.player.subprocess.run",
-        return_value=MagicMock(
-            stdout="Micro-Star International Co., Ltd.\nMS-7C67\n",
-            stderr="",
-        ),
-    )
-    def test_parses_hardware(self, mock_run):
+    @patch("winreg.OpenKey")
+    @patch("winreg.QueryValueEx")
+    def test_parses_hardware(self, mock_query, mock_open):
+        mock_query.side_effect = [
+            ("Micro-Star International Co., Ltd.", winreg.REG_SZ),
+            ("MS-7C67", winreg.REG_SZ),
+        ]
         product, manufacturer = player_module.get_device_info()
         assert product == "MS-7C67"
         assert manufacturer == "Micro-Star International Co., Ltd."
 
-    @patch(
-        "src.sendspin_player.player.subprocess.run",
-        side_effect=Exception("boom"),
-    )
-    def test_fallback_on_error(self, mock_run):
+    @patch("winreg.OpenKey", side_effect=OSError("boom"))
+    def test_fallback_on_error(self, mock_open):
         product, manufacturer = player_module.get_device_info()
         assert product == "Windows PC"
         assert manufacturer == "Microsoft"

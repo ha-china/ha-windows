@@ -15,7 +15,6 @@ PCM 16-bit 48 kHz stereo, so no `av` dependency is pulled in.
 import asyncio
 import logging
 import socket
-import subprocess
 import uuid
 from pathlib import Path
 from typing import Callable, Optional
@@ -48,29 +47,23 @@ def get_hostname() -> str:
 def get_device_info():
     """Return (product_name, manufacturer) of the local machine.
 
-    Queries WMI for the real hardware model and manufacturer; falls back to
+    Reads the SMBIOS data from the registry (no subprocess: spawning
+    powershell in a windowed exe flashes a console window); falls back to
     sensible defaults when unavailable.
     """
     product_name: Optional[str] = None
     manufacturer: Optional[str] = None
     try:
-        out = subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                "(Get-CimInstance Win32_ComputerSystem).Manufacturer;"
-                " (Get-CimInstance Win32_ComputerSystem).Model",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
+        import winreg
+
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS"
         )
-        lines = [ln.strip() for ln in out.stdout.splitlines() if ln.strip()]
-        if len(lines) >= 1:
-            manufacturer = lines[0]
-        if len(lines) >= 2:
-            product_name = lines[1]
+        try:
+            manufacturer = winreg.QueryValueEx(key, "SystemManufacturer")[0].strip()
+            product_name = winreg.QueryValueEx(key, "SystemProductName")[0].strip()
+        finally:
+            key.Close()
     except Exception as e:
         logger.debug(f"Failed to query device info: {e}")
     return (

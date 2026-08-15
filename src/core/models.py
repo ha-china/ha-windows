@@ -20,7 +20,7 @@ from enum import Enum
 from pathlib import Path
 from queue import Queue
 from threading import Lock
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Any, Callable
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Any, Callable, Tuple
 
 try:
     import aioesphomeapi
@@ -588,6 +588,28 @@ class AudioPlayer:
                 callback()
             except Exception as e:
                 logger.error(f"Error in done callback: {e}")
+def get_hardware_identity() -> Tuple[str, str]:
+    """Return (manufacturer, model) of the local machine.
+
+    Reads SMBIOS data from the registry (no subprocess: spawning powershell
+    in a windowed exe flashes a console window); falls back to sensible
+    defaults when unavailable. Shared by the ESPHome device info card and
+    the Sendspin receiver.
+    """
+    manufacturer = ""
+    model = ""
+    try:
+        import winreg
+
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS")
+        try:
+            manufacturer = winreg.QueryValueEx(key, "SystemManufacturer")[0].strip()
+            model = winreg.QueryValueEx(key, "SystemProductName")[0].strip()
+        finally:
+            key.Close()
+    except Exception as e:
+        logger.debug(f"Failed to read device identity: {e}")
+    return (manufacturer or "ha-china", model or "Home Assistant Windows")
 
 
 @dataclass
@@ -724,6 +746,9 @@ def create_default_state(name: str) -> ServerState:
     if timer_file.exists():
         timer_finished_sound = str(timer_file)
 
+    # Real hardware identity for the HA device info card
+    default_manufacturer, default_model = get_hardware_identity()
+
     processing_file = sounds_dir / "processing.wav"
     if processing_file.exists():
         processing_sound = str(processing_file)
@@ -732,6 +757,8 @@ def create_default_state(name: str) -> ServerState:
         name=name,
         mac_address=get_mac_address(),
         friendly_name=name,
+        manufacturer=default_manufacturer,
+        model=default_model,
         available_wake_words=available_wake_words,
         active_wake_words=default_active,
         wakeup_sound=wakeup_sound,

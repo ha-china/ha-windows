@@ -8,6 +8,8 @@ pymicro-wakeword>=2.0.0
 pyopen-wakeword>=1.0.0
 webrtcvad-wheels>=2.0.10
 psutil>=5.9.0
+nvidia-ml-py>=12.0.0
+HardwareMonitor>=1.2.0
 zeroconf>=0.100.0
 windows-toasts>=1.3.0; sys_platform == 'win32'
 pycaw>=0.0.1; sys_platform == 'win32'

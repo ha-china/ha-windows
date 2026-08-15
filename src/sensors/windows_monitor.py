@@ -60,13 +60,22 @@ SENSOR_KEYS = {
     "handle_count": 15,
     "gdi_count": 16,
     "user_object_count": 17,
+    # NVIDIA GPU sensors (optional, only registered when NVML is available)
+    "gpu_name": 40,
+    "gpu_temperature": 41,
+    "gpu_usage": 42,
+    "gpu_memory_usage": 43,
+    "gpu_memory_used": 44,
+    "gpu_power": 45,
 }
-
 GR_GDIOBJECTS = 0
 GR_USEROBJECTS = 1
 
 # Dynamic key offset for disk sensors (each disk uses 2 keys: usage% and free GB)
 DISK_KEY_OFFSET = 20
+
+# Dynamic key offset for LibreHardwareMonitor sensors (CPU temp, fans, voltages...)
+HW_SENSOR_KEY_OFFSET = 100
 
 
 class WindowsMonitor:
@@ -82,6 +91,7 @@ class WindowsMonitor:
         self._boot_time = psutil.boot_time()
         self._available_entities: List[Tuple[str, str, str, int]] = []
         self._entity_map: Dict[str, Tuple[str, str, int]] = {}
+        self._hardware_meta: Dict[str, Dict] = {}
         psutil.cpu_percent(interval=None)
         logger.info("Windows monitor initialized")
 
@@ -328,6 +338,63 @@ class WindowsMonitor:
             logger.error(f"Failed to get process info: {e}")
             return {}
 
+    def get_gpu_info(self) -> Optional[Dict]:
+        """Get NVIDIA GPU info via NVML.
+
+        Returns None on machines without an NVIDIA GPU (or without the
+        driver / nvidia-ml-py); no entities are registered in that case.
+        """
+        try:
+            from src.sensors.gpu_monitor import get_gpu_info as nvml_info
+
+            return nvml_info()
+        except Exception as e:
+            logger.debug(f"GPU info unavailable: {e}")
+            return None
+
+    def get_hardware_info(self) -> Dict:
+        """Get hardware sensor values via LibreHardwareMonitor.
+
+        Returns {object_id: {"name":..., "icon":..., "unit":..., "value": float}}
+        or an empty dict when unavailable (not installed / no driver / no
+        admin). CPU temperature, fans and voltages need the ring0 driver.
+        """
+        try:
+            from src.sensors import hardware_monitor as hwm
+
+            values = hwm.read_hardware_sensors()
+            if not values:
+                return {}
+            meta = hwm.get_sensor_meta()
+
+            def unit_for(object_id: str, default_unit: str = "") -> str:
+                u = meta.get(object_id, (None, None, None))[2] if not object_id.isdigit() else None
+                # family keys like hw_cpu_core_1 -> base meta lookup failed; derive from prefix
+                if not u:
+                    base = "_".join(object_id.split("_")[:-1])
+                    u = meta.get(base, (None, None, ""))[2]
+                return u or default_unit
+
+            result: Dict = {}
+            for object_id, value in values.items():
+                base = "_".join(object_id.split("_")[:-1])
+                entry_meta = meta.get(object_id) or meta.get(base) or (object_id, "mdi:gauge", "")
+                display_name, icon, unit = entry_meta
+                # Humanize family suffix: "CPU Core 1" from hw_cpu_core_1
+                suffix = object_id[len(base):].lstrip("_")
+                if suffix and not object_id in meta:
+                    display_name = f"{display_name} {suffix}"
+                result[object_id] = {
+                    "name": display_name,
+                    "icon": icon,
+                    "unit": unit,
+                    "value": value,
+                }
+            return result
+        except Exception as e:
+            logger.debug(f"Hardware info unavailable: {e}")
+            return {}
+
     def get_all_info(self) -> Dict:
         """
         Get all information
@@ -343,6 +410,8 @@ class WindowsMonitor:
             "network": self.get_network_info(),
             "system": self.get_system_info(),
             "process": self.get_process_info(),
+            "gpu": self.get_gpu_info(),
+            "hardware": self.get_hardware_info(),
         }
 
     # ========================================================================
@@ -410,6 +479,28 @@ class WindowsMonitor:
             available.append(("gdi_count", "Process GDI Objects", "mdi:vector-square", SENSOR_KEYS["gdi_count"]))
         if process_info.get("user_object_count") is not None:
             available.append(("user_object_count", "Process USER Objects", "mdi:application-outline", SENSOR_KEYS["user_object_count"]))
+
+        # NVIDIA GPU sensors - only if NVML is available (graceful on AMD/Intel/no-GPU machines)
+        gpu_info = info.get("gpu") or {}
+        if gpu_info:
+            available.append(("gpu_name", "GPU", "mdi:expansion-card", SENSOR_KEYS["gpu_name"]))
+            if gpu_info.get("temperature") is not None:
+                available.append(("gpu_temperature", "GPU Temperature", "mdi:thermometer", SENSOR_KEYS["gpu_temperature"]))
+            if gpu_info.get("gpu_utilization") is not None:
+                available.append(("gpu_usage", "GPU Usage", "mdi:expansion-card", SENSOR_KEYS["gpu_usage"]))
+            if gpu_info.get("memory_utilization") is not None:
+                available.append(("gpu_memory_usage", "GPU Memory Usage", "mdi:memory", SENSOR_KEYS["gpu_memory_usage"]))
+            if gpu_info.get("vram_used_gb") is not None:
+                available.append(("gpu_memory_used", "GPU Memory Used", "mdi:memory", SENSOR_KEYS["gpu_memory_used"]))
+            if gpu_info.get("power_watts") is not None:
+                available.append(("gpu_power", "GPU Power", "mdi:flash", SENSOR_KEYS["gpu_power"]))
+
+        # LibreHardwareMonitor sensors (CPU temp, fans, voltages...) - dynamic keys
+        hw_info = info.get("hardware") or {}
+        self._hardware_meta = hw_info
+        if hw_info:
+            for i, (object_id, entry) in enumerate(hw_info.items()):
+                available.append((object_id, entry["name"], entry["icon"], HW_SENSOR_KEY_OFFSET + i))
 
         self._available_entities = available
         self._entity_map = {obj_id: (name, icon, key) for obj_id, name, icon, key in available}
@@ -505,6 +596,77 @@ class WindowsMonitor:
                     accuracy_decimals=0,
                     state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
                     entity_category=EntityCategory.ENTITY_CATEGORY_DIAGNOSTIC,
+                )
+            # GPU name (text sensor)
+            elif object_id == "gpu_name":
+                sensor = ListEntitiesTextSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                )
+            # GPU temperature
+            elif object_id == "gpu_temperature":
+                sensor = ListEntitiesSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                    unit_of_measurement="°C",
+                    accuracy_decimals=0,
+                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
+                    device_class="temperature",
+                )
+            # GPU utilization %
+            elif object_id in ("gpu_usage", "gpu_memory_usage"):
+                sensor = ListEntitiesSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                    unit_of_measurement="%",
+                    accuracy_decimals=0,
+                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
+                )
+            # GPU VRAM used
+            elif object_id == "gpu_memory_used":
+                sensor = ListEntitiesSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                    unit_of_measurement="GB",
+                    accuracy_decimals=2,
+                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
+                )
+            # GPU power
+            elif object_id == "gpu_power":
+                sensor = ListEntitiesSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                    unit_of_measurement="W",
+                    accuracy_decimals=1,
+                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
+                )
+            # LibreHardwareMonitor sensors (generic, key >= HW_SENSOR_KEY_OFFSET)
+            elif key >= HW_SENSOR_KEY_OFFSET:
+                hw_info = self._hardware_meta or {}
+                entry = hw_info.get(object_id) or {}
+                unit = entry.get("unit", "")
+                device_class = None
+                if unit == "°C":
+                    device_class = "temperature"
+                sensor = ListEntitiesSensorResponse(
+                    object_id=object_id,
+                    key=key,
+                    name=name,
+                    icon=icon,
+                    unit_of_measurement=unit or None,
+                    accuracy_decimals=1,
+                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
+                    device_class=device_class,
                 )
             else:
                 # Text sensor for status values (network_status, battery_status, boot_time)
@@ -670,6 +832,30 @@ class WindowsMonitor:
             if user_object_count is not None:
                 _, _, key = self._entity_map["user_object_count"]
                 states.append(SensorStateResponse(key=key, state=float(user_object_count)))
+
+        # NVIDIA GPU sensors (only present when NVML is available)
+        gpu_info = info.get("gpu") or {}
+        if "gpu_name" in self._entity_map:
+            _, _, key = self._entity_map["gpu_name"]
+            states.append(TextSensorStateResponse(key=key, state=str(gpu_info.get("name", "unknown"))))
+        for object_id, field in [
+            ("gpu_temperature", "temperature"),
+            ("gpu_usage", "gpu_utilization"),
+            ("gpu_memory_usage", "memory_utilization"),
+            ("gpu_memory_used", "vram_used_gb"),
+            ("gpu_power", "power_watts"),
+        ]:
+            if object_id in self._entity_map and gpu_info.get(field) is not None:
+                _, _, key = self._entity_map[object_id]
+                states.append(SensorStateResponse(key=key, state=float(gpu_info[field])))
+
+        # LibreHardwareMonitor sensors (dynamic keys >= HW_SENSOR_KEY_OFFSET)
+        hw_info = info.get("hardware") or {}
+        self._hardware_meta = hw_info or self._hardware_meta
+        for object_id, entry in hw_info.items():
+            if object_id in self._entity_map:
+                _, _, key = self._entity_map[object_id]
+                states.append(SensorStateResponse(key=key, state=float(entry["value"])))
 
         # Extra states (command_result, voice_status, etc.)
         for entity_name, state_value in extra_states.items():

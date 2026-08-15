@@ -77,6 +77,7 @@ for _pkg in [
     'pygame',  # SDL2_mixer.dll etc - audio playback/volume backend
     'orjson',  # compiled .pyd, must be collected
     'mashumaro',
+    'HardwareMonitor',  # LibreHardwareMonitor .NET DLLs in lib/
 ]:
     _ret = collect_all(_pkg)
     DATAS += _ret[0]
@@ -97,6 +98,8 @@ HIDDEN_IMPORTS = [
     'sounddevice',
     'numpy',
     'psutil',
+    'pynvml',
+    'HardwareMonitor',
     'pymicro_wakeword',
     'pyopen_wakeword',
     'webrtcvad',

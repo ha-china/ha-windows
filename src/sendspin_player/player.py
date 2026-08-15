@@ -47,29 +47,18 @@ def get_hostname() -> str:
 def get_device_info():
     """Return (product_name, manufacturer) of the local machine.
 
-    Reads the SMBIOS data from the registry (no subprocess: spawning
-    powershell in a windowed exe flashes a console window); falls back to
-    sensible defaults when unavailable.
+    Delegates to the shared SMBIOS registry read in core.models so the
+    ESPHome device info card and Music Assistant report identical identity.
     """
-    product_name: Optional[str] = None
-    manufacturer: Optional[str] = None
-    try:
-        import winreg
+    from src.core.models import get_hardware_identity
 
-        key = winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS"
-        )
-        try:
-            manufacturer = winreg.QueryValueEx(key, "SystemManufacturer")[0].strip()
-            product_name = winreg.QueryValueEx(key, "SystemProductName")[0].strip()
-        finally:
-            key.Close()
-    except Exception as e:
-        logger.debug(f"Failed to query device info: {e}")
-    return (
-        product_name or "Windows PC",
-        manufacturer or "Microsoft",
-    )
+    manufacturer, model = get_hardware_identity()
+    # Registry read failed -> generic fallbacks for Music Assistant display
+    if manufacturer == "ha-china":
+        manufacturer = "Microsoft"
+    if model == "Home Assistant Windows":
+        model = "Windows PC"
+    return (model, manufacturer)
 
 
 class SendspinReceiver:

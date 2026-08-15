@@ -21,7 +21,11 @@ def _try_init() -> bool:
     if _nvml_ready is not None:
         return _nvml_ready
     try:
-        import pynvml  # noqa: PLC0415 - optional dependency
+        import warnings as _w
+
+        with _w.catch_warnings():
+            _w.simplefilter("ignore", FutureWarning)
+            import pynvml  # noqa: PLC0415 - optional dependency
 
         pynvml.nvmlInit()
         _gpu_count = pynvml.nvmlDeviceGetCount()

@@ -17,6 +17,22 @@ A Windows client that emulates an ESPHome device for seamless Home Assistant int
 
 ### 📊 System Monitoring Sensors
 
+**Entity count by privilege level (typical desktop with NVIDIA GPU):**
+
+| Category | Normal | Admin or PawnIO |
+|---|---|---|
+| System sensors (psutil) | 15 | 15 |
+| Disk sensors (per drive × 2) | 4–8 | 4–8 |
+| NVIDIA GPU (NVML) | 6 | 6 |
+| CPU Core Load (per core) | 8 | 8 |
+| GPU clocks / voltage / hotspot | 4 | 4 |
+| CPU Temperature / Power | — | 2 |
+| Motherboard / Fan / Voltage | — | 3–8 |
+| Controls (buttons, switches, media) | 9 | 9 |
+| **Total (approx.)** | **46–50** | **50–60** |
+
+*Install PawnIO: `winget install PawnIO` (one-time, then run normally).*
+
 **Always available (psutil):**
 | Entity | Type | Unit |
 |---|---|---|

@@ -5,7 +5,86 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.2] - 2026-04-10
+## [0.8.0] - 2026-08-15
+
+### Added
+- NVIDIA GPU monitoring via NVML: GPU name, temperature, core utilization, VRAM usage/used, power (auto-hidden on non-NVIDIA systems)
+- Hardware monitoring via LibreHardwareMonitor: CPU core loads, GPU clocks/hotspot/voltage, plus CPU temperature/power, motherboard temps, fans, voltages when PawnIO driver is installed
+- `get_hardware_identity()` shared function for consistent SMBIOS data across ESPHome device info card and Sendspin
+
+### Fixed
+- Hardware sensor single hardware update failure no longer causes all sensors to be lost
+- Removed redundant LHW sensors (memory, GPU temperature, GPU power) that duplicate psutil/NVML sources
+- LHW sensors now use stable entity keys derived from object_id, preventing HA unique ID duplication errors on restart
+
+### Changed
+- psutil upgraded from 5.9.6 to 7.2.2 (bug fixes, performance improvements)
+- Sendspin device info switched from PowerShell subprocess to direct winreg SMBIOS read (eliminates console flash on startup)
+- New dependencies: nvidia-ml-py, HardwareMonitor
+
+## [0.7.2] - 2026-08-15
+
+### Changed
+- Sendspin device info switched from PowerShell subprocess to direct winreg SMBIOS read (eliminates console flash on startup)
+
+## [0.7.1] - 2026-08-15
+
+### Added
+- Sendspin connection status updates in tray menu (real-time connected/disconnected)
+
+### Fixed
+- Single-file EXE startup failure: disabled UPX compression (caused "Failed to load Python DLL") and removed numpy submodule excludes (broke numpy 2.x init)
+- Unified spec_common.py for both one-file and one-dir builds to prevent config drift
+
+## [0.7.0] - 2026-08-14
+
+### Added
+- Sendspin audio receiver: stream audio from Music Assistant to Windows via Sendspin protocol (PCM 16-bit 48 kHz stereo, no av dependency)
+- Conversation bubbles: custom colored tkinter popup for STT/TTS content (blue/green/gray), with tray toggle and transparency support
+
+### Changed
+- Tray menu bilingual for all items (About, Unknown, dialog buttons)
+
+## [0.6.3] - 2026-08-14
+
+### Added
+- Microphone mute switch (tray + ESPHome sync)
+- AI bilingual changelog in release workflow
+
+### Changed
+- Replaced windows_toasts with conversation bubbles for voice assistant text display
+
+## [0.6.2] - 2026-08-06
+
+### Added
+- Microphone selection in tray menu (choose recording device)
+
+## [0.6.1] - 2026-08-03
+
+### Fixed
+- Restored pygame as audio playback backend
+
+## [0.6.0] - 2026-07-30
+
+### Added
+- Tray icon status indicator (color changes by phase: idle/idle, recording/connecting/error)
+- ESPHome phase callback for voice assistant state tracking
+- Native tkinter dialogs replacing PySide6 (EXE size reduced from 146MB to 57MB)
+- Support for workflow_dispatch trigger on release detection
+
+### Changed
+- Replaced shell notifications with Shell_NotifyIconW for reliable tray updates
+- Removed floating mic button and related code
+- Updated aioesphomeapi to >=45.7.0
+- ESPHome version auto-read from aioesphomeapi.__version__
+- Removed macOS cross-platform code (Windows-only focus)
+
+### Fixed
+- Tray icon not updating (uID mismatch, Shell_NotifyIconW return value check)
+- Replying phase color too close to idle (changed to bright pink)
+- VLC lazy loading to avoid hang on systems without VLC
+- Sound recording AssertionError (soundcard 0.4.5 bug, locked to compatible version)
+- tkinter dialog not appearing on repeated clicks
 
 ### Fixed
 - Clean up partially initialized mDNS resources immediately when zeroconf registration fails.

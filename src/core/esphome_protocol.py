@@ -31,9 +31,6 @@ from aioesphomeapi.api_pb2 import (
     ExecuteServiceRequest,
     SubscribeHomeAssistantStatesRequest,
     SwitchCommandRequest,
-    CameraImageRequest,
-    CameraImageResponse,
-    ListEntitiesCameraResponse,
     VoiceAssistantConfigurationRequest,
     VoiceAssistantConfigurationResponse,
     VoiceAssistantEventResponse,
@@ -57,11 +54,6 @@ from .models import ServerState, create_default_state
 
 # Message type mapping
 PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
-
-# Screenshot camera entity key
-CAMERA_KEY = 18
-# Screenshot button key (must match ButtonEntityManager definition)
-SCREENSHOT_BUTTON_KEY = 120
 
 logger = logging.getLogger(__name__)
 
@@ -331,9 +323,6 @@ class ESPHomeProtocol(asyncio.Protocol):
             self._handle_voice_config(msg_inst)
         elif isinstance(msg_inst, VoiceAssistantSetConfiguration):
             self._handle_set_voice_config(msg_inst)
-        # Camera screenshot request
-        elif isinstance(msg_inst, CameraImageRequest):
-            self._handle_camera_request(msg_inst)
         # Entity messages
         else:
             msgs = list(self.handle_message(msg_inst))
@@ -578,52 +567,6 @@ class ESPHomeProtocol(asyncio.Protocol):
         self.state.wake_words_changed = True
 
         logger.info(f"🎤 Active wake words updated: {self.state.active_wake_words}")
-
-    # ========== Camera / Screenshot Processing ==========
-
-    # Minimum interval between streamed screenshots (seconds)
-    _CAMERA_STREAM_INTERVAL = 1.0
-
-    def _handle_camera_request(self, msg: CameraImageRequest) -> None:
-        """Handle camera image request from Home Assistant.
-
-        Supports both single-shot requests and stream requests (rate limited).
-        """
-        if not (msg.single or msg.stream):
-            return
-        loop = asyncio.get_event_loop()
-        loop.create_task(self._take_screenshot())
-
-    async def _take_screenshot(self) -> None:
-        """Capture screenshot and send CameraImageResponse (in memory only)."""
-        try:
-            jpeg_data = await self._capture_screen_jpeg()
-            self.send_messages([
-                CameraImageResponse(
-                    key=CAMERA_KEY,
-                    data=jpeg_data,
-                    done=True,
-                )
-            ])
-            logger.debug("Screenshot sent to HA (%d bytes)", len(jpeg_data))
-        except Exception as e:
-            logger.error(f"Failed to capture screenshot: {e}")
-
-    @staticmethod
-    async def _capture_screen_jpeg(quality: int = 85) -> bytes:
-        """Grab the screen and return it as JPEG bytes (no disk write)."""
-        from PIL import ImageGrab
-        from io import BytesIO
-
-        screenshot = await asyncio.to_thread(ImageGrab.grab)
-        buffer = BytesIO()
-        await asyncio.to_thread(screenshot.save, buffer, format="JPEG", quality=quality)
-        return buffer.getvalue()
-
-    def push_screenshot(self) -> None:
-        """Capture a screenshot now and push it to the camera entity (no disk write)."""
-        loop = asyncio.get_event_loop()
-        loop.create_task(self._take_screenshot())
 
     # ========== Announcement Processing ==========
 
@@ -1103,13 +1046,6 @@ class ESPHomeProtocol(asyncio.Protocol):
             # Send config sensor entity definitions
             for cfg_def in self._config_sensor_manager.get_entity_definitions():
                 yield cfg_def
-            # Send camera/screenshot entity definition
-            yield ListEntitiesCameraResponse(
-                key=CAMERA_KEY,
-                name="Screenshot",
-                object_id="screenshot",
-                icon="mdi:camera",
-            )
             yield from self._thinking_sound_entity.handle_message(msg)
             yield from self._mic_mute_entity.handle_message(msg)
 
@@ -1127,14 +1063,8 @@ class ESPHomeProtocol(asyncio.Protocol):
             yield from self._media_player_entity.handle_message(msg)
 
         elif isinstance(msg, ButtonCommandRequest):
-            # Screenshot button pushes the image to the camera entity instead
-            # of running the legacy disk-saving command.
-            if msg.key == SCREENSHOT_BUTTON_KEY:
-                logger.info("Button pressed: Screenshot (push to camera entity)")
-                self.push_screenshot()
-            else:
-                # Handle button command
-                yield from self._button_manager.handle_message(msg)
+            # Handle button command
+            yield from self._button_manager.handle_message(msg)
 
         elif isinstance(msg, ExecuteServiceRequest):
             # Handle service execution

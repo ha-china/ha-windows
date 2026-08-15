@@ -108,17 +108,23 @@ def read_hardware_sensors() -> Optional[dict]:
 
         with _lock:
             for hw in _computer.Hardware:
-                hw.Update()
+                try:
+                    hw.Update()
+                except Exception as e:
+                    logger.debug(f"HardwareMonitor update failed for {hw.Name}: {e}")
+                    continue
                 for sensor in hw.Sensors:
                     _collect(sensor, hw, result)
                 for sub in getattr(hw, "SubHardware", []):
-                    sub.Update()
+                    try:
+                        sub.Update()
+                    except Exception:
+                        continue
                     for sensor in sub.Sensors:
                         _collect(sensor, sub, result)
     except Exception as e:
         logger.debug(f"HardwareMonitor read failed: {e}")
-        return None
-    return result
+    return result or None
 
 
 def _sensor_type_name(sensor) -> str:

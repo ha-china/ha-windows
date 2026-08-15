@@ -78,6 +78,15 @@ DISK_KEY_OFFSET = 20
 HW_SENSOR_KEY_OFFSET = 100
 
 
+# Stable key helpers
+def _stable_key(name: str, base: int = 0) -> int:
+    """Generate a deterministic integer key from a string."""
+    h = 0
+    for c in name:
+        h = (h * 31 + ord(c)) & 0xFFFFF
+    return base + (h % 1000)
+
+
 class WindowsMonitor:
     """
     Windows System Monitor
@@ -495,12 +504,15 @@ class WindowsMonitor:
             if gpu_info.get("power_watts") is not None:
                 available.append(("gpu_power", "GPU Power", "mdi:flash", SENSOR_KEYS["gpu_power"]))
 
-        # LibreHardwareMonitor sensors (CPU temp, fans, voltages...) - dynamic keys
+        # LibreHardwareMonitor sensors (CPU temp, fans, voltages...) - stable keys
         hw_info = info.get("hardware") or {}
         self._hardware_meta = hw_info
         if hw_info:
             for i, (object_id, entry) in enumerate(hw_info.items()):
-                available.append((object_id, entry["name"], entry["icon"], HW_SENSOR_KEY_OFFSET + i))
+                # Use a deterministic key derived from the object_id so that
+                # the same sensor always gets the same key across restarts.
+                stable_key = _stable_key(object_id, HW_SENSOR_KEY_OFFSET)
+                available.append((object_id, entry["name"], entry["icon"], stable_key))
 
         self._available_entities = available
         self._entity_map = {obj_id: (name, icon, key) for obj_id, name, icon, key in available}

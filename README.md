@@ -57,6 +57,23 @@ A Windows client that emulates an ESPHome device for seamless Home Assistant int
 
 Install PawnIO: `winget install PawnIO` (one-time, no admin required at runtime afterwards).
 
+### 📊 Sensor Comparison by Privilege
+
+| Sensor Type | Normal | Admin or PawnIO |
+|---|---|---|
+| CPU Core Load (per core) | ✅ | ✅ |
+| CPU Total / Max Load | ✅ | ✅ |
+| GPU Clocks, Voltage, Hot Spot | ✅ | ✅ |
+| CPU Temperature | ❌ | ✅ |
+| CPU Power | ❌ (shows 0) | ✅ (real value) |
+| Motherboard Temperature | ❌ | ✅ (if SuperIO detected) |
+| Fan Speed | ❌ | ✅ (if fans detected) |
+| Voltage Rails | ❌ | ✅ (if SuperIO detected) |
+| Disk/Network/Memory (psutil) | ✅ | ✅ |
+| GPU (NVML, NVIDIA only) | ✅ | ✅ |
+
+*CPU temperature and motherboard sensors require ring0 driver access. Install PawnIO once, then run normally.*
+
 ### 🎮 Remote Control Buttons
 - **Shutdown** - Shutdown the computer
 - **Restart** - Restart the computer

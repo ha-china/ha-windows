@@ -19,19 +19,15 @@ logger = logging.getLogger(__name__)
 # (sensor_type, name_exact) for unique sensors; name_prefix for families.
 _UNIQUE_SENSORS = [
     # type, exact name, object_id, display name, icon, unit
+    # NOTE: sensors already covered by psutil or NVML are omitted
+    # to avoid duplicates in HA.
     ("Temperature", "CPU Package", "hw_cpu_temperature", "CPU Temperature", "mdi:thermometer", "°C"),
-    ("Temperature", "GPU Core", "hw_gpu_temperature", "GPU Temperature (LHW)", "mdi:thermometer", "°C"),
     ("Temperature", "GPU Hot Spot", "hw_gpu_hotspot", "GPU Hot Spot", "mdi:thermometer", "°C"),
     ("Clock", "GPU Core", "hw_gpu_clock", "GPU Clock", "mdi:speedometer", "MHz"),
     ("Clock", "GPU Memory", "hw_gpu_mem_clock", "GPU Memory Clock", "mdi:speedometer", "MHz"),
     ("Power", "CPU Package", "hw_cpu_power", "CPU Power", "mdi:flash", "W"),
-    ("Power", "GPU Package", "hw_gpu_power", "GPU Power (LHW)", "mdi:flash", "W"),
     ("Load", "CPU Total", "hw_cpu_total_load", "CPU Total Load (LHW)", "mdi:cpu-64-bit", "%"),
     ("Load", "CPU Core Max", "hw_cpu_core_max", "CPU Core Max Load", "mdi:cpu-64-bit", "%"),
-    ("Data", "Memory Used", "hw_mem_used", "Memory Used (LHW)", "mdi:memory", "GB"),
-    ("Data", "Memory Available", "hw_mem_available", "Memory Available (LHW)", "mdi:memory", "GB"),
-    ("SmallData", "GPU Memory Used", "hw_gpu_mem_used_mb", "GPU Memory Used (LHW)", "mdi:memory", "MB"),
-    ("SmallData", "GPU Memory Free", "hw_gpu_mem_free_mb", "GPU Memory Free (LHW)", "mdi:memory", "MB"),
     ("Voltage", "GPU Core Voltage", "hw_gpu_voltage", "GPU Core Voltage", "mdi:sine-wave", "V"),
 ]
 

@@ -10,10 +10,15 @@ A Windows client that emulates an ESPHome device for seamless Home Assistant int
 
 ### 🎤 Voice Assistant
 - **Wake Word Detection**: Multiple wake words supported (Okay Nabu, Hey Jarvis, Alexa, etc.)
-- **Floating Mic Button**: Push-to-talk with draggable floating button
 - **Global Hotkey**: Set keyboard shortcuts to trigger voice input (e.g., Ctrl+Alt+V)
 - **Voice Recognition**: Process voice commands through Home Assistant's Assist
 - **TTS Playback**: Play voice responses from Home Assistant
+- **Conversation Bubbles**: Colored popup near the tray showing what you said (blue) and the assistant reply (green)
+
+### 🔊 Sendspin Player
+- **Music Assistant Streaming**: Receive audio from Music Assistant via the Sendspin protocol and play it on Windows
+- **Auto-discovery**: Music Assistant finds the PC automatically over the network
+- **Volume Control**: Adjust Windows master volume from Music Assistant
 
 ### 📊 System Monitoring Sensors
 
@@ -28,8 +33,8 @@ A Windows client that emulates an ESPHome device for seamless Home Assistant int
 | GPU clocks / voltage / hotspot | 4 | 4 |
 | CPU Temperature / Power | — | 2 |
 | Motherboard / Fan / Voltage | — | 3–8 |
-| Controls (buttons, switches, media) | 9 | 9 |
-| **Total (approx.)** | **46–50** | **50–60** |
+| Controls (buttons, switches, media) | 7 | 7 |
+| **Total (approx.)** | **44–48** | **48–58** |
 
 *Install PawnIO: `winget install PawnIO` (one-time, then run normally).*
 
@@ -99,12 +104,11 @@ A Windows client that emulates an ESPHome device for seamless Home Assistant int
 | Thinking Sound | Switch | Toggle processing sound |
 | Shutdown | Button | Shut down PC |
 | Restart | Button | Restart PC |
-| Screenshot | Button | Take screenshot |
+| Voice Input Hotkey | Text Sensor | Show current hotkey |
 
 ### 🎮 Remote Control Buttons
 - **Shutdown** - Shutdown the computer
 - **Restart** - Restart the computer
-- **Screenshot** - Take a screenshot
 
 ### 🔧 Services
 Call these services from Home Assistant:
@@ -128,11 +132,11 @@ Call these services from Home Assistant:
   ```
 
 #### System Control Services
-- **run_command** - Execute any CMD command
+- **run_command** - Run a whitelisted executable (notepad, calc, explorer, cmd, etc.). Only pre-approved command names are accepted for safety.
   ```yaml
   service: esphome.my_pc_run_command
   data:
-    command: "notepad.exe"
+    command: "notepad"
   ```
 
 - **open_url** - Open URL in browser
@@ -174,6 +178,13 @@ Use Home Assistant's `media_player.play_media` or `tts.speak` service to play au
 
 For long audio (music), install [VLC media player](https://www.videolan.org/vlc/) to enable true streaming playback. Without VLC, remote audio is downloaded to a temporary file before playback.
 
+### 🔊 Sendspin Player
+The client runs a Sendspin receiver (player `HA Windows`), which Music Assistant discovers automatically and can stream music to:
+- Player appears in Music Assistant as a protocol player
+- Music Assistant streams PCM 16-bit / 48 kHz / stereo audio to the PC
+- Volume and mute are controlled from Music Assistant
+- Toggle on/off and connection status in the tray menu
+
 ## 📥 Installation
 
 ### Option 1: Download Executable (Recommended)
@@ -210,14 +221,14 @@ Or add manually:
 ## 💡 Usage
 
 ### System Tray
-- **Left-click**: Toggle floating mic button visibility
-- **Right-click**: Show menu (Show/Hide Icon, Status, Quit)
-
-### Floating Mic Button
-- **Press and hold**: Start voice input
-- **Release**: Stop voice input
-- **Drag**: Move button to any position
-- Button turns red when listening
+- **Right-click**: Show menu with:
+  - **Status** - Device status dialog
+  - **Mute Microphone** - Toggle mic mute
+  - **Show Conversation Bubbles** - Toggle STT/TTS popups
+  - **Sendspin Player** - Connection status + enable/disable
+  - **Microphone** - Select the recording device
+  - **About** - About dialog
+  - **Quit** - Exit the app
 
 ### Global Hotkey
 - Set a keyboard shortcut to quickly trigger voice input
@@ -226,7 +237,7 @@ Or add manually:
 - Configure using the `set_voice_input_hotkey` service
 
 ### Voice Assistant
-Say the wake word (default: "Okay Nabu") to activate voice assistant, press the floating mic button, or use your configured global hotkey for push-to-talk.
+Say the wake word (default: "Okay Nabu") to activate voice assistant, or use your configured global hotkey for push-to-talk.
 
 ## 🎯 Wake Words
 
@@ -238,6 +249,8 @@ Available wake words:
 - Hey Home Assistant
 - Okay Computer
 - Hey Luna
+- Choo Choo Homie
+- Hey Rhasspy
 
 Configure wake word in Home Assistant's ESPHome device settings.
 
@@ -278,7 +291,7 @@ WakeWordModels/
 Notes:
 - The JSON filename without `.json` becomes the model ID
 - The `model` field must point to a file in the same directory
-- For examples, see `src/wakewords/okay_nabu.json` and `src/wakewords/openWakeWord/alexa_v0.1.json`
+- For examples, see `src/wakewords/okay_nabu.json` and `src/wakewords/openWakeWord/hey_rhasspy_v0.1.json`
 
 ## 📝 Automation Examples
 
@@ -337,7 +350,7 @@ automation:
     action:
       - service: esphome.my_pc_run_command
         data:
-          command: "notepad.exe"
+          command: "notepad"
 ```
 
 ### Control Volume

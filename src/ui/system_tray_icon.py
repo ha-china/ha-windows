@@ -103,6 +103,7 @@ class SystemTrayIcon:
         self._on_bubble_toggle: Optional[Callable] = None
         self._on_sendspin_toggle: Optional[Callable] = None
         self._on_conversation: Optional[Callable] = None
+        self._on_run_as_admin: Optional[Callable] = None
         self._version = "0.0.0"
         self._sendspin_connected = False
 
@@ -180,6 +181,26 @@ class SystemTrayIcon:
                 logger.error(f"Error in quit callback: {e}")
         self._running = False
         icon.stop()
+
+    # --- Run as administrator ----------------------------------------------
+
+    @staticmethod
+    def _is_admin() -> bool:
+        """Return True if the current process is running with admin privileges."""
+        try:
+            import ctypes
+
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
+        except Exception:
+            return False
+
+    def _on_run_as_admin_menu(self, icon, item) -> None:
+        logger.info("Run as administrator menu clicked")
+        if self._on_run_as_admin:
+            try:
+                self._on_run_as_admin()
+            except Exception as e:
+                logger.error(f"Error in run-as-admin callback: {e}")
 
     def _current_mic(self) -> str:
         if self._state is None:
@@ -327,6 +348,11 @@ class SystemTrayIcon:
                     pystray.Menu(self._sendspin_menu_items),
                 ),
                 pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
+                pystray.MenuItem(
+                    _i18n.t('run_as_admin'),
+                    self._on_run_as_admin_menu,
+                    visible=lambda item: not self._is_admin(),
+                ),
                 pystray.MenuItem(_i18n.t('about'), self._on_about_menu),
                 pystray.MenuItem(_i18n.t('quit'), self._on_quit_menu),
             )
@@ -385,7 +411,8 @@ class SystemTrayIcon:
     def set_callbacks(self, on_quit: Callable = None, on_mic_change: Callable = None,
                       on_mute_change: Callable = None, on_conversation: Callable = None,
                       on_bubble_toggle: Callable = None,
-                      on_sendspin_toggle: Callable = None) -> None:
+                      on_sendspin_toggle: Callable = None,
+                      on_run_as_admin: Callable = None) -> None:
         self._on_quit = on_quit
         if on_mic_change is not None:
             self._on_mic_change = on_mic_change
@@ -397,6 +424,8 @@ class SystemTrayIcon:
             self._on_bubble_toggle = on_bubble_toggle
         if on_sendspin_toggle is not None:
             self._on_sendspin_toggle = on_sendspin_toggle
+        if on_run_as_admin is not None:
+            self._on_run_as_admin = on_run_as_admin
 
     def set_sendspin_status(self, connected: bool) -> None:
         """Update the displayed Sendspin connection status and refresh the menu."""

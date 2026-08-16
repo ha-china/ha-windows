@@ -387,6 +387,7 @@ class HomeAssistantWindows:
             on_mute_change=self._on_tray_mute_toggle,
             on_bubble_toggle=self._on_tray_bubble_toggle,
             on_sendspin_toggle=self._on_tray_sendspin_toggle,
+            on_run_as_admin=self._relaunch_as_admin,
         )
 
         # Apply saved conversation bubble preference
@@ -438,6 +439,28 @@ class HomeAssistantWindows:
             os._exit(0)
 
         threading.Thread(target=force_exit, daemon=True).start()
+
+    def _relaunch_as_admin(self) -> None:
+        """Relaunch the current executable elevated (ShellExecute runas)."""
+        import ctypes
+        import os
+        import sys
+
+        try:
+            exe = sys.executable
+            # Rebuild the current command line (name/port/language/debug)
+            args = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else ""
+
+            # ShellExecuteW verb "runas" triggers the UAC prompt.
+            result = ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, None, 1)
+            if result <= 32:
+                logger.error(f"Failed to relaunch as administrator (code {result})")
+                return
+            logger.info("Relaunching as administrator...")
+            # Let the elevated instance take over the tray, then exit.
+            self._request_quit()
+        except Exception as e:
+            logger.error(f"Failed to relaunch as administrator: {e}")
 
     async def _start_wake_word_detection(self):
         """Start voice recording and, if available, wake word detection."""

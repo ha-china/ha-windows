@@ -75,61 +75,45 @@ def _make_command_payload(command_value: str, **fields):
 class TestServerCommand:
     def test_volume_command(self):
         recv = SendspinReceiver(name="Test")
-        with patch.object(SendspinReceiver, "_set_system_volume") as mock_vol:
+        volumes = []
+        recv.set_volume_callback(lambda vol, muted: volumes.append((vol, muted)))
+        with patch.object(SendspinReceiver, "_report_player_state"):
             recv._on_server_command(_make_command_payload("volume", volume=42))
-            mock_vol.assert_called_once_with(42)
+        assert recv.volume_percent == 42
+        assert volumes == [(42, False)]
 
     def test_volume_clamped_at_set(self):
         recv = SendspinReceiver(name="Test")
-        with patch.object(SendspinReceiver, "_set_system_volume") as mock_vol:
+        with patch.object(SendspinReceiver, "_report_player_state"):
             recv._on_server_command(_make_command_payload("volume", volume=150))
-            mock_vol.assert_called_once_with(150)  # clamping happens in _set_system_volume
+        assert recv.volume_percent == 100
 
     def test_mute_command(self):
         recv = SendspinReceiver(name="Test")
-        with patch.object(SendspinReceiver, "_set_system_mute") as mock_mute:
+        volumes = []
+        recv.set_volume_callback(lambda vol, muted: volumes.append((vol, muted)))
+        with patch.object(SendspinReceiver, "_report_player_state"):
             recv._on_server_command(_make_command_payload("mute", mute=True))
-            mock_mute.assert_called_once_with(True)
+        assert recv._muted is True
+        assert volumes == [(recv.volume_percent, True)]
 
     def test_no_player_payload_ignored(self):
         recv = SendspinReceiver(name="Test")
         payload = MagicMock()
         payload.player = None
         with (
-            patch.object(SendspinReceiver, "_set_system_volume") as mock_vol,
-            patch.object(SendspinReceiver, "_set_system_mute") as mock_mute,
+            patch.object(SendspinReceiver, "_notify_volume") as mock_notify,
         ):
             recv._on_server_command(payload)
-        mock_vol.assert_not_called()
-        mock_mute.assert_not_called()
+        mock_notify.assert_not_called()
 
-    def test_volume_clamped_in_helper(self):
-        import sys as _sys
-        import types
-
-        mock_au = MagicMock()
-        dev = MagicMock()
-        mock_au.GetSpeakers.return_value = dev
-
-        # Patch the inner `from pycaw.pycaw import AudioUtilities` import.
-        pycaw_pkg = types.ModuleType("pycaw")
-        pycaw_pkg.__path__ = []
-        pycaw_sub = types.ModuleType("pycaw.pycaw")
-        pycaw_sub.AudioUtilities = mock_au
-        saved = {k: _sys.modules[k] for k in ("pycaw", "pycaw.pycaw") if k in _sys.modules}
-        _sys.modules["pycaw"] = pycaw_pkg
-        _sys.modules["pycaw.pycaw"] = pycaw_sub
-        try:
-            SendspinReceiver._set_system_volume(120)
-            dev.EndpointVolume.SetMasterVolumeLevelScalar.assert_called_once_with(1.0, None)
-            SendspinReceiver._set_system_volume(-5)
-            dev.EndpointVolume.SetMasterVolumeLevelScalar.assert_called_with(0.0, None)
-        finally:
-            for k in ("pycaw", "pycaw.pycaw"):
-                if k in saved:
-                    _sys.modules[k] = saved[k]
-                else:
-                    _sys.modules.pop(k, None)
+    def test_apply_local_volume_mutes_at_zero(self):
+        recv = SendspinReceiver(name="Test")
+        recv.apply_local_volume(0)
+        assert recv.volume_percent == 0
+        assert recv._muted is True
+        recv.apply_local_volume(30)
+        assert recv._muted is False
 
 
 class TestMetadata:
@@ -141,8 +125,10 @@ class TestMetadata:
         metadata = MagicMock()
         metadata.title = "Song Title"
         metadata.artist = "Artist"
+        metadata.progress = None
         state.metadata = metadata
-        recv._on_metadata(state)
+        with patch.object(SendspinReceiver, "_set_playing"):
+            recv._on_metadata(state)
         assert received == [{"title": "Song Title", "artist": "Artist"}]
 
     def test_artist_fallback(self):
@@ -153,8 +139,10 @@ class TestMetadata:
         metadata = MagicMock()
         metadata.title = None
         metadata.artist = "Artist Name"
+        metadata.progress = None
         state.metadata = metadata
-        recv._on_metadata(state)
+        with patch.object(SendspinReceiver, "_set_playing"):
+            recv._on_metadata(state)
         assert received == [{"title": "", "artist": "Artist Name"}]
 
     def test_no_metadata_ignored(self):

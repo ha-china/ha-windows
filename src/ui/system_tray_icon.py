@@ -319,6 +319,13 @@ class SystemTrayIcon:
                 checked=lambda item: self._current_sendspin_enabled(),
             )
         )
+        items.append(
+            pystray.MenuItem(
+                _i18n.t('mini_player'),
+                lambda icon, item: self._toggle_mini_player(),
+                checked=lambda item: self._current_mini_player_enabled(),
+            )
+        )
         return items
 
     def _on_about_menu(self, icon, item) -> None:
@@ -363,11 +370,6 @@ class SystemTrayIcon:
                 pystray.MenuItem(
                     _i18n.t('sendspin_player'),
                     pystray.Menu(self._sendspin_menu_items),
-                ),
-                pystray.MenuItem(
-                    _i18n.t('mini_player'),
-                    lambda icon, item: self._toggle_mini_player(),
-                    checked=lambda item: self._current_mini_player_enabled(),
                 ),
                 pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
                 pystray.MenuItem(

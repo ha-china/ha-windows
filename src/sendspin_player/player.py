@@ -44,6 +44,18 @@ def get_hostname() -> str:
         return PLAYER_NAME
 
 
+def _defined(value):
+    """Return the value when actually set; None for None/UndefinedField sentinel."""
+    try:
+        from aiosendspin.models.types import UndefinedField
+
+        if isinstance(value, UndefinedField):
+            return None
+    except Exception:
+        pass
+    return value if value is not None else None
+
+
 def get_device_info():
     """Return (product_name, manufacturer) of the local machine.
 
@@ -72,9 +84,16 @@ class SendspinReceiver:
         self._started = False
         self._connecting = False
         self._connected = False
-        self._metadata_callback: Optional[Callable[[str], None]] = None
+        self._metadata_callback: Optional[Callable[[dict], None]] = None
         self._connection_callback: Optional[Callable[[bool], None]] = None
         self._state_callback: Optional[Callable[[bool], None]] = None
+        self._artwork_callback: Optional[Callable[[bytes], None]] = None
+        self._volume_callback: Optional[Callable[[int, bool], None]] = None
+        # Software volume: PCM gain applied in the playback loop. This only
+        # affects the music stream, not the Windows system volume.
+        self._volume: float = 1.0   # 0.0 - 1.0
+        self._muted: bool = False
+        self._playing: bool = False
         self._audio_queue: Optional[asyncio.Queue] = None
         self._client_id: Optional[str] = None
 
@@ -100,9 +119,62 @@ class SendspinReceiver:
         """Register a callback notified on playback state changes (True=playing)."""
         self._state_callback = callback
 
+    def set_artwork_callback(self, callback: Callable[[bytes], None]) -> None:
+        """Register a callback receiving album artwork image bytes (JPEG)."""
+        self._artwork_callback = callback
+
+    def set_volume_callback(self, callback: Callable[[int, bool], None]) -> None:
+        """Register a callback notified on volume/mute changes: (percent, muted)."""
+        self._volume_callback = callback
+
+    @property
+    def volume_percent(self) -> int:
+        """Current software volume as 0-100."""
+        return round(self._volume * 100)
+
+    def apply_local_volume(self, volume: int) -> None:
+        """Apply software volume locally (0-100) and notify listeners."""
+        volume = max(0, min(100, int(volume)))
+        self._volume = volume / 100
+        self._muted = self._volume == 0
+        self._notify_volume()
+
+    def _notify_volume(self) -> None:
+        if self._volume_callback:
+            try:
+                self._volume_callback(self.volume_percent, self._muted)
+            except Exception as e:
+                logger.debug(f"Volume callback error: {e}")
+
+    def _report_player_state(self) -> None:
+        """Report volume/mute state upstream so Music Assistant stays in sync."""
+        client = self._client
+        if client is None:
+            return
+        try:
+            from aiosendspin.models.types import PlayerStateType
+
+            task = asyncio.create_task(
+                client.send_player_state(
+                    state=PlayerStateType.SYNCHRONIZED,
+                    volume=self.volume_percent,
+                    muted=self._muted,
+                )
+            )
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        except Exception as e:
+            logger.debug(f"Failed to report player state: {e}")
+
     def is_playing(self) -> bool:
-        """Return True while an audio stream is active."""
-        return self._stream_task is not None and not self._stream_task.done()
+        """True when playback is active per the last metadata speed update."""
+        return self._playing
+
+    def _set_playing(self, playing: bool, source: str) -> None:
+        if playing == self._playing:
+            return
+        self._playing = playing
+        logger.debug(f"Sendspin: playing={playing} ({source})")
+        self._notify_state(playing)
 
     async def send_media_command(self, command, volume: Optional[int] = None) -> None:
         """Send a playback control command upstream to Music Assistant.
@@ -128,8 +200,9 @@ class SendspinReceiver:
 
         from aiosendspin.client import ClientListener, SendspinClient
         from aiosendspin.models.core import DeviceInfo
+        from aiosendspin.models.artwork import ArtworkChannel, ClientHelloArtworkSupport
         from aiosendspin.models.player import ClientHelloPlayerSupport, SupportedAudioFormat
-        from aiosendspin.models.types import AudioCodec, PlayerCommand, Roles
+        from aiosendspin.models.types import AudioCodec, PictureFormat, PlayerCommand, Roles, ArtworkSource
 
         self._connecting = True
         try:
@@ -155,6 +228,17 @@ class SendspinReceiver:
                 supported_commands=[PlayerCommand.VOLUME, PlayerCommand.MUTE],
             )
 
+            artwork_support = ClientHelloArtworkSupport(
+                channels=[
+                    ArtworkChannel(
+                        source=ArtworkSource.ALBUM,
+                        format=PictureFormat.JPEG,
+                        media_width=600,
+                        media_height=600,
+                    )
+                ]
+            )
+
             async def handle_connection(ws) -> None:
                 from aiosendspin.client import SendspinClient
 
@@ -168,13 +252,16 @@ class SendspinReceiver:
                     client_id=self._client_id,
                     client_name=self.name,
                     # PLAYER receives the audio stream; CONTROLLER lets us send
-                    # playback commands (play/pause/next/...) back upstream.
-                    roles=[Roles.PLAYER, Roles.CONTROLLER],
+                    # playback commands upstream; METADATA delivers track info;
+                    # ARTWORK delivers album cover images.
+                    roles=[Roles.PLAYER, Roles.CONTROLLER, Roles.METADATA, Roles.ARTWORK],
                     player_support=player_support,
+                    artwork_support=artwork_support,
                     device_info=device_info,
                 )
                 self._client.add_audio_chunk_listener(self._on_audio_chunk)
                 self._client.add_metadata_listener(self._on_metadata)
+                self._client.add_artwork_listener(self._on_artwork)
                 self._client.add_stream_start_listener(self._on_stream_start)
                 self._client.add_stream_end_listener(self._on_stream_end)
                 self._client.add_server_command_listener(self._on_server_command)
@@ -311,6 +398,11 @@ class SendspinReceiver:
                     )
                     stream.start()
                 data = np.frombuffer(chunk, dtype=np.int16).reshape(-1, CHANNELS)
+                # Software volume: scale PCM samples; only the music stream is
+                # affected, never the Windows system volume.
+                gain = 0.0 if self._muted else self._volume
+                if gain != 1.0:
+                    data = np.clip(data.astype(np.float32) * gain, -32768, 32767).astype(np.int16)
                 stream.write(data)
         except asyncio.CancelledError:
             pass
@@ -341,22 +433,46 @@ class SendspinReceiver:
     # ------------------------------------------------------------------ events
 
     def _on_metadata(self, state_payload) -> None:
-        """Handle server state updates carrying track metadata."""
+        """Handle server state updates carrying track metadata and progress."""
         try:
             metadata = getattr(state_payload, "metadata", None)
             if metadata is None:
                 return
-            title = getattr(metadata, "title", None)
-            artist = getattr(metadata, "artist", None)
-            text = title or artist
-            if text and self._metadata_callback:
-                info = {
-                    "title": str(title) if title else "",
-                    "artist": str(artist) if artist else "",
-                }
+            title = _defined(getattr(metadata, "title", None))
+            artist = _defined(getattr(metadata, "artist", None))
+
+            info = {}
+            if title or artist:
+                info["title"] = str(title) if title else ""
+                info["artist"] = str(artist) if artist else ""
+
+            # Playback progress may arrive in updates without a title; do not
+            # gate it behind the title check.
+            progress = _defined(getattr(metadata, "progress", None))
+            if progress is not None:
+                info["progress_ms"] = _defined(getattr(progress, "track_progress", 0)) or 0
+                info["duration_ms"] = _defined(getattr(progress, "track_duration", 0)) or 0
+                speed = _defined(getattr(progress, "playback_speed", 1000))
+                if speed is None:
+                    speed = 0  # paused
+                info["speed"] = speed / 1000
+                # playback_speed 0 means paused; > 0 means actively playing.
+                self._set_playing(speed > 0, "metadata speed")
+
+            if info and self._metadata_callback:
                 self._metadata_callback(info)
         except Exception as e:
             logger.debug(f"Metadata error: {e}")
+
+    def _on_artwork(self, channel: int, data: bytes) -> None:
+        """Handle artwork binary frames from the server."""
+        if channel != 0 or not data:
+            return
+        if self._artwork_callback:
+            try:
+                self._artwork_callback(data)
+            except Exception as e:
+                logger.debug(f"Artwork callback error: {e}")
 
     def _notify_state(self, playing: bool) -> None:
         if self._state_callback:
@@ -370,15 +486,15 @@ class SendspinReceiver:
         self._audio_queue = asyncio.Queue()
         if self._stream_task is None or self._stream_task.done():
             self._stream_task = asyncio.create_task(self._playback_loop())
-        self._notify_state(True)
+        self._set_playing(True, "stream start")
 
     def _on_stream_end(self, roles) -> None:
         logger.info("Sendspin: stream ended")
         self._stop_playback()
-        self._notify_state(False)
+        self._set_playing(False, "stream end")
 
     def _on_server_command(self, payload) -> None:
-        """Apply volume/mute commands sent by Music Assistant to the system."""
+        """Apply volume/mute commands sent by Music Assistant (software gain)."""
         try:
             player_cmd = getattr(payload, "player", None)
             if player_cmd is None:
@@ -386,48 +502,19 @@ class SendspinReceiver:
             command = getattr(player_cmd, "command", None)
             command_value = command.value if hasattr(command, "value") else str(command)
             if command_value == "volume" and getattr(player_cmd, "volume", None) is not None:
-                self._set_system_volume(int(player_cmd.volume))
+                volume = max(0, min(100, int(player_cmd.volume)))
+                self._volume = volume / 100
+                self._muted = volume == 0
+                logger.info(f"Sendspin: music volume set to {volume}% (software)")
+                self._notify_volume()
+                self._report_player_state()
             elif command_value == "mute" and getattr(player_cmd, "mute", None) is not None:
-                self._set_system_mute(bool(player_cmd.mute))
+                self._muted = bool(player_cmd.mute)
+                logger.info(f"Sendspin: music muted={self._muted} (software)")
+                self._notify_volume()
+                self._report_player_state()
         except Exception as e:
             logger.error(f"Failed to apply server command: {e}")
 
-    @staticmethod
-    def _set_system_volume(volume: int) -> None:
-        """Set the Windows system (master) volume, 0-100."""
-        try:
-            from pycaw.pycaw import AudioUtilities
-
-            volume = max(0, min(100, volume))
-            devices = AudioUtilities.GetSpeakers()
-            volume_control = devices.EndpointVolume
-            volume_control.SetMasterVolumeLevelScalar(volume / 100.0, None)
-            logger.info(f"Sendspin: system volume set to {volume}%")
-        except Exception as e:
-            logger.warning(f"Failed to set system volume: {e}")
-
-    @staticmethod
-    def get_system_volume() -> Optional[int]:
-        """Read the Windows master volume as 0-100, None when unavailable."""
-        try:
-            from pycaw.pycaw import AudioUtilities
-
-            devices = AudioUtilities.GetSpeakers()
-            level = devices.EndpointVolume.GetMasterVolumeLevelScalar()
-            return round(float(level) * 100)
-        except Exception as e:
-            logger.debug(f"Failed to read system volume: {e}")
-            return None
-
-    @staticmethod
-    def _set_system_mute(muted: bool) -> None:
-        """Mute or unmute the Windows system (master) volume."""
-        try:
-            from pycaw.pycaw import AudioUtilities
-
-            devices = AudioUtilities.GetSpeakers()
-            volume_control = devices.EndpointVolume
-            volume_control.SetMute(1 if muted else 0, None)
-            logger.info(f"Sendspin: system muted={muted}")
-        except Exception as e:
-            logger.warning(f"Failed to set system mute: {e}")
+    # Volume/mute are handled as software gain in the playback loop; the
+    # Windows system volume is intentionally never touched.

@@ -129,9 +129,8 @@ class SendspinReceiver:
 
     @property
     def volume_percent(self) -> int:
-        """Current volume as 0-100 (falls back to the system master volume)."""
-        sys_vol = self.get_system_volume()
-        return sys_vol if sys_vol is not None else round(self._volume * 100)
+        """Last known volume as 0-100 (updated by commands / local changes)."""
+        return round(self._volume * 100)
 
     def apply_local_volume(self, volume: int) -> None:
         """Apply system volume locally (0-100) and notify listeners."""

@@ -148,6 +148,8 @@ class _MiniPlayerManager:
         self._drag_x = 0
         self._drag_y = 0
         self._slider_suppress = False  # True while setting the slider programmatically
+        self._last_user_volume: Optional[int] = None
+        self._volume_debounce_job = None  # tk after id for volume debounce
 
     # ---------- lifecycle ----------
 
@@ -402,10 +404,20 @@ class _MiniPlayerManager:
 
     def _on_slider_command(self, value) -> None:
         # tk Scale fires this both for user drags AND programmatic set();
-        # only user interaction should be forwarded upstream.
+        # only user interaction should be forwarded upstream, debounced.
         if self._slider_suppress:
             return
-        self._fire_volume(int(value))
+        volume = int(value)
+        if volume == self._last_user_volume:
+            return
+        self._last_user_volume = volume
+        # Debounce: only send once the user stops dragging for 250ms.
+        if self._volume_debounce_job is not None:
+            try:
+                self._root.after_cancel(self._volume_debounce_job)
+            except tk.TclError:
+                pass
+        self._volume_debounce_job = self._root.after(250, self._fire_volume, volume)
 
     def _apply_artwork(self, data: bytes) -> None:
         try:

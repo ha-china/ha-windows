@@ -129,23 +129,22 @@ class SendspinReceiver:
 
     @property
     def volume_percent(self) -> int:
-        """Current software volume as 0-100."""
-        return round(self._volume * 100)
+        """Current volume as 0-100 (falls back to the system master volume)."""
+        sys_vol = self.get_system_volume()
+        return sys_vol if sys_vol is not None else round(self._volume * 100)
 
     def apply_local_volume(self, volume: int) -> None:
-        """Apply software volume locally (0-100) and notify listeners."""
+        """Apply system volume locally (0-100) and notify listeners."""
         volume = max(0, min(100, int(volume)))
         self._volume = volume / 100
-        self._muted = self._volume == 0
+        self._muted = volume == 0
+        self._set_system_volume(volume)
         self._notify_volume()
 
     def apply_local_mute(self, muted: bool) -> None:
-        """Toggle software mute locally (0% while muted) and notify listeners."""
+        """Mute/unmute the system volume and notify listeners."""
         self._muted = bool(muted)
-        if self._muted:
-            self._volume = 0.0
-        elif self._volume == 0.0:
-            self._volume = 0.5  # restore an audible level after unmute
+        self._set_system_mute(muted)
         self._notify_volume()
 
     def _notify_volume(self) -> None:
@@ -410,11 +409,6 @@ class SendspinReceiver:
                     )
                     stream.start()
                 data = np.frombuffer(chunk, dtype=np.int16).reshape(-1, CHANNELS)
-                # Software volume: scale PCM samples; only the music stream is
-                # affected, never the Windows system volume.
-                gain = 0.0 if self._muted else self._volume
-                if gain != 1.0:
-                    data = np.clip(data.astype(np.float32) * gain, -32768, 32767).astype(np.int16)
                 stream.write(data)
         except asyncio.CancelledError:
             pass
@@ -506,7 +500,7 @@ class SendspinReceiver:
         self._set_playing(False, "stream end")
 
     def _on_server_command(self, payload) -> None:
-        """Apply volume/mute commands sent by Music Assistant (software gain)."""
+        """Apply volume/mute commands sent by Music Assistant to the system."""
         try:
             player_cmd = getattr(payload, "player", None)
             if player_cmd is None:
@@ -517,16 +511,57 @@ class SendspinReceiver:
                 volume = max(0, min(100, int(player_cmd.volume)))
                 self._volume = volume / 100
                 self._muted = volume == 0
-                logger.info(f"Sendspin: music volume set to {volume}% (software)")
+                logger.info(f"Sendspin: system volume set to {volume}%")
+                self._set_system_volume(volume)
                 self._notify_volume()
                 self._report_player_state()
             elif command_value == "mute" and getattr(player_cmd, "mute", None) is not None:
                 self._muted = bool(player_cmd.mute)
-                logger.info(f"Sendspin: music muted={self._muted} (software)")
+                logger.info(f"Sendspin: system muted={self._muted}")
+                self._set_system_mute(self._muted)
                 self._notify_volume()
                 self._report_player_state()
         except Exception as e:
             logger.error(f"Failed to apply server command: {e}")
 
-    # Volume/mute are handled as software gain in the playback loop; the
-    # Windows system volume is intentionally never touched.
+    # ------------------------------------------------------------------ system volume
+
+    @staticmethod
+    def _set_system_volume(volume: int) -> None:
+        """Set the Windows system (master) volume, 0-100."""
+        try:
+            from pycaw.pycaw import AudioUtilities
+
+            volume = max(0, min(100, volume))
+            devices = AudioUtilities.GetSpeakers()
+            volume_control = devices.EndpointVolume
+            volume_control.SetMasterVolumeLevelScalar(volume / 100.0, None)
+            logger.info(f"Sendspin: system volume set to {volume}%")
+        except Exception as e:
+            logger.warning(f"Failed to set system volume: {e}")
+
+    @staticmethod
+    def _set_system_mute(muted: bool) -> None:
+        """Mute or unmute the Windows system (master) volume."""
+        try:
+            from pycaw.pycaw import AudioUtilities
+
+            devices = AudioUtilities.GetSpeakers()
+            volume_control = devices.EndpointVolume
+            volume_control.SetMute(1 if muted else 0, None)
+            logger.info(f"Sendspin: system muted={muted}")
+        except Exception as e:
+            logger.warning(f"Failed to set system mute: {e}")
+
+    @staticmethod
+    def get_system_volume() -> Optional[int]:
+        """Read the Windows master volume as 0-100, None when unavailable."""
+        try:
+            from pycaw.pycaw import AudioUtilities
+
+            devices = AudioUtilities.GetSpeakers()
+            level = devices.EndpointVolume.GetMasterVolumeLevelScalar()
+            return round(float(level) * 100)
+        except Exception as e:
+            logger.debug(f"Failed to read system volume: {e}")
+            return None

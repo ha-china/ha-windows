@@ -139,6 +139,15 @@ class SendspinReceiver:
         self._muted = self._volume == 0
         self._notify_volume()
 
+    def apply_local_mute(self, muted: bool) -> None:
+        """Toggle software mute locally (0% while muted) and notify listeners."""
+        self._muted = bool(muted)
+        if self._muted:
+            self._volume = 0.0
+        elif self._volume == 0.0:
+            self._volume = 0.5  # restore an audible level after unmute
+        self._notify_volume()
+
     def _notify_volume(self) -> None:
         if self._volume_callback:
             try:
@@ -176,20 +185,23 @@ class SendspinReceiver:
         logger.debug(f"Sendspin: playing={playing} ({source})")
         self._notify_state(playing)
 
-    async def send_media_command(self, command, volume: Optional[int] = None) -> None:
+    async def send_media_command(self, command, volume: Optional[int] = None,
+                                 mute: Optional[bool] = None) -> None:
         """Send a playback control command upstream to Music Assistant.
 
-        command: aiosendspin MediaCommand (PLAY/PAUSE/STOP/NEXT/PREVIOUS/VOLUME/...)
+        command: aiosendspin MediaCommand (PLAY/PAUSE/STOP/NEXT/PREVIOUS/VOLUME/MUTE/...)
         volume: 0-100, only for MediaCommand.VOLUME
+        mute: True/False, only for MediaCommand.MUTE
         """
         client = self._client
         if client is None:
             logger.warning("Sendspin: cannot send command, not connected")
             return
         try:
-            await client.send_group_command(command, volume=volume)
+            await client.send_group_command(command, volume=volume, mute=mute)
             logger.info(f"Sendspin: sent command {getattr(command, 'name', command)}"
-                        f"{f' volume={volume}' if volume is not None else ''}")
+                        f"{f' volume={volume}' if volume is not None else ''}"
+                        f"{f' mute={mute}' if mute is not None else ''}")
         except Exception as e:
             logger.error(f"Sendspin: failed to send command: {e}")
 

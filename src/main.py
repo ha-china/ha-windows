@@ -357,13 +357,15 @@ class HomeAssistantWindows:
             artist = info.get("artist")
             if title is not None or artist is not None:
                 logger.info(f"🎵 Now playing: {title} - {artist}")
-                mini_player.update_track(title or "", artist or "")
+                mini_player.update_track(
+                    title or "", artist or "", info.get("duration_ms", 0)
+                )
+            elif "duration_ms" in info:
+                mini_player.update_duration(info.get("duration_ms", 0))
             if "progress_ms" in info:
                 mini_player.update_progress(
                     info.get("progress_ms", 0), info.get("speed", 0.0)
                 )
-            if "duration_ms" in info:
-                mini_player.update_duration(info.get("duration_ms", 0))
         except Exception as e:
             logger.debug(f"Mini player track update failed: {e}")
 
@@ -376,10 +378,11 @@ class HomeAssistantWindows:
             logger.debug(f"Mini player artwork update failed: {e}")
 
     def _on_sendspin_volume(self, volume: int, muted: bool) -> None:
-        """Keep the mini player slider in sync with volume changes."""
+        """Keep the mini player slider and mute icon in sync."""
         try:
             from src.ui import mini_player
             mini_player.set_volume(volume)
+            mini_player.set_muted(muted)
         except Exception as e:
             logger.debug(f"Mini player volume update failed: {e}")
 
@@ -419,9 +422,15 @@ class HomeAssistantWindows:
             "next": MediaCommand.NEXT,
             "stop": MediaCommand.STOP,
         }
+        mute_value = None
         try:
             if cmd == "play_pause":
                 command = MediaCommand.PAUSE if (self.sendspin and self.sendspin.is_playing()) else MediaCommand.PLAY
+            elif cmd == "mute":
+                command = MediaCommand.MUTE
+                mute_value = not (self.sendspin._muted if self.sendspin else False)
+                if self.sendspin:
+                    self.sendspin.apply_local_mute(mute_value)
             else:
                 command = mapping.get(cmd)
             if command is None or self.sendspin is None:
@@ -430,7 +439,7 @@ class HomeAssistantWindows:
             if loop is None or loop.is_closed():
                 return
             asyncio.run_coroutine_threadsafe(
-                self.sendspin.send_media_command(command), loop
+                self.sendspin.send_media_command(command, mute=mute_value), loop
             )
         except Exception as e:
             logger.error(f"Mini player command failed: {e}")

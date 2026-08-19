@@ -101,6 +101,7 @@ class SystemTrayIcon:
         self._on_mic_change: Optional[Callable] = None
         self._on_mute_change: Optional[Callable] = None
         self._on_bubble_toggle: Optional[Callable] = None
+        self._on_mini_player_toggle: Optional[Callable] = None
         self._on_sendspin_toggle: Optional[Callable] = None
         self._on_conversation: Optional[Callable] = None
         self._on_run_as_admin: Optional[Callable] = None
@@ -263,6 +264,22 @@ class SystemTrayIcon:
         from src.ui.conversation_bubble import show_conversation_bubble
         show_conversation_bubble(msg_type, text)
 
+    # --- Mini player ----------------------------------------------------------
+
+    def _current_mini_player_enabled(self) -> bool:
+        if self._state is None:
+            return True
+        return getattr(self._state.preferences, 'mini_player_enabled', True)
+
+    def _toggle_mini_player(self) -> None:
+        new_state = not self._current_mini_player_enabled()
+        logger.info(f"Mini player toggled: {new_state}")
+        if self._on_mini_player_toggle:
+            try:
+                self._on_mini_player_toggle(new_state)
+            except Exception as e:
+                logger.error(f"Failed to toggle mini player: {e}")
+
     # --- Sendspin player ----------------------------------------------------
 
     def _current_sendspin_enabled(self) -> bool:
@@ -347,6 +364,11 @@ class SystemTrayIcon:
                     _i18n.t('sendspin_player'),
                     pystray.Menu(self._sendspin_menu_items),
                 ),
+                pystray.MenuItem(
+                    _i18n.t('mini_player'),
+                    lambda icon, item: self._toggle_mini_player(),
+                    checked=lambda item: self._current_mini_player_enabled(),
+                ),
                 pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
                 pystray.MenuItem(
                     _i18n.t('run_as_admin'),
@@ -412,7 +434,8 @@ class SystemTrayIcon:
                       on_mute_change: Callable = None, on_conversation: Callable = None,
                       on_bubble_toggle: Callable = None,
                       on_sendspin_toggle: Callable = None,
-                      on_run_as_admin: Callable = None) -> None:
+                      on_run_as_admin: Callable = None,
+                      on_mini_player_toggle: Callable = None) -> None:
         self._on_quit = on_quit
         if on_mic_change is not None:
             self._on_mic_change = on_mic_change
@@ -426,6 +449,8 @@ class SystemTrayIcon:
             self._on_sendspin_toggle = on_sendspin_toggle
         if on_run_as_admin is not None:
             self._on_run_as_admin = on_run_as_admin
+        if on_mini_player_toggle is not None:
+            self._on_mini_player_toggle = on_mini_player_toggle
 
     def set_sendspin_status(self, connected: bool) -> None:
         """Update the displayed Sendspin connection status and refresh the menu."""

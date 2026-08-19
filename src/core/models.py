@@ -199,6 +199,7 @@ class Preferences:
     muted: bool = False
     conversation_bubble_enabled: bool = True
     sendspin_enabled: bool = True
+    mini_player_enabled: bool = True
 
 
 class WindowsVolumeController:
@@ -678,7 +679,8 @@ class ServerState:
                     "mic_device": self.preferences.mic_device,
                     "muted": self.preferences.muted,
                     "conversation_bubble_enabled": self.preferences.conversation_bubble_enabled,
-                    "sendspin_enabled": self.preferences.sendspin_enabled
+                    "sendspin_enabled": self.preferences.sendspin_enabled,
+                    "mini_player_enabled": self.preferences.mini_player_enabled
                 }, f, ensure_ascii=False, indent=4)
         except Exception as e:
             logger.error(f"Failed to save preferences: {e}")
@@ -700,6 +702,7 @@ class ServerState:
                 self.preferences.muted = data.get("muted", False)
                 self.preferences.conversation_bubble_enabled = data.get("conversation_bubble_enabled", True)
                 self.preferences.sendspin_enabled = data.get("sendspin_enabled", True)
+                self.preferences.mini_player_enabled = data.get("mini_player_enabled", True)
                 
         except Exception as e:
             logger.error(f"Failed to load preferences: {e}")

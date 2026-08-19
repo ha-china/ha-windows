@@ -316,6 +316,7 @@ class HomeAssistantWindows:
             self.sendspin = SendspinReceiver(name=self.device_name)
             self.sendspin.set_metadata_callback(self._on_sendspin_metadata)
             self.sendspin.set_connection_callback(self._on_sendspin_connection)
+            self.sendspin.set_state_callback(self._on_sendspin_state)
             await self.sendspin.start()
             if self.tray:
                 self.tray.set_sendspin_status(self.sendspin.is_connected)
@@ -346,9 +347,34 @@ class HomeAssistantWindows:
             asyncio.create_task(self._stop_sendspin())
         logger.info(f"🔊 Sendspin player {'enabled' if enabled else 'disabled'}")
 
-    def _on_sendspin_metadata(self, title: str) -> None:
+    def _on_sendspin_metadata(self, info: dict) -> None:
         """Handle track metadata from the Sendspin stream."""
-        logger.info(f"🎵 Now playing: {title}")
+        title = info.get("title", "")
+        artist = info.get("artist", "")
+        logger.info(f"🎵 Now playing: {title} - {artist}")
+        try:
+            from src.ui import mini_player
+            mini_player.update_track(title, artist)
+        except Exception as e:
+            logger.debug(f"Mini player track update failed: {e}")
+
+    def _on_sendspin_state(self, playing: bool) -> None:
+        """Handle Sendspin playback state changes (stream start/end)."""
+        logger.info(f"🎵 Sendspin playing: {playing}")
+        try:
+            from src.ui import mini_player
+            if playing:
+                volume = None
+                if self.sendspin:
+                    volume = self.sendspin.get_system_volume()
+                mini_player.show()
+                if volume is not None:
+                    mini_player.set_volume(volume)
+            else:
+                mini_player.hide()
+            mini_player.set_playing(playing)
+        except Exception as e:
+            logger.debug(f"Mini player state update failed: {e}")
 
     def _on_sendspin_connection(self, connected: bool) -> None:
         """Handle Sendspin connection state changes (may run on any thread)."""
@@ -357,6 +383,64 @@ class HomeAssistantWindows:
                 self.tray.set_sendspin_status(connected)
             except Exception as e:
                 logger.debug(f"Sendspin status update error: {e}")
+        if not connected:
+            try:
+                from src.ui import mini_player
+                mini_player.hide()
+            except Exception:
+                pass
+
+    def _on_mini_player_command(self, cmd: str) -> None:
+        """Forward a mini player button press upstream to Music Assistant."""
+        from aiosendspin.models.types import MediaCommand
+
+        mapping = {
+            "previous": MediaCommand.PREVIOUS,
+            "next": MediaCommand.NEXT,
+            "stop": MediaCommand.STOP,
+        }
+        try:
+            if cmd == "play_pause":
+                command = MediaCommand.PAUSE if (self.sendspin and self.sendspin.is_playing()) else MediaCommand.PLAY
+            else:
+                command = mapping.get(cmd)
+            if command is None or self.sendspin is None:
+                return
+            loop = self._event_loop
+            if loop is None or loop.is_closed():
+                return
+            asyncio.run_coroutine_threadsafe(
+                self.sendspin.send_media_command(command), loop
+            )
+        except Exception as e:
+            logger.error(f"Mini player command failed: {e}")
+
+    def _on_mini_player_volume(self, volume: int) -> None:
+        """Forward a mini player volume change upstream to Music Assistant."""
+        from aiosendspin.models.types import MediaCommand
+
+        try:
+            if self.sendspin is None:
+                return
+            loop = self._event_loop
+            if loop is None or loop.is_closed():
+                return
+            asyncio.run_coroutine_threadsafe(
+                self.sendspin.send_media_command(MediaCommand.VOLUME, volume=volume), loop
+            )
+        except Exception as e:
+            logger.error(f"Mini player volume failed: {e}")
+
+    def _on_tray_mini_player_toggle(self, enabled: bool) -> None:
+        """Handle mini player enable/disable toggle from tray."""
+        logger.info(f"Mini player toggled: {enabled}")
+        state = self.api_server.state
+        state.preferences.mini_player_enabled = enabled
+        state.save_preferences()
+        from src.ui import mini_player
+        mini_player.set_enabled(enabled)
+        if enabled and self.sendspin and self.sendspin.is_playing():
+            mini_player.show()
 
     async def _register_mdns_service(self):
         """Register mDNS service broadcast"""
@@ -388,7 +472,14 @@ class HomeAssistantWindows:
             on_bubble_toggle=self._on_tray_bubble_toggle,
             on_sendspin_toggle=self._on_tray_sendspin_toggle,
             on_run_as_admin=self._relaunch_as_admin,
+            on_mini_player_toggle=self._on_tray_mini_player_toggle,
         )
+
+        # Apply saved mini player preference and wire its handlers
+        from src.ui import mini_player
+        mini_player.set_enabled(getattr(self.api_server.state.preferences, 'mini_player_enabled', True))
+        mini_player.set_command_handler(self._on_mini_player_command)
+        mini_player.set_volume_handler(self._on_mini_player_volume)
 
         # Apply saved conversation bubble preference
         from src.ui import conversation_bubble

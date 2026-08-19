@@ -226,6 +226,7 @@ Or add manually:
   - **Mute Microphone** - Toggle mic mute
   - **Show Conversation Bubbles** - Toggle STT/TTS popups
   - **Sendspin Player** - Connection status + enable/disable
+  - **Mini Player** - Toggle the floating mini player shown while Music Assistant streams music (track title/artist, play/pause, prev/next, stop, volume)
   - **Microphone** - Select the recording device
   - **About** - About dialog
   - **Quit** - Exit the app

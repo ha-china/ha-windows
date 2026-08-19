@@ -143,7 +143,7 @@ class TestMetadata:
         metadata.artist = "Artist"
         state.metadata = metadata
         recv._on_metadata(state)
-        assert received == ["Song Title"]
+        assert received == [{"title": "Song Title", "artist": "Artist"}]
 
     def test_artist_fallback(self):
         recv = SendspinReceiver(name="Test")
@@ -155,7 +155,7 @@ class TestMetadata:
         metadata.artist = "Artist Name"
         state.metadata = metadata
         recv._on_metadata(state)
-        assert received == ["Artist Name"]
+        assert received == [{"title": "", "artist": "Artist Name"}]
 
     def test_no_metadata_ignored(self):
         recv = SendspinReceiver(name="Test")

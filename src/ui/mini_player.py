@@ -30,6 +30,7 @@ _ALPHA = 0.97
 
 # Magic color used to punch rounded corners out of the window.
 _MAGIC = "#010203"
+_MAGIC_RGB = (0x01, 0x02, 0x03)
 
 # Layout metrics
 _PAD = 20                 # outer padding
@@ -216,12 +217,6 @@ def _compose_background(art_bytes: Optional[bytes]):
 
     d = ImageDraw.Draw(base)
 
-    # Hairline outline for separation from the desktop
-    d.rounded_rectangle(
-        (0, 0, W - 1, H - 1), radius=_RADIUS * S,
-        outline="#4A5266", width=S,
-    )
-
     # Static slider tracks (progress + volume), pill shaped
     bar_x0, bar_x1 = _PAD + 46, _WIDTH - _PAD - 46
     d.rounded_rectangle(
@@ -235,17 +230,23 @@ def _compose_background(art_bytes: Optional[bytes]):
 
     base = base.resize((_WIDTH, _HEIGHT), Image.LANCZOS)
 
-    # Punch rounded corners LAST, at 1x, with a mask eroded by 1px: any pixel
-    # that could have blended with the magic color during downscaling is cut
-    # away, so -transparentcolor only sees exact matches (no dark fringe).
-    from PIL import ImageDraw as _ID
+    # Punch rounded corners: binary cut against a 4x-supersampled mask, so
+    # the edge follows the ideal curve as closely as whole pixels allow.
+    # Chroma-key transparency cannot do per-pixel alpha; any dithering or
+    # blending at the edge reads as dots/fringe, so a clean cut wins.
+    import numpy as np
 
-    eroded = Image.new("L", (_WIDTH, _HEIGHT), 0)
-    _ID.Draw(eroded).rounded_rectangle(
-        (1, 1, _WIDTH - 2, _HEIGHT - 2), radius=_RADIUS, fill=255
+    ss = 4
+    big = Image.new("L", (_WIDTH * ss, _HEIGHT * ss), 0)
+    ImageDraw.Draw(big).rounded_rectangle(
+        (0, 0, _WIDTH * ss - 1, _HEIGHT * ss - 1), radius=_RADIUS * ss, fill=255
     )
-    solid = Image.new("RGB", (_WIDTH, _HEIGHT), _MAGIC)
-    base = Image.composite(solid, base, eroded.point(lambda v: 255 - v))
+    coverage = np.asarray(
+        big.resize((_WIDTH, _HEIGHT), Image.BILINEAR), dtype=np.float32
+    ) / 255.0
+    arr = np.asarray(base).copy()
+    arr[coverage < 0.5] = _MAGIC_RGB
+    base = Image.fromarray(arr, "RGB")
 
     from PIL import ImageTk
 

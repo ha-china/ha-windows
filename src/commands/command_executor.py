@@ -201,22 +201,12 @@ class CommandExecutor:
             message = parts[1] if len(parts) > 1 else ""
             duration = int(parts[2]) if len(parts) > 2 else 5
 
-            if platform.system() == "Windows":
-                from win10toast import ToastNotifier
+            from src.notify.toast_notification import get_notification_handler, Notification
 
-                toaster = ToastNotifier()
-                toaster.show_toast(
-                    title=title,
-                    msg=message,
-                    duration=duration,
-                    threaded=True,
-                )
-            else:
-                from src.notify.toast_notification import get_notification_handler, Notification
-
-                handler = get_notification_handler()
-                ok = handler.show(Notification(title=title, message=message, duration=duration))
-                if not ok:
+            ok = get_notification_handler().show(
+                Notification(title=title, message=message, duration=duration)
+            )
+            if not ok:
                     return {
                         'success': False,
                         'message': _i18n.t('command_failed'),

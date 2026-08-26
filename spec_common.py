@@ -30,22 +30,24 @@ EXCLUDES = [
 ]
 
 # ---------------------------------------------------------------- data files
-DATAS = [('src', 'src')]
+# Only runtime data: wake word models and UI sounds. Source code itself lives
+# in the PYZ archive, so bundling the whole src/ tree is unnecessary.
+DATAS = [
+    ('src/wakewords', 'src/wakewords'),
+    ('src/sounds', 'src/sounds'),
+]
+# NOTE: packages handled by collect_all() below (aioesphomeapi, pycaw, comtypes,
+# pymicro_wakeword, pyopen_wakeword, pygame, orjson, mashumaro, HardwareMonitor)
+# must NOT be added here again - that would duplicate their data files.
 for _pkg in [
-    'aioesphomeapi',
-    'pymicro_wakeword',
-    'pyopen_wakeword',
     'sounddevice',
     'webrtcvad',
     'zeroconf',
     'ifaddr',
-    'comtypes',
     'PIL',
     'pystray',
     'windows_toasts',
     'aiosendspin',
-    'mashumaro',
-    'orjson',
     'typing_extensions',
 ]:
     DATAS += collect_data_files(_pkg, include_py_files=False)
@@ -53,17 +55,12 @@ for _pkg in [
 # ---------------------------------------------------------------- binaries
 BINARIES = []
 for _pkg in [
-    'aioesphomeapi',
-    'pymicro_wakeword',
-    'pyopen_wakeword',
     'sounddevice',
     'webrtcvad',
     'zeroconf',
     'ifaddr',
-    'comtypes',
     'PIL',
     'pystray',
-    'orjson',
 ]:
     BINARIES += collect_dynamic_libs(_pkg)
 
@@ -124,6 +121,9 @@ HIDDEN_IMPORTS = [
     'src.i18n',
     'src.core.mdns_discovery',
     'src.core.esphome_protocol',
+    'src.core.va_conversation',
+    'src.core.media_playback',
+    'src.core.entity_registry',
     'src.ui.system_tray_icon',
     'src.ui.main_window',
     'src.voice.audio_recorder',
@@ -142,39 +142,15 @@ HIDDEN_IMPORTS = [
     'src.platforms',
     'src.platforms.base',
     'src.platforms.windows',
-    # zeroconf internals (fixes DNS cache KeyError on frozen builds)
-    'zeroconf._dns',
-    'zeroconf._services',
-    'zeroconf._cache',
-    'zeroconf._core',
-    'zeroconf._handlers',
-    'zeroconf._protocol',
-    'zeroconf._logger',
-    'zeroconf._utils',
-    'zeroconf._updates',
-    'zeroconf._engine',
-    'zeroconf._listener',
-    'zeroconf._record',
-    'zeroconf._transport',
-    'zeroconf._resolver',
-    'zeroconf._browser',
-    'zeroconf._registration',
-    'zeroconf._exceptions',
-    'zeroconf._const',
-    'zeroconf._asyncio',
 ]
 
+# Dynamic imports that static analysis cannot see. Packages already covered by
+# collect_all() above are intentionally NOT repeated here.
 for _pkg in [
-    'aioesphomeapi',
-    'pymicro_wakeword',
-    'pyopen_wakeword',
     'sounddevice',
-    'pygame',
-    'vlc',
     'webrtcvad',
     'zeroconf',
     'ifaddr',
-    'comtypes',
     'PIL',
     'pystray',
     'windows_toasts',
@@ -183,9 +159,6 @@ for _pkg in [
     'yarl',
     'multidict',
     'idna',
-    'mashumaro',
-    'orjson',
     'typing_extensions',
-    'pycaw',
 ]:
     HIDDEN_IMPORTS += collect_submodules(_pkg)

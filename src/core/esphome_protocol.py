@@ -1,8 +1,10 @@
 """
-ESPHome API Protocol Implementation
+ESPHome protocol core: framing, handshake, connection lifecycle.
 
-References linux-voice-assistant's satellite.py and api_server.py
-Uses asyncio.Protocol architecture, implements complete Voice Assistant state machine
+The voice-assistant conversation, playback and entity-registry concerns live
+in dedicated mixins (va_conversation / media_playback / entity_registry) that
+are composed into ESPHomeProtocol below. The split is purely structural -
+all methods still run on the same instance and share its state.
 """
 
 import asyncio
@@ -43,6 +45,7 @@ from aioesphomeapi.api_pb2 import (
     VoiceAssistantWakeWord,
 )
 from aioesphomeapi.core import MESSAGE_TYPE_TO_PROTO
+from aioesphomeapi._frame_helper.packets import make_plain_text_packets
 from aioesphomeapi.model import (
     VoiceAssistantEventType,
     VoiceAssistantFeature,
@@ -51,6 +54,9 @@ from aioesphomeapi.model import (
 from google.protobuf import message
 
 from .models import ServerState, create_default_state
+from .entity_registry import EntityRegistryMixin
+from .media_playback import PlaybackMixin
+from .va_conversation import VoiceAssistantMixin
 
 # Message type mapping
 PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
@@ -58,7 +64,8 @@ PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
 logger = logging.getLogger(__name__)
 
 
-class ESPHomeProtocol(asyncio.Protocol):
+class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
+                      asyncio.Protocol):
     """
     ESPHome API Protocol Handler
 
@@ -123,8 +130,14 @@ class ESPHomeProtocol(asyncio.Protocol):
 
         # Debug capture of the audio actually streamed to HA (last conversation)
         self._debug_audio_chunks: List[bytes] = []
+        self._audio_chunks_sent = 0
 
         logger.debug(f"ESPHome protocol initialized: {self.state.name}")
+
+    @property
+    def is_playing_tts(self) -> bool:
+        """Thread-safe view of the TTS playback flag (read from the audio thread)."""
+        return self._is_playing_tts
 
     def set_phase_callback(self, callback: Optional[Callable[[str], None]]) -> None:
         self._phase_callback = callback
@@ -146,7 +159,6 @@ class ESPHomeProtocol(asyncio.Protocol):
     def _push_mute_state(self) -> None:
         """Push the current mute switch state to Home Assistant."""
         if self._mic_mute_entity is not None:
-            from aioesphomeapi.api_pb2 import SubscribeHomeAssistantStatesRequest
             self.send_messages(
                 list(self._mic_mute_entity.handle_message(SubscribeHomeAssistantStatesRequest()))
             )
@@ -170,7 +182,10 @@ class ESPHomeProtocol(asyncio.Protocol):
         """New connection established"""
         self._transport = transport
         self._writelines = transport.writelines
-        self._event_loop = asyncio.get_event_loop()
+        try:
+            self._event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # no running loop; keep previous reference
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -200,6 +215,11 @@ class ESPHomeProtocol(asyncio.Protocol):
         self._tts_played = False
         self._continue_conversation = False
         self._cancel_state_updates()
+
+        # Drop the satellite reference so a dead connection does not keep the
+        # whole object graph alive or serve stale state.
+        if self.state.satellite is self:
+            self.state.satellite = None
 
         # Restore volume (if previously ducked)
         self.unduck()
@@ -356,732 +376,12 @@ class ESPHomeProtocol(asyncio.Protocol):
 
     # ========== Voice Assistant Event Processing ==========
 
-    def _handle_voice_event(self, msg: VoiceAssistantEventResponse) -> None:
-        """Handle Voice Assistant event"""
-        # Parse event data
-        data: Dict[str, str] = {}
-        for arg in msg.data:
-            data[arg.name] = arg.value
-
-        event_type = VoiceAssistantEventType(msg.event_type)
-        self.handle_voice_event(event_type, data)
-
-    def handle_voice_event(self, event_type: VoiceAssistantEventType, data: Dict[str, str]) -> None:
-        """
-        Handle Voice Assistant event
-
-        References linux-voice-assistant's handle_voice_event
-        """
-        logger.debug(f"Voice event: type={event_type.name}, data={data}")
-
-        if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START:
-            # Conversation started
-            self._tts_url = data.get("url")
-            self._tts_played = False
-            self._continue_conversation = False
-            self._processing = False
-            self._debug_audio_chunks = []
-            self._set_phase('listening')
-
-        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START:
-            if self.state.thinking_sound_enabled and self.state.processing_sound and not self._processing:
-                self._processing = True
-                self.duck()
-                self.state.tts_player.play(self.state.processing_sound)
-            self._set_phase('thinking')
-
-        elif event_type in (
-            VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END,
-            VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
-        ):
-            # Speech recognition ended, stop audio stream and recording
-            logger.info(f"🎤 Received {event_type.name}, clearing streaming flag")
-            self._is_streaming_audio = False
-            self._stop_audio_streaming()
-            logger.debug("🎤 Speech recognition ended, stopping recording")
-            # Capture STT text for conversation bubble
-            if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_STT_END:
-                stt_text = data.get("text", "")
-                if stt_text and self._conversation_callback:
-                    try:
-                        self._conversation_callback("stt", stt_text)
-                    except Exception as e:
-                        logger.error(f"Conversation callback error: {e}")
-
-        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_PROGRESS:
-            # Intent processing progress
-            if data.get("tts_start_streaming") == "1":
-                logger.info("🎤 INTENT_PROGRESS: tts_start_streaming")
-                self._set_phase('replying')
-                self.play_tts()
-
-        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END:
-            # Intent processing ended
-            logger.info("🎤 Received INTENT_END")
-            self._processing = False
-            if data.get("continue_conversation") == "1":
-                self._continue_conversation = True
-
-        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START:
-            # TTS generation started, emit phase for UI feedback
-            logger.info("🎤 Received TTS_START")
-            self._set_phase('replying')
-            # Capture response text for conversation bubble
-            response_text = data.get("text", "")
-            if response_text and self._conversation_callback:
-                try:
-                    self._conversation_callback("tts", response_text)
-                except Exception as e:
-                    logger.error(f"Conversation callback error: {e}")
-
-        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END:
-            # TTS generation ended
-            url = data.get("url", "")
-            logger.info(f"🎤 Received TTS_END with URL: {url[:60]}...")
-            self._tts_url = url
-            self.play_tts()
-
-        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END:
-            # Conversation ended
-            logger.info("🎤 Received RUN_END, clearing streaming flag")
-            self._is_streaming_audio = False
-            self._processing = False
-            self._stop_audio_streaming()
-            if not self._tts_played:
-                self._tts_finished()
-            self._tts_played = False
-            if not self._is_playing_tts:
-                self._set_phase('idle')
-
-        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_ERROR:
-            # Benign errors: user said nothing / pipeline idle timeouts. ESPHome
-            # itself returns to idle for these instead of flagging an error.
-            if data.get("code") in ("stt-no-text-recognized", "wake-word-timeout",
-                                    "no_wake_word", "wake_word_detection_aborted",
-                                    "timeout"):
-                logger.info(f"🎤 Voice assistant benign error: {data.get('code')}")
-                if data.get("code") == "stt-no-text-recognized":
-                    # Keep the audio that failed so it can be inspected
-                    self._dump_debug_audio(data.get("code"))
-                    # Tell the user instead of failing silently
-                    self._notify_no_speech()
-                self._is_streaming_audio = False
-                self._processing = False
-                self._stop_audio_streaming()
-                self._set_phase('idle')
-                return
-
-            logger.error(f"Voice assistant error: {data}")
-            self._is_streaming_audio = False
-            self._processing = False
-            self._stop_audio_streaming()
-            self._set_phase('error')
-
-        else:
-            logger.info(f"Unhandled voice assistant event: {event_type.name} (type={event_type.value})")
-
-    def _handle_timer_event(self, msg: VoiceAssistantTimerEventResponse) -> None:
-        """Handle timer event"""
-        event_type = VoiceAssistantTimerEventType(msg.event_type)
-        self.handle_timer_event(event_type, msg)
-
-    def handle_timer_event(self, event_type: VoiceAssistantTimerEventType, msg) -> None:
-        """
-        Handle timer event
-
-        References linux-voice-assistant's handle_timer_event
-        """
-        logger.debug(f"Timer event: type={event_type.name}")
-
-        if event_type == VoiceAssistantTimerEventType.VOICE_ASSISTANT_TIMER_FINISHED:
-            if not self._timer_finished:
-                # Add stop word to active wake words
-                if self.state.stop_word:
-                    self.state.active_wake_words.add(self.state.stop_word.id)
-                self._timer_finished = True
-                self.duck()
-                self._play_timer_finished()
-
-    # ========== Voice Assistant Configuration ==========
-
-    def _handle_voice_config(self, msg: VoiceAssistantConfigurationRequest) -> None:
-        """Handle voice assistant configuration request"""
-        # Build available wake words list
-        available_wake_words = [
-            VoiceAssistantWakeWord(
-                id=ww.id,
-                wake_word=ww.wake_word,
-                trained_languages=ww.trained_languages,
-            )
-            for ww in self.state.available_wake_words.values()
-        ]
-
-        # Process external wake words
-        for eww in msg.external_wake_words:
-            if eww.model_type != "micro":
-                continue
-            available_wake_words.append(
-                VoiceAssistantWakeWord(
-                    id=eww.id,
-                    wake_word=eww.wake_word,
-                    trained_languages=eww.trained_languages,
-                )
-            )
-            self._external_wake_words[eww.id] = eww
-
-        response = VoiceAssistantConfigurationResponse(
-            available_wake_words=available_wake_words,
-            active_wake_words=[
-                wake_word_id
-                for wake_word_id in self.state.active_wake_words
-                if wake_word_id in self.state.available_wake_words
-            ],
-            max_active_wake_words=2,
-        )
-
-        self.send_messages([response])
-        logger.info("✅ Connected to Home Assistant")
-
-    def _handle_set_voice_config(self, msg: VoiceAssistantSetConfiguration) -> None:
-        """Handle set voice assistant configuration"""
-        active_wake_words: List[str] = []
-
-        for wake_word_id in msg.active_wake_words:
-            if wake_word_id in self.state.wake_words:
-                if wake_word_id not in active_wake_words:
-                    active_wake_words.append(wake_word_id)
-                continue
-
-            model_info = self.state.available_wake_words.get(wake_word_id)
-            if model_info:
-                logger.debug(f"Setting wake word: {wake_word_id}")
-                if wake_word_id not in active_wake_words:
-                    active_wake_words.append(wake_word_id)
-
-            if len(active_wake_words) >= 2:
-                break
-
-        self.state.active_wake_words = set(active_wake_words)
-        self.state.preferences.active_wake_words = active_wake_words
-        self.state.save_preferences()
-        self.state.wake_words_changed = True
-
-        logger.info(f"🎤 Active wake words updated: {self.state.active_wake_words}")
-
-    # ========== Announcement Processing ==========
-
-    def _handle_announce_request(self, msg: VoiceAssistantAnnounceRequest) -> None:
-        """
-        Handle voice announcement request
-
-        References linux-voice-assistant's handle_message VoiceAssistantAnnounceRequest handling
-        """
-        logger.info(f"Received announcement request: {msg.text}")
-
-        # Build playlist
-        urls = []
-        if msg.preannounce_media_id:
-            urls.append(msg.preannounce_media_id)
-        urls.append(msg.media_id)
-
-        # Set continue conversation flag
-        self._continue_conversation = msg.start_conversation
-
-        # Add stop word
-        if self.state.stop_word:
-            self.state.active_wake_words.add(self.state.stop_word.id)
-
-        # Duck volume and play
-        self.duck()
-
-        # Play audio
-        if urls:
-            self._play_announcement(urls)
-        else:
-            # No audio, complete directly
-            self._tts_finished()
-
-    def _play_announcement(self, urls: List[str]) -> None:
-        """Play announcement audio"""
-        if not urls:
-            self._tts_finished()
-            return
-
-        # Play first URL
-        url = urls[0]
-        remaining = urls[1:]
-
-        def on_done():
-            if remaining:
-                self._play_announcement(remaining)
-            else:
-                self._tts_finished()
-
-        self.state.tts_player.play(url, done_callback=on_done)
-
-    # ========== Audio Control ==========
-
-    def _start_audio_streaming(self) -> None:
-        """Start audio streaming (audio is handled by main program's recorder)"""
-        # Main program's recorder will send audio when _is_streaming_audio is True
-        logger.debug("🎤 Audio streaming started (main recorder will send audio)")
-
-    def _stop_audio_streaming(self) -> None:
-        """Stop audio streaming"""
-        # Main program's recorder continues running, just clear the flag
-        logger.debug("🎤 Audio streaming stopped")
-
-    def handle_audio(self, audio_chunk: bytes) -> None:
-        """
-        Handle audio chunk
-
-        Only send audio when in streaming state
-        """
-        if not self._is_streaming_audio:
-            return
-
-        # Log first few audio chunks
-        if not hasattr(self, "_audio_chunks_sent"):
-            self._audio_chunks_sent = 0
-        self._audio_chunks_sent += 1
-        if self._audio_chunks_sent <= 5:
-            logger.info(f"🎤 Sending audio chunk #{self._audio_chunks_sent}: {len(audio_chunk)} bytes")
-
-        # Capture streamed audio so failures can be diagnosed from real data
-        # (last conversation only, overwritten each time)
-        self._debug_audio_chunks.append(audio_chunk)
-
-        self.send_messages([VoiceAssistantAudio(data=audio_chunk)])
-
-    def _notify_no_speech(self) -> None:
-        """Show a bubble telling the user no speech was recognized."""
-        try:
-            from src.i18n import get_i18n
-            from src.ui.conversation_bubble import show_conversation_bubble
-
-            show_conversation_bubble("info", get_i18n().t('error_no_speech'))
-        except Exception as e:
-            logger.debug(f"No-speech bubble failed: {e}")
-
-    def _dump_debug_audio(self, reason: str) -> None:
-        """Write the audio actually sent to HA as a WAV for diagnosis."""
-        if not getattr(self, "_debug_audio_chunks", None):
-            return
-        try:
-            import wave
-            from .models import get_user_data_dir
-
-            out_dir = get_user_data_dir() / "debug"
-            out_dir.mkdir(parents=True, exist_ok=True)
-            out_path = out_dir / "last_stt_stream.wav"
-            with wave.open(str(out_path), "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(16000)
-                wf.writeframes(b"".join(self._debug_audio_chunks))
-            logger.info(f"🎤 Debug audio dumped ({reason}): {out_path}")
-        except Exception as e:
-            logger.debug(f"Failed to dump debug audio: {e}")
-        finally:
-            self._debug_audio_chunks = []
-
-    def wakeup(self, wake_word_phrase: str = "") -> None:
-        """
-        Wake word detection callback
-
-        References linux-voice-assistant's wakeup
-        """
-        if self._timer_finished:
-            # If timer is ringing, stop timer
-            self._timer_finished = False
-            self.state.tts_player.stop()
-            logger.debug("Stopped timer sound")
-            return
-
-        if self.state.preferences.muted:
-            # Muted: no audio would reach HA, the pipeline would fail with
-            # stt-no-text-recognized. Ignore the trigger instead.
-            logger.info("🎤 Wake word trigger ignored (microphone muted)")
-            return
-
-        logger.info(f"🎤 Wake word triggered: {wake_word_phrase}")
-        logger.info(f"🎤 Current streaming state before wakeup: {self._is_streaming_audio}")
-
-        # Send voice assistant request
-        logger.debug("Sending VoiceAssistantRequest(start=True)")
-        self.send_messages([VoiceAssistantRequest(start=True, wake_word_phrase=wake_word_phrase)])
-
-        # Duck volume
-        self.duck()
-
-        # Start audio stream
-        self._is_streaming_audio = True
-        logger.info("🎤 Set streaming to True")
-
-        # Start microphone recording
-        self._start_audio_streaming()
-
-        # Play wakeup sound
-        if self.state.wakeup_sound:
-            logger.debug(f"Playing wakeup sound: {self.state.wakeup_sound}")
-            self.state.tts_player.play(self.state.wakeup_sound)
-        else:
-            logger.warning("Wakeup sound not set")
-
-    def stop(self) -> None:
-        """Stop current operation"""
-        if self.state.stop_word:
-            self.state.active_wake_words.discard(self.state.stop_word.id)
-        self.state.tts_player.stop()
-
-        if self._timer_finished:
-            self._timer_finished = False
-            logger.debug("Stopped timer sound")
-        else:
-            logger.debug("Manually stopped TTS")
-            self._tts_finished()
-
-    def _on_voice_input_trigger(self) -> None:
-        """Handle voice input trigger from button"""
-        logger.info("🎤 Voice input triggered via button (no wake word)")
-        # Trigger voice assistant without wake word
-        self.wakeup(wake_word_phrase="")
-
-    def _on_hotkey_changed(self, hotkey: str) -> None:
-        """Handle hotkey change"""
-        logger.info(f"Hotkey changed to: {hotkey}")
-
-        # Update preferences
-        self.state.preferences.voice_input_hotkey = hotkey
-        self.state.save_preferences()
-
-        # Update config sensor state
-        if self._config_sensor_manager:
-            self._config_sensor_manager.set_hotkey(hotkey)
-            self.send_messages(self._config_sensor_manager.get_states())
-
-        # Update hotkey manager
-        if self._hotkey_manager and self._hotkey_manager.is_available():
-            if hotkey:
-                self._hotkey_manager.set_hotkey(hotkey, self._on_voice_input_trigger)
-            else:
-                self._hotkey_manager.remove_hotkey()
-        elif hotkey:
-            logger.warning("Hotkey saved but runtime hotkey backend is unavailable on this platform")
-
-    def _set_thinking_sound_enabled(self, enabled: bool) -> None:
-        """Persist thinking sound switch state."""
-        self.state.thinking_sound_enabled = bool(enabled)
-        self.state.preferences.thinking_sound = 1 if self.state.thinking_sound_enabled else 0
-        self.state.save_preferences()
-
-        if self._thinking_sound_entity is not None:
-            self.send_messages(list(self._thinking_sound_entity.handle_message(SubscribeHomeAssistantStatesRequest())))
-
-    def _cancel_state_updates(self) -> None:
-        """Cancel background state update task."""
-        if self._state_update_task is not None:
-            self._state_update_task.cancel()
-            self._state_update_task = None
-
-    def _ensure_state_updates_started(self) -> None:
-        """Start periodic state updates once Home Assistant subscribes."""
-        if self._loop is None or self._state_update_task is not None:
-            return
-        self._state_update_task = self._loop.create_task(self._state_update_loop())
-
-    async def _state_update_loop(self) -> None:
-        """Push sensor and config states periodically to Home Assistant."""
-        try:
-            while self._transport is not None:
-                await asyncio.sleep(self.STATE_UPDATE_INTERVAL)
-                if self._transport is None:
-                    break
-                self._send_current_states()
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.error(f"State update loop failed: {e}")
-        finally:
-            self._state_update_task = None
-
-    def _send_current_states(self) -> None:
-        """Send the current set of states to Home Assistant."""
-        if self._monitor is None:
-            return
-
-        messages = list(self._monitor.get_esp_sensor_states())
-
-        if self._media_player_entity is not None:
-            messages.append(self._media_player_entity.get_state())
-
-        if self._config_sensor_manager is not None:
-            messages.extend(self._config_sensor_manager.get_states())
-
-        if messages:
-            self.send_messages(messages)
-
-    def play_tts(self) -> None:
-        """Play TTS response"""
-        if not self._tts_url or self._tts_played:
-            return
-
-        self._processing = False
-        self._tts_played = True
-        self._is_playing_tts = True  # Mark that TTS is playing
-        logger.info(f"Playing TTS: {self._tts_url}")
-
-        # Add stop word
-        if self.state.stop_word:
-            self.state.active_wake_words.add(self.state.stop_word.id)
-
-        self.state.tts_player.play(self._tts_url, done_callback=self._tts_finished)
-
-    def duck(self) -> None:
-        """Lower volume"""
-        if not self._volume_ducking_enabled:
-            return
-        try:
-            self.state.music_player.duck()
-        except Exception as e:
-            logger.error(f"Failed to duck volume: {e}")
-
-    def unduck(self) -> None:
-        """Restore volume"""
-        if not self._volume_ducking_enabled:
-            return
-        try:
-            self.state.music_player.unduck()
-        except Exception as e:
-            logger.error(f"Failed to unduck volume: {e}")
-
-    def _tts_finished(self) -> None:
-        """TTS playback finished callback"""
-        self._processing = False
-        self._is_playing_tts = False  # Mark that TTS is no longer playing
-        self._set_phase('idle')
-
-        # Remove stop word
-        if self.state.stop_word:
-            self.state.active_wake_words.discard(self.state.stop_word.id)
-
-        # Send completion message
-        self.send_messages([VoiceAssistantAnnounceFinished()])
-
-        if self._continue_conversation:
-            # Continue conversation
-            self.send_messages([VoiceAssistantRequest(start=True)])
-            self._is_streaming_audio = True
-
-            # Play wakeup sound to prompt user to speak, then start recording
-            if self.state.wakeup_sound:
-                logger.debug("Playing wakeup sound for continue conversation")
-                self.state.tts_player.play(self.state.wakeup_sound, done_callback=self._start_audio_streaming)
-            else:
-                # No wakeup sound, start recording directly
-                self._start_audio_streaming()
-
-            logger.debug("Continuing conversation")
-        else:
-            # Restore volume
-            self.unduck()
-
-        logger.debug("TTS playback finished")
-
-    def _play_timer_finished(self) -> None:
-        """Play timer finished sound"""
-        if not self._timer_finished:
-            self.unduck()
-            return
-
-        # Loop play timer sound with async delay
-        loop = asyncio.get_event_loop()
-
-        async def on_done_async():
-            await asyncio.sleep(1.0)
-            if self._timer_finished:
-                loop.call_soon_threadsafe(self._play_timer_finished)
-
-        def on_done():
-            asyncio.run_coroutine_threadsafe(on_done_async(), loop)
-
-        if self.state.timer_finished_sound:
-            self.state.tts_player.play(self.state.timer_finished_sound, done_callback=on_done)
-
-    # ========== Entity Message Processing ==========
-
-    def handle_message(self, msg: message.Message) -> Iterable[message.Message]:
-        """Handle entity-related messages"""
-        if isinstance(msg, DeviceInfoRequest):
-            # Get version from src.__init__
-            try:
-                from src import __version__
-
-                version = __version__
-            except Exception:
-                version = "unknown"
-
-            yield DeviceInfoResponse(
-                uses_password=False,
-                name=self.state.name,
-                friendly_name=self.state.friendly_name,
-                project_name="ha-china.ha-windows",
-                mac_address=self.state.mac_address,
-                project_version=version,
-                esphome_version=self.state.esphome_version,
-                manufacturer=self.state.manufacturer,
-                model=self.state.model,
-                voice_assistant_feature_flags=(
-                    VoiceAssistantFeature.VOICE_ASSISTANT
-                    | VoiceAssistantFeature.API_AUDIO
-                    | VoiceAssistantFeature.ANNOUNCE
-                    | VoiceAssistantFeature.START_CONVERSATION
-                    | VoiceAssistantFeature.TIMERS
-                ),
-            )
-        elif isinstance(
-            msg,
-            (
-                ListEntitiesRequest,
-                SubscribeHomeAssistantStatesRequest,
-                MediaPlayerCommandRequest,
-                ButtonCommandRequest,
-                ExecuteServiceRequest,
-                SwitchCommandRequest,
-            ),
-        ):
-            # Handle entity messages
-            yield from self._handle_entity_message(msg)
-
-            if isinstance(msg, ListEntitiesRequest):
-                yield ListEntitiesDoneResponse()
-
-    def _handle_entity_message(self, msg: message.Message) -> Iterable[message.Message]:
-        """Handle entity messages"""
-        # Get Windows Monitor
-        if self._monitor is None:
-            from src.sensors.windows_monitor import WindowsMonitor
-
-            self._monitor = WindowsMonitor()
-
-        # Get MediaPlayer entity
-        if self._media_player_entity is None:
-            from src.sensors.media_player import MediaPlayerEntity
-
-            self._media_player_entity = MediaPlayerEntity(
-                server=self,
-                key=300,
-                name="Media Player",
-                object_id="windows_media_player",
-            )
-
-        # Get button manager
-        if self._button_manager is None:
-            from src.commands.button_entity import ButtonEntityManager
-
-            self._button_manager = ButtonEntityManager()
-
-        # Get service manager
-        if self._service_manager is None:
-            from src.notify.service_entity import ServiceEntityManager
-
-            self._service_manager = ServiceEntityManager()
-            # Set hotkey callback
-            self._service_manager.set_hotkey_callback(self._on_hotkey_changed)
-            if self._ha_host:
-                self._service_manager.set_ha_host(self._ha_host)
-
-        # Get config sensor manager
-        if self._config_sensor_manager is None:
-            from src.sensors.config_sensor import ConfigSensorManager
-
-            self._config_sensor_manager = ConfigSensorManager()
-            # Update hotkey state from preferences
-            self._config_sensor_manager.set_hotkey(self.state.preferences.voice_input_hotkey)
-
-        if self._thinking_sound_entity is None:
-            from src.sensors.thinking_sound_switch import ThinkingSoundSwitchEntity
-
-            self._thinking_sound_entity = ThinkingSoundSwitchEntity(
-                key=500,
-                name="Thinking Sound",
-                object_id="thinking_sound",
-                get_enabled=lambda: self.state.thinking_sound_enabled,
-                set_enabled=self._set_thinking_sound_enabled,
-            )
-
-        if self._mic_mute_entity is None:
-            from src.sensors.mic_mute_switch import MicMuteSwitchEntity
-
-            self._mic_mute_entity = MicMuteSwitchEntity(
-                key=600,
-                name="Microphone Mute",
-                object_id="microphone_mute",
-                get_muted=lambda: self.state.preferences.muted,
-                set_muted=self._set_muted,
-            )
-
-        # Get hotkey manager
-        if self._hotkey_manager is None:
-            from src.core.hotkey_manager import get_hotkey_manager
-
-            self._hotkey_manager = get_hotkey_manager()
-            # Set hotkey callback
-            if self._hotkey_manager.is_available():
-                self._hotkey_manager.set_hotkey(self.state.preferences.voice_input_hotkey, self._on_voice_input_trigger)
-
-        if isinstance(msg, ListEntitiesRequest):
-            # Send sensor entity definitions
-            for entity_def in self._monitor.get_esp_entity_definitions():
-                if not isinstance(entity_def, ListEntitiesDoneResponse):
-                    yield entity_def
-            # Send MediaPlayer entity definition
-            yield self._media_player_entity.get_entity_definition()
-            # Send button entity definitions
-            for btn_def in self._button_manager.get_entity_definitions():
-                yield btn_def
-            # Send service entity definitions
-            for svc_def in self._service_manager.get_entity_definitions():
-                yield svc_def
-            # Send config sensor entity definitions
-            for cfg_def in self._config_sensor_manager.get_entity_definitions():
-                yield cfg_def
-            yield from self._thinking_sound_entity.handle_message(msg)
-            yield from self._mic_mute_entity.handle_message(msg)
-
-        elif isinstance(msg, SubscribeHomeAssistantStatesRequest):
-            # Send sensor states
-            yield from self._monitor.get_esp_sensor_states()
-            yield self._media_player_entity.get_state()
-            yield from self._config_sensor_manager.get_states()
-            yield from self._thinking_sound_entity.handle_message(msg)
-            yield from self._mic_mute_entity.handle_message(msg)
-            self._ensure_state_updates_started()
-
-        elif isinstance(msg, MediaPlayerCommandRequest):
-            # Handle MediaPlayer command
-            yield from self._media_player_entity.handle_message(msg)
-
-        elif isinstance(msg, ButtonCommandRequest):
-            # Handle button command
-            yield from self._button_manager.handle_message(msg)
-
-        elif isinstance(msg, ExecuteServiceRequest):
-            # Handle service execution
-            yield from self._service_manager.handle_message(msg)
-
-        elif isinstance(msg, SwitchCommandRequest):
-            yield from self._thinking_sound_entity.handle_message(msg)
-            yield from self._mic_mute_entity.handle_message(msg)
-
-    # ========== Message Sending ==========
+    # ---------- transport ----------
 
     def send_messages(self, msgs: List[message.Message]) -> None:
         """Send messages to client"""
         if self._writelines is None:
             return
-
-        from aioesphomeapi._frame_helper.packets import make_plain_text_packets
 
         packets = [(PROTO_TO_MESSAGE_TYPE[msg.__class__], msg.SerializeToString()) for msg in msgs]
 
@@ -1152,7 +452,7 @@ class ESPHomeServer:
         try:
             logger.info(f"Starting ESPHome API server @ {self.host}:{self.port}")
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             def protocol_factory():
                 self._protocol = ESPHomeProtocol(self.state)

@@ -88,8 +88,23 @@ def get_device_identity() -> Dict[str, str]:
     try:
         identity_path.parent.mkdir(parents=True, exist_ok=True)
         if identity_path.exists():
-            with open(identity_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            try:
+                with open(identity_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                # Preserve the unreadable file so the previous identity can be
+                # recovered manually; regenerating changes the HA device.
+                backup_path = identity_path.with_suffix(".json.bak")
+                logger.error(
+                    "Device identity file unreadable (%s). Backing it up to %s "
+                    "and generating a NEW identity - restore the backup to keep "
+                    "the existing Home Assistant device.", e, backup_path
+                )
+                try:
+                    shutil.copy2(identity_path, backup_path)
+                except Exception as backup_error:
+                    logger.error("Failed to back up device identity: %s", backup_error)
+                raise
 
             device_id = str(data.get("device_id", "")).strip()
             mac_address = str(data.get("mac_address", "")).strip().lower()
@@ -101,7 +116,8 @@ def get_device_identity() -> Dict[str, str]:
 
             logger.warning("Invalid device identity file, regenerating: %s", identity_path)
     except Exception as e:
-        logger.warning("Failed to load device identity, regenerating: %s", e)
+        if not isinstance(e, (json.JSONDecodeError, OSError)):
+            logger.warning("Failed to load device identity, regenerating: %s", e)
 
     device_id = uuid.uuid4().hex
     mac_address = _get_runtime_mac_address()
@@ -207,6 +223,7 @@ class WindowsVolumeController:
 
     _instance: Optional["WindowsVolumeController"] = None
     _lock = Lock()
+    _init_lock = Lock()
 
     def __new__(cls) -> "WindowsVolumeController":
         """Singleton pattern"""
@@ -220,14 +237,16 @@ class WindowsVolumeController:
         if self._initialized:
             return
 
-        self._volume_interface: Optional[Any] = None
-        self._original_volume: float = 1.0
-        self._is_ducked: bool = False
-        self._duck_ratio: float = 0.3  # Duck to 30% of original volume
-        self._init_lock = Lock()
-        self._initialized = True
+        with self._init_lock:
+            if self._initialized:
+                return
+            self._volume_interface: Optional[Any] = None
+            self._original_volume: float = 1.0
+            self._is_ducked: bool = False
+            self._duck_ratio: float = 0.3  # Duck to 30% of original volume
+            self._initialized = True
 
-        self._init_volume_interface()
+            self._init_volume_interface()
 
     def _init_volume_interface(self) -> None:
         """Initialize volume interface"""
@@ -302,13 +321,16 @@ class WindowsVolumeController:
 
 # Global volume controller instance
 _volume_controller: Optional[WindowsVolumeController] = None
+_volume_controller_lock = Lock()
 
 
 def get_volume_controller() -> WindowsVolumeController:
     """Get global volume controller"""
     global _volume_controller
     if _volume_controller is None:
-        _volume_controller = WindowsVolumeController()
+        with _volume_controller_lock:
+            if _volume_controller is None:
+                _volume_controller = WindowsVolumeController()
     return _volume_controller
 
 
@@ -659,6 +681,9 @@ class ServerState:
     thinking_sound_entity: Optional[Any] = None
     satellite: Optional["ESPHomeProtocol"] = None
 
+    # Guards shared-state mutation from multiple threads (event loop, tray, audio)
+    state_lock: Lock = field(default_factory=Lock)
+
     # State flags
     wake_words_changed: bool = False
     refractory_seconds: float = 2.0
@@ -666,24 +691,27 @@ class ServerState:
     volume: float = 1.0
 
     def save_preferences(self) -> None:
-        """Save preferences"""
+        """Save preferences (thread-safe, atomic replace)"""
         logger.debug(f"Saving preferences: {self.preferences_path}")
-        try:
-            self.preferences_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.preferences_path, "w", encoding="utf-8") as f:
-                json.dump({
-                    "active_wake_words": self.preferences.active_wake_words,
-                    "thinking_sound": self.preferences.thinking_sound,
-                    "volume": self.preferences.volume,
-                    "voice_input_hotkey": self.preferences.voice_input_hotkey,
-                    "mic_device": self.preferences.mic_device,
-                    "muted": self.preferences.muted,
-                    "conversation_bubble_enabled": self.preferences.conversation_bubble_enabled,
-                    "sendspin_enabled": self.preferences.sendspin_enabled,
-                    "mini_player_enabled": self.preferences.mini_player_enabled
-                }, f, ensure_ascii=False, indent=4)
-        except Exception as e:
-            logger.error(f"Failed to save preferences: {e}")
+        with self.state_lock:
+            try:
+                self.preferences_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path = self.preferences_path.with_suffix(".json.tmp")
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "active_wake_words": self.preferences.active_wake_words,
+                        "thinking_sound": self.preferences.thinking_sound,
+                        "volume": self.preferences.volume,
+                        "voice_input_hotkey": self.preferences.voice_input_hotkey,
+                        "mic_device": self.preferences.mic_device,
+                        "muted": self.preferences.muted,
+                        "conversation_bubble_enabled": self.preferences.conversation_bubble_enabled,
+                        "sendspin_enabled": self.preferences.sendspin_enabled,
+                        "mini_player_enabled": self.preferences.mini_player_enabled
+                    }, f, ensure_ascii=False, indent=4)
+                os.replace(tmp_path, self.preferences_path)
+            except Exception as e:
+                logger.error(f"Failed to save preferences: {e}")
 
     def load_preferences(self) -> None:
         """Load preferences"""

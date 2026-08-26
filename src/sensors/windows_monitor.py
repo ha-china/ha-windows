@@ -10,10 +10,12 @@ import ctypes
 import logging
 import platform
 import re
+import socket
 from typing import Dict, List, Optional, Tuple
 
 import psutil
 from aioesphomeapi.api_pb2 import (
+    EntityCategory,
     ListEntitiesDoneResponse,
     ListEntitiesSensorResponse,
     ListEntitiesTextSensorResponse,
@@ -78,6 +80,25 @@ DISK_KEY_OFFSET = 20
 HW_SENSOR_KEY_OFFSET = 100
 
 
+def _num(section: dict, key: str, default: float = 0) -> float:
+    """Read a numeric value from an info section, tolerating bad data."""
+    try:
+        return float(section.get(key, default))
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _opt_num(section: dict, key: str) -> Optional[float]:
+    """Read a numeric value that may legitimately be absent (None -> skip)."""
+    value = section.get(key)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 # Stable key helpers
 def _stable_key(name: str, base: int = 0) -> int:
     """Generate a deterministic integer key from a string."""
@@ -85,6 +106,129 @@ def _stable_key(name: str, base: int = 0) -> int:
     for c in name:
         h = (h * 31 + ord(c)) & 0xFFFFF
     return base + (h % 1000)
+
+
+# ---------------------------------------------------------------------------
+# Entity definition rules
+#
+# One ordered rule list drives ListEntities*Response construction. Order is
+# significant: the first matching rule wins, mirroring the historical if/elif
+# chain (e.g. the generic "_usage" percentage rule intentionally precedes and
+# therefore shadows the more specific GPU rules).
+# ---------------------------------------------------------------------------
+
+_M = SensorStateClass.STATE_CLASS_MEASUREMENT
+_TI = SensorStateClass.STATE_CLASS_TOTAL_INCREASING
+_DIAG = EntityCategory.ENTITY_CATEGORY_DIAGNOSTIC
+
+
+def _sensor_rule(matcher, **kwargs):
+    """Rule producing a numeric sensor definition."""
+    def build(meta, object_id, name, icon, key):
+        return ListEntitiesSensorResponse(
+            object_id=object_id, key=key, name=name, icon=icon, **kwargs
+        )
+    return (matcher, build)
+
+
+def _text_rule(matcher, **kwargs):
+    """Rule producing a text sensor definition."""
+    def build(meta, object_id, name, icon, key):
+        return ListEntitiesTextSensorResponse(
+            object_id=object_id, key=key, name=name, icon=icon, **kwargs
+        )
+    return (matcher, build)
+
+
+def _hw_sensor_rule():
+    """LibreHardwareMonitor sensors: unit/device class come from live metadata."""
+    def build(meta, object_id, name, icon, key):
+        entry = meta.get(object_id) or {}
+        unit = entry.get("unit", "")
+        device_class = "temperature" if unit == "°C" else None
+        return ListEntitiesSensorResponse(
+            object_id=object_id,
+            key=key,
+            name=name,
+            icon=icon,
+            unit_of_measurement=unit or None,
+            accuracy_decimals=1,
+            state_class=_M,
+            device_class=device_class,
+        )
+    return (lambda oid, key: key >= HW_SENSOR_KEY_OFFSET, build)
+
+
+_ENTITY_RULES = (
+    _text_rule(lambda oid, key: oid == "version", entity_category=_DIAG),
+    _sensor_rule(
+        lambda oid, key: oid == "process_memory_mb",
+        unit_of_measurement="MB",
+        accuracy_decimals=1,
+        state_class=_M,
+        entity_category=_DIAG,
+    ),
+    # Percentage sensors (also catches every "<name>_usage" variant)
+    _sensor_rule(
+        lambda oid, key: oid in ("cpu_usage", "memory_usage", "battery_level")
+        or oid.endswith("_usage"),
+        unit_of_measurement="%",
+        accuracy_decimals=1,
+        state_class=_M,
+    ),
+    # GB sensors; network counters are monotonically increasing totals
+    (lambda oid, key: oid in ("memory_free", "network_upload", "network_download")
+     or oid.endswith("_free"),
+     lambda meta, object_id, name, icon, key: ListEntitiesSensorResponse(
+         object_id=object_id, key=key, name=name, icon=icon,
+         unit_of_measurement="GB", accuracy_decimals=2,
+         state_class=(_TI if object_id.startswith("network_") else _M),
+     )),
+    _sensor_rule(
+        lambda oid, key: oid == "uptime",
+        unit_of_measurement="h",
+        accuracy_decimals=1,
+        state_class=_TI,
+    ),
+    # Diagnostic count sensors
+    _sensor_rule(
+        lambda oid, key: oid in ("process_count", "thread_count", "handle_count",
+                                 "gdi_count", "user_object_count"),
+        accuracy_decimals=0,
+        state_class=_M,
+        entity_category=_DIAG,
+    ),
+    _text_rule(lambda oid, key: oid == "gpu_name"),
+    _sensor_rule(
+        lambda oid, key: oid == "gpu_temperature",
+        unit_of_measurement="°C",
+        accuracy_decimals=0,
+        state_class=_M,
+        device_class="temperature",
+    ),
+    _sensor_rule(
+        lambda oid, key: oid == "gpu_memory_used",
+        unit_of_measurement="GB",
+        accuracy_decimals=2,
+        state_class=_M,
+    ),
+    _sensor_rule(
+        lambda oid, key: oid == "gpu_power",
+        unit_of_measurement="W",
+        accuracy_decimals=1,
+        state_class=_M,
+    ),
+    _hw_sensor_rule(),
+)
+
+
+def _build_entity_response(hardware_meta, object_id, name, icon, key):
+    """Construct the ListEntities* response for one entity via the rule table."""
+    for matcher, build in _ENTITY_RULES:
+        if matcher(object_id, key):
+            return build(hardware_meta, object_id, name, icon, key)
+    # Default: text sensor for status values (network_status, battery_status...)
+    return ListEntitiesTextSensorResponse(object_id=object_id, key=key, name=name, icon=icon)
 
 
 class WindowsMonitor:
@@ -261,7 +405,7 @@ class WindowsMonitor:
             for iface, addrs in psutil.net_if_addrs().items():
                 for addr in addrs:
                     # IPv4 address, not loopback
-                    if addr.family == 2 and not addr.address.startswith("127."):
+                    if addr.family == socket.AF_INET and not addr.address.startswith("127."):
                         ip_address = addr.address
                         break
                 if ip_address:
@@ -538,158 +682,7 @@ class WindowsMonitor:
 
         entities = []
         for object_id, name, icon, key in self._available_entities:
-            # Import EntityCategory for diagnostic entities
-            from aioesphomeapi.api_pb2 import EntityCategory
-
-            # Version sensor (diagnostic category)
-            if object_id == "version":
-                sensor = ListEntitiesTextSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    entity_category=EntityCategory.ENTITY_CATEGORY_DIAGNOSTIC,
-                )
-            elif object_id == "process_memory_mb":
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    unit_of_measurement="MB",
-                    accuracy_decimals=1,
-                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
-                    entity_category=EntityCategory.ENTITY_CATEGORY_DIAGNOSTIC,
-                )
-            # Percentage sensors
-            elif object_id in ("cpu_usage", "memory_usage", "battery_level") or object_id.endswith("_usage"):
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    unit_of_measurement="%",
-                    accuracy_decimals=1,
-                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
-                )
-            # GB sensors (memory free, disk free, network upload/download)
-            elif object_id in ("memory_free", "network_upload", "network_download") or object_id.endswith("_free"):
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    unit_of_measurement="GB",
-                    accuracy_decimals=2,
-                    state_class=(
-                        SensorStateClass.STATE_CLASS_TOTAL_INCREASING
-                        if object_id.startswith("network_")
-                        else SensorStateClass.STATE_CLASS_MEASUREMENT
-                    ),
-                )
-            # Hours sensor (uptime)
-            elif object_id == "uptime":
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    unit_of_measurement="h",
-                    accuracy_decimals=1,
-                    state_class=SensorStateClass.STATE_CLASS_TOTAL_INCREASING,
-                )
-            # Count sensor (process_count)
-            elif object_id in ("process_count", "thread_count", "handle_count", "gdi_count", "user_object_count"):
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    accuracy_decimals=0,
-                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
-                    entity_category=EntityCategory.ENTITY_CATEGORY_DIAGNOSTIC,
-                )
-            # GPU name (text sensor)
-            elif object_id == "gpu_name":
-                sensor = ListEntitiesTextSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                )
-            # GPU temperature
-            elif object_id == "gpu_temperature":
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    unit_of_measurement="°C",
-                    accuracy_decimals=0,
-                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
-                    device_class="temperature",
-                )
-            # GPU utilization %
-            elif object_id in ("gpu_usage", "gpu_memory_usage"):
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    unit_of_measurement="%",
-                    accuracy_decimals=0,
-                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
-                )
-            # GPU VRAM used
-            elif object_id == "gpu_memory_used":
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    unit_of_measurement="GB",
-                    accuracy_decimals=2,
-                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
-                )
-            # GPU power
-            elif object_id == "gpu_power":
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    unit_of_measurement="W",
-                    accuracy_decimals=1,
-                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
-                )
-            # LibreHardwareMonitor sensors (generic, key >= HW_SENSOR_KEY_OFFSET)
-            elif key >= HW_SENSOR_KEY_OFFSET:
-                hw_info = self._hardware_meta or {}
-                entry = hw_info.get(object_id) or {}
-                unit = entry.get("unit", "")
-                device_class = None
-                if unit == "°C":
-                    device_class = "temperature"
-                sensor = ListEntitiesSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                    unit_of_measurement=unit or None,
-                    accuracy_decimals=1,
-                    state_class=SensorStateClass.STATE_CLASS_MEASUREMENT,
-                    device_class=device_class,
-                )
-            else:
-                # Text sensor for status values (network_status, battery_status, boot_time)
-                sensor = ListEntitiesTextSensorResponse(
-                    object_id=object_id,
-                    key=key,
-                    name=name,
-                    icon=icon,
-                )
-            entities.append(sensor)
-
+            entities.append(_build_entity_response(self._hardware_meta, object_id, name, icon, key))
         entities.append(ListEntitiesDoneResponse())
         return entities
 
@@ -698,7 +691,7 @@ class WindowsMonitor:
         Get current ESPHome sensor states
 
         Args:
-            **extra_states: Additional states (e.g., command_result, voice_status)
+            **extra_states: Additional text states (e.g., command_result)
 
         Returns:
             List of state responses
@@ -709,147 +702,64 @@ class WindowsMonitor:
         states = []
         info = self.get_all_info()
 
+        def emit(object_id: str, value) -> None:
+            """Append a sensor state if the entity exists and value is known."""
+            if object_id not in self._entity_map or value is None:
+                return
+            _, _, key = self._entity_map[object_id]
+            if isinstance(value, str):
+                states.append(TextSensorStateResponse(key=key, state=value))
+            else:
+                states.append(SensorStateResponse(key=key, state=float(value)))
+
         # Version
-        if "version" in self._entity_map:
-            try:
-                from src import __version__
+        try:
+            from src import __version__
 
-                version = __version__
-            except Exception:
-                version = "unknown"
-            _, _, key = self._entity_map["version"]
-            states.append(TextSensorStateResponse(key=key, state=version))
+            version = __version__
+        except Exception:
+            version = "unknown"
+        emit("version", version)
 
-        # CPU usage
-        if "cpu_usage" in self._entity_map:
-            cpu_info = info.get("cpu", {})
-            cpu_percent = cpu_info.get("cpu_percent", 0)
-            _, _, key = self._entity_map["cpu_usage"]
-            states.append(SensorStateResponse(key=key, state=float(cpu_percent)))
-
-        # Memory usage %
-        if "memory_usage" in self._entity_map:
-            mem_info = info.get("memory", {})
-            mem_percent = mem_info.get("percent", 0)
-            _, _, key = self._entity_map["memory_usage"]
-            states.append(SensorStateResponse(key=key, state=float(mem_percent)))
-
-        # Memory free GB
-        if "memory_free" in self._entity_map:
-            mem_info = info.get("memory", {})
-            mem_available = mem_info.get("available", 0)
-            mem_free_gb = round(mem_available / (1024**3), 1)
-            _, _, key = self._entity_map["memory_free"]
-            states.append(SensorStateResponse(key=key, state=float(mem_free_gb)))
+        # Fixed numeric sensors, in stable order. Extractors return None to
+        # skip the update (e.g. no battery present).
+        fixed_numeric = (
+            ("cpu_usage", lambda i: _num(i.get("cpu", {}), "cpu_percent")),
+            ("memory_usage", lambda i: _num(i.get("memory", {}), "percent")),
+            ("memory_free", lambda i: round(_num(i.get("memory", {}), "available") / (1024**3), 1)),
+            ("battery_level", lambda i: _num(i["battery"], "percent") if i.get("battery") else None),
+            ("network_upload", lambda i: _num(i.get("network", {}), "bytes_sent_gb")),
+            ("network_download", lambda i: _num(i.get("network", {}), "bytes_recv_gb")),
+            ("uptime", lambda i: _num(i.get("system", {}), "uptime_hours")),
+            ("process_count", lambda i: _num(i.get("system", {}), "process_count")),
+            ("process_memory_mb", lambda i: _num(i.get("process", {}), "rss_mb")),
+            ("thread_count", lambda i: _num(i.get("process", {}), "thread_count")),
+            ("handle_count", lambda i: _opt_num(i.get("process", {}), "handle_count")),
+            ("gdi_count", lambda i: _opt_num(i.get("process", {}), "gdi_count")),
+            ("user_object_count", lambda i: _opt_num(i.get("process", {}), "user_object_count")),
+        )
+        for object_id, extractor in fixed_numeric:
+            emit(object_id, extractor(info))
 
         # Disk sensors - usage% and free GB for each drive
         disk_info = info.get("disk", {})
         for mount_point, disk_data in disk_info.items():
             mount_id = self._mount_point_to_object_id(mount_point)
+            emit(f"disk_{mount_id}_usage", _num(disk_data, "percent"))
+            emit(f"disk_{mount_id}_free", _num(disk_data, "free_gb"))
 
-            # Disk usage %
-            usage_id = f"disk_{mount_id}_usage"
-            if usage_id in self._entity_map:
-                _, _, key = self._entity_map[usage_id]
-                states.append(SensorStateResponse(key=key, state=float(disk_data.get("percent", 0))))
-
-            # Disk free GB
-            free_id = f"disk_{mount_id}_free"
-            if free_id in self._entity_map:
-                _, _, key = self._entity_map[free_id]
-                states.append(SensorStateResponse(key=key, state=float(disk_data.get("free_gb", 0))))
-
-        # Battery status
-        if "battery_status" in self._entity_map:
-            battery_info = info.get("battery")
-            if battery_info:
-                status = "Charging" if battery_info.get("power_plugged") else "Discharging"
-                _, _, key = self._entity_map["battery_status"]
-                states.append(TextSensorStateResponse(key=key, state=status))
-
-        # Battery level
-        if "battery_level" in self._entity_map:
-            battery_info = info.get("battery")
-            if battery_info:
-                _, _, key = self._entity_map["battery_level"]
-                states.append(SensorStateResponse(key=key, state=float(battery_info.get("percent", 0))))
-
-        # IP Address
-        if "ip_address" in self._entity_map:
-            net_info = info.get("network", {})
-            ip = net_info.get("ip_address", "")
-            _, _, key = self._entity_map["ip_address"]
-            states.append(TextSensorStateResponse(key=key, state=ip))
-
-        # Network upload (GB)
-        if "network_upload" in self._entity_map:
-            net_info = info.get("network", {})
-            _, _, key = self._entity_map["network_upload"]
-            states.append(SensorStateResponse(key=key, state=float(net_info.get("bytes_sent_gb", 0))))
-
-        # Network download (GB)
-        if "network_download" in self._entity_map:
-            net_info = info.get("network", {})
-            _, _, key = self._entity_map["network_download"]
-            states.append(SensorStateResponse(key=key, state=float(net_info.get("bytes_recv_gb", 0))))
-
-        # Boot time (ISO format)
-        if "boot_time" in self._entity_map:
-            sys_info = info.get("system", {})
-            _, _, key = self._entity_map["boot_time"]
-            states.append(TextSensorStateResponse(key=key, state=sys_info.get("boot_time_iso", "")))
-
-        # Uptime (hours)
-        if "uptime" in self._entity_map:
-            sys_info = info.get("system", {})
-            _, _, key = self._entity_map["uptime"]
-            states.append(SensorStateResponse(key=key, state=float(sys_info.get("uptime_hours", 0))))
-
-        # Process count
-        if "process_count" in self._entity_map:
-            sys_info = info.get("system", {})
-            _, _, key = self._entity_map["process_count"]
-            states.append(SensorStateResponse(key=key, state=float(sys_info.get("process_count", 0))))
-
-        # Process memory (MB)
-        if "process_memory_mb" in self._entity_map:
-            process_info = info.get("process", {})
-            _, _, key = self._entity_map["process_memory_mb"]
-            states.append(SensorStateResponse(key=key, state=float(process_info.get("rss_mb", 0))))
-
-        # Thread count
-        if "thread_count" in self._entity_map:
-            process_info = info.get("process", {})
-            _, _, key = self._entity_map["thread_count"]
-            states.append(SensorStateResponse(key=key, state=float(process_info.get("thread_count", 0))))
-
-        # Handle count
-        if "handle_count" in self._entity_map:
-            process_info = info.get("process", {})
-            handle_count = process_info.get("handle_count")
-            if handle_count is not None:
-                _, _, key = self._entity_map["handle_count"]
-                states.append(SensorStateResponse(key=key, state=float(handle_count)))
-
-        if "gdi_count" in self._entity_map:
-            process_info = info.get("process", {})
-            gdi_count = process_info.get("gdi_count")
-            if gdi_count is not None:
-                _, _, key = self._entity_map["gdi_count"]
-                states.append(SensorStateResponse(key=key, state=float(gdi_count)))
-
-        if "user_object_count" in self._entity_map:
-            process_info = info.get("process", {})
-            user_object_count = process_info.get("user_object_count")
-            if user_object_count is not None:
-                _, _, key = self._entity_map["user_object_count"]
-                states.append(SensorStateResponse(key=key, state=float(user_object_count)))
+        # Text sensors
+        battery = info.get("battery")
+        emit(
+            "battery_status",
+            ("Charging" if battery.get("power_plugged") else "Discharging") if battery else None,
+        )
+        emit("ip_address", info.get("network", {}).get("ip_address", ""))
+        emit("boot_time", info.get("system", {}).get("boot_time_iso", ""))
 
         # NVIDIA GPU sensors (only present when NVML is available)
         gpu_info = info.get("gpu") or {}
-        if "gpu_name" in self._entity_map:
-            _, _, key = self._entity_map["gpu_name"]
-            states.append(TextSensorStateResponse(key=key, state=str(gpu_info.get("name", "unknown"))))
+        emit("gpu_name", str(gpu_info.get("name", "unknown")))
         for object_id, field in [
             ("gpu_temperature", "temperature"),
             ("gpu_usage", "gpu_utilization"),
@@ -857,23 +767,19 @@ class WindowsMonitor:
             ("gpu_memory_used", "vram_used_gb"),
             ("gpu_power", "power_watts"),
         ]:
-            if object_id in self._entity_map and gpu_info.get(field) is not None:
-                _, _, key = self._entity_map[object_id]
-                states.append(SensorStateResponse(key=key, state=float(gpu_info[field])))
+            if gpu_info.get(field) is not None:
+                emit(object_id, float(gpu_info[field]))
 
         # LibreHardwareMonitor sensors (dynamic keys >= HW_SENSOR_KEY_OFFSET)
         hw_info = info.get("hardware") or {}
         self._hardware_meta = hw_info or self._hardware_meta
         for object_id, entry in hw_info.items():
-            if object_id in self._entity_map:
-                _, _, key = self._entity_map[object_id]
-                states.append(SensorStateResponse(key=key, state=float(entry["value"])))
+            if object_id in self._entity_map and entry.get("value") is not None:
+                emit(object_id, float(entry["value"]))
 
         # Extra states (command_result, voice_status, etc.)
         for entity_name, state_value in extra_states.items():
-            if entity_name in self._entity_map:
-                _, _, key = self._entity_map[entity_name]
-                states.append(TextSensorStateResponse(key=key, state=str(state_value)))
+            emit(entity_name, str(state_value))
 
         return states
 

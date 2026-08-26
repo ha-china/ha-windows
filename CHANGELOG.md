@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-08-26
+
+### Added
+- Sendspin mini player: floating always-on-top window with album artwork, synced lyrics (LRCLIB), progress bar, play/pause/prev/next/stop controls, volume slider and mute toggle
+- Tray menu: mini player and Sendspin toggles grouped under a Sendspin submenu
+- "Run as administrator" tray action (self-relaunch with elevation)
+- Tests for service entity dispatch, command whitelist behavior, update version comparison and media volume clamping
+
+### Fixed
+- HA media services (media_play_pause/next/previous) silently failing due to invalid "media:" prefix in command dispatch
+- Tray Sendspin toggle silently failing (asyncio task scheduled from the tray thread without a running event loop)
+- `notify` command referencing the unpackaged win10toast backend; now uses windows_toasts
+- Volume feedback loop: slider drag is debounced (250 ms) and reported volume no longer reads back the live system value
+- Device identity file corruption now backs up the file instead of silently regenerating (prevents HA device drift)
+- Preferences writes are lock-protected and atomic (temp file + replace), safe across tray/audio/event-loop threads
+- Graceful shutdown waits for cleanup to finish (8 s watchdog) instead of a fixed 1 s force-exit race
+- Wake word set iteration no longer races against concurrent mutation from the audio thread
+
+### Changed
+- Version metadata unified: installer.nsi accepts build-time PRODUCT_VERSION injection; CI validates pyproject/__init__/nsi/version_info/CHANGELOG consistency
+- Installer kills a running instance before upgrading; uninstall removes only app-owned files plus both legacy autostart registry values
+- PyInstaller spec slimmed: removed duplicated data/binary collection, unused submodules (PIL/pygame/vlc extras) and src source-tree duplication
+- mDNS broadcast reports the real application version instead of hardcoded 1.0.0
+
 ## [0.8.0] - 2026-08-15
 
 ### Added

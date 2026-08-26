@@ -2,12 +2,18 @@
 ; Supports auto-startup and clean uninstall
 
 !define PRODUCT_NAME "Home Assistant Windows"
-!define PRODUCT_VERSION "0.6.3"
+; Version can be overridden at build time: makensis -DPRODUCT_VERSION=x.y.z
+!ifndef PRODUCT_VERSION
+  !define PRODUCT_VERSION "0.9.0"
+!endif
 !define PRODUCT_PUBLISHER "HA-China"
 !define PRODUCT_WEB_SITE "https://github.com/ha-china/ha-windows"
+!define PRODUCT_EXE "HomeAssistantWindows.exe"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\HomeAssistantWindows.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"
+; Autostart Run value name - must match src/autostart.py AUTOSTART_NAME
+!define AUTOSTART_VALUE_NAME "HomeAssistantWindows"
 
 ; Modern UI
 !include "MUI2.nsh"
@@ -38,6 +44,7 @@ Var StartMenuFolder
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_STARTMENU Application $StartMenuFolder
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
@@ -53,6 +60,10 @@ Var StartMenuFolder
 ; Installer Sections
 Section "Main Program" SEC01
   SectionIn RO
+  ; Stop a running instance so file replacement cannot fail mid-upgrade
+  nsExec::ExecToLog 'taskkill /F /IM ${PRODUCT_EXE}'
+  Sleep 2000
+
   SetOutPath "$INSTDIR"
   File /r "..\dist\HomeAssistantWindows\*"
   
@@ -77,8 +88,8 @@ Section "Main Program" SEC01
 SectionEnd
 
 Section "Auto Start on Boot" SEC02
-  ; Add to Windows startup registry
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCT_NAME}" '"$INSTDIR\HomeAssistantWindows.exe"'
+  ; Add to Windows startup registry (same value name the app itself uses)
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "${AUTOSTART_VALUE_NAME}" '"$INSTDIR\${PRODUCT_EXE}"'
 SectionEnd
 
 Section "Start Menu Shortcuts" SEC03
@@ -103,11 +114,16 @@ LangString DESC_SEC03 ${LANG_SIMPCHINESE} "Create Start Menu shortcuts"
 ; Uninstaller Section
 Section Uninstall
   ; Stop running application
-  nsExec::ExecToLog 'taskkill /F /IM HomeAssistantWindows.exe'
+  nsExec::ExecToLog 'taskkill /F /IM ${PRODUCT_EXE}'
   Sleep 2000
   
-  ; Remove all installed files
-  RMDir /r "$INSTDIR"
+  ; Remove application files (PyInstaller onedir layout: payload in _internal).
+  ; Only app-owned paths are removed recursively; $INSTDIR itself is only
+  ; deleted when empty, so a user-chosen directory with foreign files survives.
+  RMDir /r "$INSTDIR\_internal"
+  Delete "$INSTDIR\${PRODUCT_EXE}"
+  Delete "$INSTDIR\uninst.exe"
+  RMDir "$INSTDIR"
   
   ; Remove shortcuts
   Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
@@ -118,6 +134,8 @@ Section Uninstall
   ; Remove registry entries
   DeleteRegKey HKLM "${PRODUCT_DIR_REGKEY}"
   DeleteRegKey ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}"
+  ; Autostart entries: current name plus the legacy installer name
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "${AUTOSTART_VALUE_NAME}"
   DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCT_NAME}"
   
   ; Remove application data directory (optional, keep user data)

@@ -127,6 +127,7 @@ class TestNotificationDisplay:
         mock_toaster = MagicMock()
         mock_toaster.show_toast = MagicMock(return_value=True)
         handler._toaster = mock_toaster
+        handler._platform = None  # isolate from platform abstraction layer
         
         # Create and show notification
         notification = Notification(title=title, message=message)
@@ -136,10 +137,10 @@ class TestNotificationDisplay:
         assert result is True, "show() should return True when toaster succeeds"
         mock_toaster.show_toast.assert_called_once()
         
-        call_kwargs = mock_toaster.show_toast.call_args
-        assert call_kwargs[1]['title'] == title, \
+        toast = mock_toaster.show_toast.call_args[0][0]
+        assert toast.text_fields[0] == title, \
             f"Toast title mismatch: expected '{title}'"
-        assert call_kwargs[1]['msg'] == message, \
+        assert toast.text_fields[1] == message, \
             f"Toast message mismatch: expected '{message}'"
 
     @given(
@@ -163,15 +164,16 @@ class TestNotificationDisplay:
         mock_toaster = MagicMock()
         mock_toaster.show_toast = MagicMock(return_value=True)
         handler._toaster = mock_toaster
+        handler._platform = None  # isolate from platform abstraction layer
         
         # Call show_simple
         result = handler.show_simple(title=title, message=message)
         
         # Property: notification was shown with correct title and message
         assert result is True
-        call_kwargs = mock_toaster.show_toast.call_args
-        assert call_kwargs[1]['title'] == title
-        assert call_kwargs[1]['msg'] == message
+        toast = mock_toaster.show_toast.call_args[0][0]
+        assert toast.text_fields[0] == title
+        assert toast.text_fields[1] == message
 
 
 # =============================================================================
@@ -384,6 +386,7 @@ class TestNotificationEdgeCases:
         """
         handler = NotificationHandler(app_name="Test App")
         handler._toaster = None
+        handler._platform = None  # isolate from platform abstraction layer
         
         notification = Notification(title="Test", message="Test message")
         result = handler.show(notification)

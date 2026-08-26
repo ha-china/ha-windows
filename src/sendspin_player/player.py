@@ -132,6 +132,11 @@ class SendspinReceiver:
         """Last known volume as 0-100 (updated by commands / local changes)."""
         return round(self._volume * 100)
 
+    @property
+    def muted(self) -> bool:
+        """Last known mute state."""
+        return self._muted
+
     def apply_local_volume(self, volume: int) -> None:
         """Apply system volume locally (0-100) and notify listeners."""
         volume = max(0, min(100, int(volume)))

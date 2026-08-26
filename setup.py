@@ -67,7 +67,6 @@ def get_platform_specific_args():
         "--hidden-import=pycaw",
         "--hidden-import=comtypes",
         "--hidden-import=pystray",
-            "--hidden-import=win10toast",
             "--hidden-import=src.platforms.windows",
         ])
         
@@ -192,7 +191,6 @@ def build_exe():
         "--exclude-module=numpy.char",
         "--exclude-module=numpy.emath",
         "--exclude-module=numpy.rec",
-        "--exclude-module=win10toast",
         # UPX-compressed python DLL breaks one-file mode ("Failed to load
         # Python DLL") when extracted to %TEMP% under antivirus scanning;
         # --strip is unsafe on Windows binaries as well.

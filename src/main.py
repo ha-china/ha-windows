@@ -5,6 +5,7 @@ Simulates ESPHome device for Home Assistant integration.
 Uses Windows native APIs - no external DLL dependencies required.
 """
 
+from src import __version__
 from src.i18n import set_language
 from src.voice.audio_recorder import AudioRecorder
 from src.ui.system_tray_icon import get_tray
@@ -74,15 +75,9 @@ import os
 
 
 def _get_log_dir() -> str:
-    system = platform.system()
-    home = os.path.expanduser('~')
-
-    if system == 'Windows':
-        return os.path.join(home, 'AppData', 'Local', 'HomeAssistantWindows')
-    if system == 'Darwin':
-        return os.path.join(home, 'Library', 'Logs', 'HomeAssistantWindows')
-
-    return os.path.join(home, '.local', 'state', 'HomeAssistantWindows')
+    """Log directory (same location as the app data dir)."""
+    from src.core.models import get_user_data_dir
+    return str(get_user_data_dir())
 
 
 class SizeLimitedFileHandler(logging.FileHandler):
@@ -183,14 +178,16 @@ class HomeAssistantWindows:
         self._wake_word_listening = False
         self._event_loop = None  # Event loop reference for callbacks
         self._mdns_refresh_task: asyncio.Task | None = None
+        self._server_task: asyncio.Task | None = None
         self.sendspin = None  # SendspinReceiver instance
 
         self.running = False
+        self._cleanup_done = threading.Event()
+        self._last_wakeup_time = 0.0  # wake-word debounce
 
     async def run(self):
         """Run main program"""
         try:
-            from src import __version__
             logger.info("=" * 60)
             logger.info(f"Device: {self.device_name}")
             logger.info(f"Version: {__version__}")
@@ -245,7 +242,9 @@ class HomeAssistantWindows:
         self.api_server.set_conversation_callback(self._on_conversation_text)
 
         # Run server in background
-        asyncio.create_task(self.api_server.serve_forever())
+        # Keep a reference: tasks are only weakly referenced by the loop and
+        # could otherwise be garbage-collected mid-flight.
+        self._server_task = asyncio.create_task(self.api_server.serve_forever())
 
     def _set_microphone(self, device_name: str) -> None:
         """Switch the recording microphone ("" = system default) and persist it."""
@@ -337,6 +336,14 @@ class HomeAssistantWindows:
                 logger.error(f"Failed to stop Sendspin receiver: {e}")
             self.sendspin = None
 
+    def _run_on_loop(self, coro) -> None:
+        """Schedule a coroutine on the event loop from any thread (tray etc.)."""
+        loop = self._event_loop
+        if loop is None or loop.is_closed():
+            logger.warning("Event loop not available, dropping coroutine")
+            return
+        asyncio.run_coroutine_threadsafe(coro, loop)
+
     def _on_tray_sendspin_toggle(self, enabled: bool) -> None:
         """Handle Sendspin enable/disable toggle from tray."""
         state = self.api_server.state
@@ -344,9 +351,9 @@ class HomeAssistantWindows:
         state.save_preferences()
 
         if enabled and self.sendspin is None:
-            asyncio.create_task(self._start_sendspin())
+            self._run_on_loop(self._start_sendspin())
         elif not enabled and self.sendspin is not None:
-            asyncio.create_task(self._stop_sendspin())
+            self._run_on_loop(self._stop_sendspin())
         logger.info(f"🔊 Sendspin player {'enabled' if enabled else 'disabled'}")
 
     def _on_sendspin_metadata(self, info: dict) -> None:
@@ -428,7 +435,7 @@ class HomeAssistantWindows:
                 command = MediaCommand.PAUSE if (self.sendspin and self.sendspin.is_playing()) else MediaCommand.PLAY
             elif cmd == "mute":
                 command = MediaCommand.MUTE
-                mute_value = not (self.sendspin._muted if self.sendspin else False)
+                mute_value = not (self.sendspin.muted if self.sendspin else False)
                 if self.sendspin:
                     self.sendspin.apply_local_mute(mute_value)
             else:
@@ -492,7 +499,7 @@ class HomeAssistantWindows:
 
         device_info = DeviceInfo(
             name=self.device_name,
-            version="1.0.0",
+            version=__version__,
             platform=platform.system(),
             board="PC",
         )
@@ -507,7 +514,6 @@ class HomeAssistantWindows:
         self._local_ip = self.mdns_broadcaster._get_local_ip()
 
         # Set up tray callbacks
-        from src import __version__
         self.tray.set_version(__version__)
         self.tray.set_callbacks(
             on_quit=self._request_quit,
@@ -564,15 +570,15 @@ class HomeAssistantWindows:
         logger.info("Quit requested from tray")
         self.running = False
 
-        # Force exit (multiple background threads may prevent normal exit)
+        # Watchdog: normally _cleanup finishes and exits by itself; this only
+        # fires if cleanup hangs, giving it a generous grace period first.
         import os
         import threading
 
         def force_exit():
-            import time
-            time.sleep(1)  # Give some time for cleanup to complete
-            logger.info("Force exiting...")
-            os._exit(0)
+            if not self._cleanup_done.wait(timeout=8):
+                logger.info("Cleanup did not finish in time, force exiting...")
+                os._exit(0)
 
         threading.Thread(target=force_exit, daemon=True).start()
 
@@ -621,7 +627,7 @@ class HomeAssistantWindows:
                 self._update_wake_word_detector()
 
             # Skip wake word detection if TTS is playing (to avoid false positives)
-            if self.api_server and self.api_server.protocol and not self.api_server.protocol._is_playing_tts:
+            if self.api_server and self.api_server.protocol and not self.api_server.protocol.is_playing_tts:
                 for detector in self._wake_word_detectors.values():
                     detector.process_audio(audio_data)
 
@@ -659,7 +665,6 @@ class HomeAssistantWindows:
 
             # Save the event loop reference for use in callback
             self._event_loop = asyncio.get_running_loop()
-            self._last_wakeup_time = 0  # For debouncing
 
             # Set callback
             def on_wake_word(wake_word_phrase: str):
@@ -698,7 +703,8 @@ class HomeAssistantWindows:
         if not self.api_server:
             return ['okay_nabu']
 
-        active_set = self.api_server.state.active_wake_words
+        # snapshot: the event loop thread mutates this set concurrently
+        active_set = set(self.api_server.state.active_wake_words)
         if not active_set:
             return ['okay_nabu']
 
@@ -839,6 +845,7 @@ class HomeAssistantWindows:
 
         logger.info("Cleanup complete, exiting...")
 
+        self._cleanup_done.set()
         # Force exit process (ensure all background threads are terminated)
         import os
         os._exit(0)

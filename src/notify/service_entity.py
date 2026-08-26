@@ -274,7 +274,7 @@ class ServiceEntityManager:
             from src.commands.command_executor import CommandExecutor
             self._command_executor = CommandExecutor()
 
-        result = self._command_executor.execute(f"media:{command}")
+        result = self._command_executor.execute(command)
         logger.info(f"Media command: {command}, result: {result}")
 
     def set_hotkey_callback(self, callback) -> None:

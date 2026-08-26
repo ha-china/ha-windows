@@ -26,7 +26,7 @@ _MARGIN = 16        # distance from screen edges
 _TASKBAR = 48       # approximate taskbar height
 _WIDTH = 424
 _HEIGHT = 212
-_ALPHA = 0.97
+_ALPHA = 0.93
 
 # Magic color used to punch rounded corners out of the window.
 _MAGIC = "#010203"
@@ -52,11 +52,57 @@ _FG = "#F7F8FA"
 _FG_DIM = "#A6ADBD"
 _ACCENT = "#8B93FF"
 _ACCENT_DIM = "#5B62C9"
-_BTN_FILL = "#2E3442"
-_BTN_FILL_HOVER = "#3C4456"
-_BTN_OUTLINE = "#454D61"
-_TRACK = "#39404F"
 _TEXT_SHADOW = "#0B0D13"
+
+
+def _mix(a, b, t):
+    """Blend two RGB tuples; t=0 -> a, t=1 -> b."""
+    return tuple(int(round(x * (1 - t) + y * t)) for x, y in zip(a, b))
+
+
+def _rgb_to_hex(rgb):
+    return "#{:02X}{:02X}{:02X}".format(*rgb)
+
+
+# UI chrome colors derived from the current backdrop so buttons/tracks
+# harmonize with whatever the album art is (fallback: neutral slate).
+_THEME = {
+    "btn_fill": "#2E3442",
+    "btn_fill_hover": "#3C4456",
+    "btn_outline": "#454D61",
+    "track": "#39404F",
+    "accent": "#8B93FF",
+    "accent_dim": "#5B62C9",
+}
+
+_FALLBACK_AVG = (0x24, 0x2A, 0x38)
+
+
+def _derive_theme(avg_rgb):
+    """Recompute chrome colors from the blurred backdrop's average color."""
+    import colorsys
+
+    r, g, b = avg_rgb
+    lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    if lum < 46:  # very dark art: lift so controls stay visible
+        avg_rgb = _mix(avg_rgb, (120, 120, 135), 0.45)
+    _THEME["btn_fill"] = _rgb_to_hex(_mix(avg_rgb, (0, 0, 0), 0.28))
+    _THEME["btn_fill_hover"] = _rgb_to_hex(_mix(avg_rgb, (255, 255, 255), 0.12))
+    _THEME["btn_outline"] = _rgb_to_hex(_mix(avg_rgb, (255, 255, 255), 0.24))
+    _THEME["track"] = _rgb_to_hex(_mix(avg_rgb, (0, 0, 0), 0.18))
+
+    # Accent (play button / progress fill / lyric): lift the art's hue to a
+    # bright, saturated tint so it stays visible against the dark backdrop.
+    h, l, s = colorsys.rgb_to_hls(*[c / 255 for c in avg_rgb])
+    if s < 0.16:
+        # artwork is nearly gray: keep the brand indigo
+        return
+    l = min(max(l, 0.55), 0.72)
+    s = min(max(s, 0.42), 0.75)
+    ar, ag, ab = (int(round(c * 255)) for c in colorsys.hls_to_rgb(h, l, s))
+    _THEME["accent"] = _rgb_to_hex((ar, ag, ab))
+    dr, dg, db = (int(round(c * 255)) for c in colorsys.hls_to_rgb(h, l - 0.10, s))
+    _THEME["accent_dim"] = _rgb_to_hex((dr, dg, db))
 
 
 _LYRIC_POLL_MS = 200    # lyric/progress refresh interval
@@ -215,17 +261,26 @@ def _compose_background(art_bytes: Optional[bytes]):
             col = tuple(int(int(a, 16) * (1 - t) + int(b, 16) * t) for a, b in zip(top, bot))
             ImageDraw.Draw(base).line([(0, y), (W, y)], fill=col)
 
+    # Derive chrome colors (buttons/tracks) from this backdrop
+    if art_bytes:
+        import numpy as np
+
+        avg = tuple(int(c) for c in np.asarray(base).reshape(-1, 3).mean(axis=0))
+        _derive_theme(avg)
+    else:
+        _derive_theme(_FALLBACK_AVG)
+
     d = ImageDraw.Draw(base)
 
     # Static slider tracks (progress + volume), pill shaped
     bar_x0, bar_x1 = _PAD + 46, _WIDTH - _PAD - 46
     d.rounded_rectangle(
         (bar_x0 * S, (_BAR_Y - 3) * S, (bar_x1 + 3) * S, (_BAR_Y + 3) * S),
-        radius=3 * S, fill=_TRACK,
+        radius=3 * S, fill=_THEME["track"],
     )
     d.rounded_rectangle(
         ((_WIDTH - 148) * S, (_VOL_CY - 2) * S, (_WIDTH - _PAD) * S, (_VOL_CY + 2) * S),
-        radius=2 * S, fill=_TRACK,
+        radius=2 * S, fill=_THEME["track"],
     )
 
     base = base.resize((_WIDTH, _HEIGHT), Image.LANCZOS)
@@ -283,6 +338,9 @@ class _MiniPlayerManager:
         self._vol_icon_id = None
         self._vol_knob_id = None
         self._btn_ids: dict = {}
+        self._button_images: dict = {}   # id(item) -> (normal, hover, is_play)
+        self._button_specs: list = []    # (item, cmd, is_play, r, cx, cy)
+        self._play_pt = 15
 
         self._visible = False
         self._playing = False
@@ -376,7 +434,7 @@ class _MiniPlayerManager:
         )
         self._lyric_id = canvas.create_text(
             _PAD + _ART_SIZE + 18, _LYRIC_Y, text="", anchor="w",
-            fill=_ACCENT, font=("Microsoft YaHei UI", 10),
+            fill=_THEME["accent"], font=("Microsoft YaHei UI", 10),
         )
 
         # close button (top-right): glyph only, red hover
@@ -392,7 +450,7 @@ class _MiniPlayerManager:
         # round-cap line, knob an anti-aliased image ---
         self._bar_fill_id = canvas.create_line(
             self._bar_x0 + 3, _BAR_Y, self._bar_x0 + 3, _BAR_Y,
-            fill=_ACCENT, width=6, capstyle="round",
+            fill=_THEME["accent"], width=6, capstyle="round",
         )
         self._knob_photo = self._to_photo(_aa_ellipse(13, "#FFFFFF"))
         self._knob_id = canvas.create_image(
@@ -412,6 +470,7 @@ class _MiniPlayerManager:
         # --- transport buttons: anti-aliased circles with hover variants ---
         cy = _CTRL_CY
         self._glyph_centers: list = []
+        self._button_specs: list = []
         for cx, cmd, glyph, is_play in (
             (_PAD + 22, "previous", "\u23EE", False),
             (_PAD + 66, "play_pause", "\u25B6", True),
@@ -420,38 +479,40 @@ class _MiniPlayerManager:
         ):
             r = 44 if is_play else 32  # image diameter (2x visual radius)
             pt = 15 if is_play else (10 if glyph == "\u23F9" else 11)
-            if is_play:
-                normal = _aa_ellipse(r, _ACCENT)
-                hover = _aa_ellipse(r, _ACCENT_DIM)
-            else:
-                normal = _aa_ellipse(r, _BTN_FILL, _BTN_OUTLINE, 1)
-                hover = _aa_ellipse(r, _BTN_FILL_HOVER, _BTN_OUTLINE, 1)
-            img_normal = self._to_photo(normal)
-            img_hover = self._to_photo(hover)
-            item = canvas.create_image(cx, cy, image=img_normal, anchor="center")
+            item = canvas.create_image(cx, cy, anchor="center")
             glyph_item = canvas.create_text(
                 cx, cy, text=glyph,
                 fill="#FFFFFF" if is_play else _FG,
                 font=("Segoe UI Symbol", pt),
             )
-            self._btn_ids[cmd] = (item, img_normal, img_hover)
+            self._btn_ids[cmd] = item
             if is_play:
                 self._play_glyph_id = glyph_item
                 self._play_pt = pt
             self._glyph_centers.append((glyph_item, cx, cy, pt))
+            self._button_specs.append((item, cmd, is_play, r, cx, cy))
+        self._refresh_button_theme(canvas)
 
-            def on_enter(e, it=item, im=img_hover, cv=canvas):
-                cv.itemconfigure(it, image=im)
+        def _make_enter(item):
+            def on_enter(e):
+                hover = self._button_images[id(item)][1]
+                canvas.itemconfigure(item, image=hover)
+            return on_enter
 
-            def on_leave(e, it=item, im=img_normal, cv=canvas):
-                cv.itemconfigure(it, image=im)
+        def _make_leave(item):
+            def on_leave(e):
+                normal = self._button_images[id(item)][0]
+                canvas.itemconfigure(item, image=normal)
+            return on_leave
 
+        for item, cmd, is_play, r, cx, cy in self._button_specs:
+            glyph_item = next(g for g, gx, gy, _p in self._glyph_centers if (gx, gy) == (cx, cy))
             canvas.tag_bind(item, "<Button-1>", lambda e, c=cmd: self._fire_command(c))
             canvas.tag_bind(glyph_item, "<Button-1>", lambda e, c=cmd: self._fire_command(c))
-            canvas.tag_bind(item, "<Enter>", on_enter)
-            canvas.tag_bind(item, "<Leave>", on_leave)
-            canvas.tag_bind(glyph_item, "<Enter>", on_enter)
-            canvas.tag_bind(glyph_item, "<Leave>", on_leave)
+            canvas.tag_bind(item, "<Enter>", _make_enter(item))
+            canvas.tag_bind(item, "<Leave>", _make_leave(item))
+            canvas.tag_bind(glyph_item, "<Enter>", _make_enter(item))
+            canvas.tag_bind(glyph_item, "<Leave>", _make_leave(item))
 
         # --- volume ---
         self._vol_icon_id = canvas.create_text(
@@ -517,6 +578,26 @@ class _MiniPlayerManager:
         photo = ImageTk.PhotoImage(pil_image)
         self._photo_refs.append(photo)
         return photo
+
+    def _refresh_button_theme(self, canvas: tk.Canvas) -> None:
+        """(Re)render button circle images from the current theme colors."""
+        for item, _cmd, is_play, r, _cx, _cy in self._button_specs:
+            if is_play:
+                normal = _aa_ellipse(r, _THEME["accent"])
+                hover = _aa_ellipse(r, _THEME["accent_dim"])
+            else:
+                normal = _aa_ellipse(r, _THEME["btn_fill"], _THEME["btn_outline"], 1)
+                hover = _aa_ellipse(r, _THEME["btn_fill_hover"], _THEME["btn_outline"], 1)
+            img_normal = self._to_photo(normal)
+            img_hover = self._to_photo(hover)
+            self._button_images[id(item)] = (img_normal, img_hover, is_play)
+            canvas.itemconfigure(item, image=img_normal)
+        # accent-colored items follow the theme too
+        try:
+            canvas.itemconfigure(self._bar_fill_id, fill=_THEME["accent"])
+            canvas.itemconfigure(self._lyric_id, fill=_THEME["accent"])
+        except (tk.TclError, AttributeError):
+            pass
 
     def _make_thumb(self, data: Optional[bytes]):
         """Rounded artwork thumbnail with truly transparent corners
@@ -745,10 +826,12 @@ class _MiniPlayerManager:
             return
         self._art_data = bytes(data)
         try:
+            # _compose_background also derives the chrome theme from the art
             self._bg_photo = _compose_background(self._art_data)
             self._canvas.itemconfigure(self._bg_id, image=self._bg_photo)
             self._thumb_photo = self._make_thumb(self._art_data)
             self._canvas.itemconfigure(self._art_id, image=self._thumb_photo)
+            self._refresh_button_theme(self._canvas)
         except Exception as e:
             logger.debug(f"Artwork apply failed: {e}")
 

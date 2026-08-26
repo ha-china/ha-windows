@@ -282,6 +282,17 @@ class SendspinReceiver:
                 self._client.add_server_command_listener(self._on_server_command)
                 self._client.add_disconnect_listener(on_disconnect)
 
+                # Report the PC's REAL volume/mute so MA drops any stale
+                # state it stored for this device (e.g. a mute from a
+                # previous session).
+                sys_vol = self.get_system_volume()
+                if sys_vol is not None:
+                    self._volume = sys_vol / 100
+                sys_mute = self.get_system_mute()
+                if sys_mute is not None:
+                    self._muted = sys_mute
+                self._report_player_state()
+
                 logger.info("Sendspin: Music Assistant connected")
                 self._connected = True
                 self._notify_connection()
@@ -506,6 +517,11 @@ class SendspinReceiver:
     def _on_server_command(self, payload) -> None:
         """Apply volume/mute commands sent by Music Assistant to the system."""
         try:
+            if not self.is_playing():
+                # Nothing is playing: this is MA replaying its stored state at
+                # connect. Don't let it touch the system volume.
+                logger.debug("Sendspin: ignoring volume/mute while not playing")
+                return
             player_cmd = getattr(payload, "player", None)
             if player_cmd is None:
                 return
@@ -568,4 +584,16 @@ class SendspinReceiver:
             return round(float(level) * 100)
         except Exception as e:
             logger.debug(f"Failed to read system volume: {e}")
+            return None
+
+    @staticmethod
+    def get_system_mute() -> Optional[bool]:
+        """Read the Windows master mute state, None when unavailable."""
+        try:
+            from pycaw.pycaw import AudioUtilities
+
+            devices = AudioUtilities.GetSpeakers()
+            return bool(devices.EndpointVolume.GetMute())
+        except Exception as e:
+            logger.debug(f"Failed to read system mute: {e}")
             return None

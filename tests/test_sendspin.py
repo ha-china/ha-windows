@@ -73,8 +73,13 @@ def _make_command_payload(command_value: str, **fields):
 
 
 class TestServerCommand:
-    def test_volume_command(self):
+    def _playing_receiver(self):
         recv = SendspinReceiver(name="Test")
+        recv._playing = True  # server volume/mute only applies while playing
+        return recv
+
+    def test_volume_command_while_playing(self):
+        recv = self._playing_receiver()
         volumes = []
         recv.set_volume_callback(lambda vol, muted: volumes.append((vol, muted)))
         with patch.object(SendspinReceiver, "_report_player_state"):
@@ -82,14 +87,29 @@ class TestServerCommand:
         assert recv.volume_percent == 42
         assert volumes == [(42, False)]
 
-    def test_volume_clamped_at_set(self):
+    def test_volume_command_ignored_while_stopped(self):
+        """MA replays stored volume/mute at connect; nothing is playing then,
+        so the system volume must stay untouched (launch-mute regression)."""
         recv = SendspinReceiver(name="Test")
+        volumes = []
+        recv.set_volume_callback(lambda vol, muted: volumes.append((vol, muted)))
+        recv._set_system_volume = MagicMock()
+        recv._set_system_mute = MagicMock()
+        with patch.object(SendspinReceiver, "_report_player_state"):
+            recv._on_server_command(_make_command_payload("volume", volume=42))
+            recv._on_server_command(_make_command_payload("mute", mute=True))
+        recv._set_system_volume.assert_not_called()
+        recv._set_system_mute.assert_not_called()
+        assert volumes == []
+
+    def test_volume_clamped_at_set(self):
+        recv = self._playing_receiver()
         with patch.object(SendspinReceiver, "_report_player_state"):
             recv._on_server_command(_make_command_payload("volume", volume=150))
         assert recv.volume_percent == 100
 
-    def test_mute_command(self):
-        recv = SendspinReceiver(name="Test")
+    def test_mute_command_while_playing(self):
+        recv = self._playing_receiver()
         volumes = []
         recv.set_volume_callback(lambda vol, muted: volumes.append((vol, muted)))
         with patch.object(SendspinReceiver, "_report_player_state"):

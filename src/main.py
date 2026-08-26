@@ -448,6 +448,12 @@ class HomeAssistantWindows:
             asyncio.run_coroutine_threadsafe(
                 self.sendspin.send_media_command(command, mute=mute_value), loop
             )
+            # Optimistic UI update: MA's authoritative state only arrives with
+            # the next metadata push (seconds away, or never while paused).
+            if cmd == "play_pause":
+                self.sendspin.set_local_playing(command == MediaCommand.PLAY)
+            elif cmd == "stop":
+                self.sendspin.set_local_playing(False)
         except Exception as e:
             logger.error(f"Mini player command failed: {e}")
 

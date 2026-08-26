@@ -181,6 +181,16 @@ class SendspinReceiver:
         """True when playback is active per the last metadata speed update."""
         return self._playing
 
+    def set_local_playing(self, playing: bool) -> None:
+        """Optimistically flip the playing state after a LOCAL control action.
+
+        MA only reports the authoritative state via periodic metadata (which
+        stops entirely while paused); without this the UI lags seconds behind
+        the user's own button presses. The next metadata/stream event will
+        correct any drift.
+        """
+        self._set_playing(playing, "local control")
+
     def _set_playing(self, playing: bool, source: str) -> None:
         if playing == self._playing:
             return

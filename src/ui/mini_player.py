@@ -79,9 +79,16 @@ _FALLBACK_AVG = (0x24, 0x2A, 0x38)
 
 
 def _derive_theme(avg_rgb):
-    """Recompute chrome colors from the blurred backdrop's average color."""
+    """Recompute chrome colors from the blurred backdrop's average color.
+
+    The accent ALWAYS derives from the artwork - every track recolors the
+    player, no fixed fallback. Even near-gray covers produce a tinted
+    accent: their slight channel imbalance decides the hue, and the clamped
+    saturation keeps it subtle.
+    """
     import colorsys
 
+    orig_rgb = avg_rgb  # accent hue must come from the UNLIFTED color
     r, g, b = avg_rgb
     lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
     if lum < 46:  # very dark art: lift so controls stay visible
@@ -92,13 +99,10 @@ def _derive_theme(avg_rgb):
     _THEME["track"] = _rgb_to_hex(_mix(avg_rgb, (0, 0, 0), 0.18))
 
     # Accent (play button / progress fill / lyric): lift the art's hue to a
-    # bright, saturated tint so it stays visible against the dark backdrop.
-    h, l, s = colorsys.rgb_to_hls(*[c / 255 for c in avg_rgb])
-    if s < 0.16:
-        # artwork is nearly gray: keep the brand indigo
-        return
-    l = min(max(l, 0.55), 0.72)
-    s = min(max(s, 0.42), 0.75)
+    # bright, visible tint against the dark backdrop.
+    h, l, s = colorsys.rgb_to_hls(*[c / 255 for c in orig_rgb])
+    l = min(max(l, 0.58), 0.72)
+    s = min(max(s, 0.38), 0.75)
     ar, ag, ab = (int(round(c * 255)) for c in colorsys.hls_to_rgb(h, l, s))
     _THEME["accent"] = _rgb_to_hex((ar, ag, ab))
     dr, dg, db = (int(round(c * 255)) for c in colorsys.hls_to_rgb(h, l - 0.10, s))
@@ -825,15 +829,23 @@ class _MiniPlayerManager:
         if not data:
             return
         self._art_data = bytes(data)
+        # Independent try blocks: a failure in one step (e.g. thumbnail
+        # decode) must not leave the others stuck on the previous track.
         try:
             # _compose_background also derives the chrome theme from the art
             self._bg_photo = _compose_background(self._art_data)
             self._canvas.itemconfigure(self._bg_id, image=self._bg_photo)
+        except Exception as e:
+            logger.debug(f"Artwork background failed: {e}")
+        try:
             self._thumb_photo = self._make_thumb(self._art_data)
             self._canvas.itemconfigure(self._art_id, image=self._thumb_photo)
+        except Exception as e:
+            logger.debug(f"Artwork thumbnail failed: {e}")
+        try:
             self._refresh_button_theme(self._canvas)
         except Exception as e:
-            logger.debug(f"Artwork apply failed: {e}")
+            logger.debug(f"Artwork theme refresh failed: {e}")
 
     def _apply_lyrics(self, fetch_id: int, lines) -> None:
         if fetch_id != self._lyric_fetch_id:

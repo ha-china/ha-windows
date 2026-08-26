@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-08-26
+
+### Added
+- Mini player visual redesign ("ambient glass"): blurred album art backdrop, rounded transparent window, anti-aliased circular controls, ink-centered glyphs, progress bar with adjacent time labels
+- Dynamic color theming: buttons, slider tracks and accent color (play button / progress fill / lyric) are derived from each track's artwork - every track recolors the player
+- Optimistic playback state: play/pause/stop button presses update the UI instantly instead of waiting seconds for the next metadata push
+
+### Fixed
+- Launch no longer mutes the PC: Music Assistant's replayed (possibly stale) volume/mute state is ignored while nothing is playing, and the real system volume/mute is reported at connect
+- Mini player artwork/duration/volume arriving before the window existed were silently dropped (now cached and re-applied on show)
+
 ## [0.9.0] - 2026-08-26
 
 ### Added

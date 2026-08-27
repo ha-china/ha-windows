@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-08-26
+
+First stable release. The Windows satellite is feature-complete for daily use:
+voice assistant with wake words, Sendspin music streaming with a fully themed
+mini player, HA hardware sensors, notifications and remote command execution.
+
+### Changed
+- Mini player accent colors now always derive from the artwork (no fallback) -
+  every track recolors the player, including gray covers (warm/cool tint)
+
+### Fixed
+- Track changes sometimes left the play button / progress fill in the previous
+  track's color
+- Play/pause state lagging seconds behind the user's own button presses
+
 ## [0.10.0] - 2026-08-26
 
 ### Added

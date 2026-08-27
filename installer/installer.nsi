@@ -4,7 +4,7 @@
 !define PRODUCT_NAME "Home Assistant Windows"
 ; Version can be overridden at build time: makensis -DPRODUCT_VERSION=x.y.z
 !ifndef PRODUCT_VERSION
-  !define PRODUCT_VERSION "0.10.0"
+  !define PRODUCT_VERSION "1.0.0"
 !endif
 !define PRODUCT_PUBLISHER "HA-China"
 !define PRODUCT_WEB_SITE "https://github.com/ha-china/ha-windows"

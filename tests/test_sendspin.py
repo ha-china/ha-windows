@@ -209,8 +209,6 @@ class TestPlayback:
         recv = SendspinReceiver(name="Test")
         recv._audio_queue = asyncio.Queue()
         recv._client = MagicMock()
-        recv._client.compute_play_time.return_value = 0  # always "now"
-        recv._client.now_us.return_value = 0
 
         mock_stream = MagicMock()
         mock_sd = MagicMock()
@@ -221,8 +219,8 @@ class TestPlayback:
             patch.dict("sys.modules", {"numpy": np}),
         ):
             pcm = np.zeros(4800, dtype=np.int16).tobytes()
-            await recv._audio_queue.put((0, pcm))  # (play_at_us, payload)
-            await recv._audio_queue.put((0, None))
+            await recv._audio_queue.put(pcm)
+            await recv._audio_queue.put(None)
             task = asyncio.create_task(recv._playback_loop())
             await asyncio.wait_for(task, timeout=5)
 

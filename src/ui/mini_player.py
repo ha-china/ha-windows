@@ -766,6 +766,17 @@ class _MiniPlayerManager:
             text += "\u2026"
         return text
 
+    def _apply_clear_track(self) -> None:
+        try:
+            self._canvas.itemconfigure(self._title_id, text="")
+            self._canvas.itemconfigure(self._artist_id, text="")
+            self._canvas.itemconfigure(self._lyric_id, text="")
+            self._canvas.itemconfigure(self._elapsed_id, text=_fmt_time(0))
+            self._canvas.itemconfigure(self._total_id, text=_fmt_time(0))
+            self._draw_progress(0)
+        except (tk.TclError, AttributeError):
+            pass
+
     def _apply_track(self, title: str, artist: str) -> None:
         self._title = title or "\u2014"
         self._artist = artist or ""
@@ -1006,6 +1017,19 @@ class _MiniPlayerManager:
     def is_visible(self) -> bool:
         return self._visible
 
+    def clear_track(self) -> None:
+        """Clear the current track display (new stream starting). No lyric fetch."""
+        self._title = ""
+        self._artist = ""
+        self._lyrics = []
+        self._lyric_index = -1
+        self._progress_ms = 0
+        self._progress_ts = 0.0
+        self._speed = 0.0
+        self._lyric_fetch_id += 1  # invalidate in-flight lyric fetches
+        if self._root is not None:
+            self._queue.put(("clear_track",))
+
     def update_track(self, title: str, artist: str, duration_ms: int = 0) -> None:
         changed = (title, artist) != (self._title, self._artist)
         # cache first so values survive a window that is not yet created
@@ -1093,6 +1117,10 @@ def set_volume_handler(handler: VolumeHandler) -> None:
 
 def set_close_handler(handler: CloseHandler) -> None:
     _mgr.set_close_handler(handler)
+
+
+def clear_track() -> None:
+    _mgr.clear_track()
 
 
 def update_track(title: str, artist: str, duration_ms: int = 0) -> None:

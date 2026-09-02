@@ -318,6 +318,7 @@ class HomeAssistantWindows:
             self.sendspin.set_state_callback(self._on_sendspin_state)
             self.sendspin.set_artwork_callback(self._on_sendspin_artwork)
             self.sendspin.set_volume_callback(self._on_sendspin_volume)
+            self.sendspin.set_stream_event_callback(self._on_sendspin_stream_event)
             self.sendspin.set_sync_callback(self._on_sendspin_sync)
             await self.sendspin.start()
             if self.tray:
@@ -356,6 +357,20 @@ class HomeAssistantWindows:
         elif not enabled and self.sendspin is not None:
             self._run_on_loop(self._stop_sendspin())
         logger.info(f"🔊 Sendspin player {'enabled' if enabled else 'disabled'}")
+
+    def _on_sendspin_stream_event(self, event: str) -> None:
+        """Stream start/end: clear the mini player track immediately.
+
+        MA pushes metadata with its own cadence (can lag tens of seconds on
+        track change). The stream boundary is the earliest signal we get; use
+        it to clear stale track info so the UI never sits on the previous
+        track.
+        """
+        try:
+            from src.ui import mini_player
+            mini_player.clear_track()
+        except Exception as e:
+            logger.debug(f"Mini player stream event failed: {e}")
 
     def _on_sendspin_metadata(self, info: dict) -> None:
         """Handle track metadata/progress updates from the Sendspin stream."""

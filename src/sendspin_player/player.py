@@ -34,9 +34,14 @@ BIT_DEPTH = 16
 BUFFER_CAPACITY = 48000 * CHANNELS * (BIT_DEPTH // 8)
 
 # Time-synchronized playback tuning: see aiosendspin SendspinClient docs.
-STATIC_DELAY_MS = 50.0      # fixed extra latency after clock sync
+STATIC_DELAY_MS = 50.0      # fixed extra delay after clock sync
 REQUIRED_LEAD_MS = 200.0    # decode/pre-buffer lead before the first chunk
 MIN_BUFFER_MS = 200.0       # sustained playback buffer for jitter absorption
+# Local target buffer: we feed sounddevice this much AHEAD of the server
+# clock instead of exactly on time. A fixed buffer absorbs scheduling jitter,
+# write() blocking and clock-drift residuals; chasing the exact play time
+# makes the skew grow monotonically (per-chunk overhead is never recovered).
+_TARGET_BUFFER_MS = 100.0
 
 
 def get_hostname() -> str:
@@ -90,7 +95,8 @@ class SendspinReceiver:
         self._metadata_callback: Optional[Callable[[dict], None]] = None
         self._connection_callback: Optional[Callable[[bool], None]] = None
         self._state_callback: Optional[Callable[[bool], None]] = None
-        self._sync_callback: Optional[Callable[[int], None]] = None
+        self._sync_callback: Optional[Callable[[int, bool], None]] = None
+        self._stream_event_callback: Optional[Callable[[str], None]] = None
         self._artwork_callback: Optional[Callable[[bytes], None]] = None
         self._volume_callback: Optional[Callable[[int, bool], None]] = None
         # Software volume: PCM gain applied in the playback loop. This only
@@ -99,6 +105,7 @@ class SendspinReceiver:
         self._muted: bool = False
         self._playing: bool = False
         self._audio_queue: Optional[asyncio.Queue] = None
+        self._pending_samples = 0       # total samples still awaiting playback
         self._client_id: Optional[str] = None
         self._identity = None          # aiosendspin.noise.keys.Identity (lazy)
         self._pairing_store = None     # FileClientPairingStore (lazy, async open)
@@ -436,7 +443,7 @@ class SendspinReceiver:
     # ------------------------------------------------------------------ audio
 
     def _on_audio_chunk(self, timestamp_us: int, payload: bytes, audio_format) -> None:
-        """Queue incoming PCM audio for time-synchronized playback."""
+        """Queue incoming PCM audio for real-time playback."""
         try:
             if audio_format.codec.value != "pcm":
                 logger.warning("Unexpected codec %s, dropping chunk", audio_format.codec.value)
@@ -450,36 +457,22 @@ class SendspinReceiver:
                     len(payload),
                     audio_format.codec.value,
                 )
-            play_at_us = self._compute_play_time(timestamp_us)
-            self._audio_queue.put_nowait((play_at_us, payload))
+            samples = len(payload) // (CHANNELS * (BIT_DEPTH // 8))
+            self._pending_samples += samples
+            self._audio_queue.put_nowait(payload)
         except Exception as e:
             logger.debug(f"Audio chunk error: {e}")
 
-    def _compute_play_time(self, server_timestamp_us: int) -> int:
-        """Convert a server timestamp to the client clock time to play it."""
-        client = self._client
-        if client is not None:
-            try:
-                return client.compute_play_time(server_timestamp_us)
-            except Exception as e:
-                logger.debug(f"compute_play_time failed: {e}")
-        return self._now_us()
-
-    def _now_us(self) -> int:
-        client = self._client
-        if client is not None:
-            try:
-                return client.now_us()
-            except Exception:
-                pass
-        return int(asyncio.get_event_loop().time() * 1_000_000)
-
     async def _playback_loop(self) -> None:
-        """Consume PCM and stream it to sounddevice at the computed time.
+        """Consume PCM and write it to sounddevice immediately.
 
-        aiosendspin's clock sync lets us schedule each chunk at the exact
-        client time the server intended, so playback stays glued to the UI
-        instead of drifting behind a growing buffer.
+        No per-chunk scheduling against the server clock: sounddevice runs on
+        its own real-time clock with an internal buffer, so aligning each
+        write to a computed instant just accumulates scheduling+write
+        overhead every chunk (the reported skew grows monotonically in either
+        sign). Instead: keep the sounddevice buffer small, write as soon as
+        data arrives, and report the *pending backlog* - a bounded quantity
+        that drops stale chunks when it exceeds the cap.
         """
         import sounddevice as sd
         import numpy as np
@@ -487,7 +480,7 @@ class SendspinReceiver:
         stream: Optional[sd.OutputStream] = None
         try:
             while True:
-                play_at_us, chunk = await self._audio_queue.get()
+                chunk = await self._audio_queue.get()
                 if chunk is None:
                     break
                 if stream is None:
@@ -499,18 +492,21 @@ class SendspinReceiver:
                         latency="low",
                     )
                     stream.start()
-                delay_us = play_at_us - self._now_us()
-                if delay_us > 0:
-                    # Play exactly on schedule.
-                    await asyncio.sleep(delay_us / 1_000_000)
-                # else: already late -> play immediately (no extra buffering).
                 data = np.frombuffer(chunk, dtype=np.int16).reshape(-1, CHANNELS)
                 stream.write(data)
-                # Report how far this client's playback is from the server
-                # clock right now: positive = behind (slow), negative = ahead.
-                lag_us = self._now_us() - play_at_us
-                synced = self._is_synced()
-                self._notify_sync(int(lag_us // 1000), synced)
+                samples = data.shape[0]
+                self._pending_samples = max(0, self._pending_samples - samples)
+                # Catch up: too much backlog -> drop old chunks (bounded).
+                while self._audio_queue.qsize() > _MAX_QUEUE_DEPTH:
+                    try:
+                        dropped = self._audio_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                    self._pending_samples = max(
+                        0, self._pending_samples - len(dropped) // (CHANNELS * 2)
+                    )
+                pending_ms = int(self._pending_samples / SAMPLE_RATE * 1000)
+                self._notify_sync(pending_ms, self._is_synced())
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -588,6 +584,10 @@ class SendspinReceiver:
             except Exception as e:
                 logger.debug(f"State callback error: {e}")
 
+    def set_stream_event_callback(self, callback: Optional[Callable[[str], None]]) -> None:
+        """Register a callback for stream lifecycle events: "start" / "end". """
+        self._stream_event_callback = callback
+
     def set_sync_callback(self, callback: Optional[Callable[[int, bool], None]]) -> None:
         """Register a callback receiving playback clock skew in ms.
 
@@ -616,7 +616,13 @@ class SendspinReceiver:
 
     def _on_stream_start(self, message) -> None:
         logger.info("Sendspin: stream started")
+        if self._stream_event_callback:
+            try:
+                self._stream_event_callback("start")
+            except Exception as e:
+                logger.debug(f"Stream event callback error: {e}")
         self._audio_queue = asyncio.Queue()
+        self._pending_samples = 0
         if self._stream_task is None or self._stream_task.done():
             self._stream_task = asyncio.create_task(self._playback_loop())
         self._set_playing(True, "stream start")

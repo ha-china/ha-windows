@@ -43,6 +43,11 @@ MIN_BUFFER_MS = 200.0       # sustained playback buffer for jitter absorption
 # makes the skew grow monotonically (per-chunk overhead is never recovered).
 _TARGET_BUFFER_MS = 100.0
 
+# Drop backlog when more than this many PCM chunks are waiting. Each chunk is
+# ~512 samples @48 kHz (~10.7 ms), so this caps the reported offset at ~107 ms
+# - comfortably inside the +/-150 ms tolerance, and never growing.
+_MAX_QUEUE_DEPTH = 10
+
 
 def get_hostname() -> str:
     """Return the Windows machine name (hostname without domain part)."""

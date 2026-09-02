@@ -506,7 +506,11 @@ class SendspinReceiver:
                 # else: already late -> play immediately (no extra buffering).
                 data = np.frombuffer(chunk, dtype=np.int16).reshape(-1, CHANNELS)
                 stream.write(data)
-                self._notify_sync(max(0, (play_at_us - self._now_us()) // 1000))
+                # Report how far this client's playback is from the server
+                # clock right now: positive = behind (slow), negative = ahead.
+                lag_us = self._now_us() - play_at_us
+                synced = self._is_synced()
+                self._notify_sync(int(lag_us // 1000), synced)
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -584,21 +588,29 @@ class SendspinReceiver:
             except Exception as e:
                 logger.debug(f"State callback error: {e}")
 
-    def set_sync_callback(self, callback: Optional[Callable[[int], None]]) -> None:
-        """Register a callback receiving the audio buffer backlog in ms.
+    def set_sync_callback(self, callback: Optional[Callable[[int, bool], None]]) -> None:
+        """Register a callback receiving playback clock skew in ms.
 
-        0 means playback is real-time; larger values mean the audio is
-        lagging behind by that much (MA pushed faster than we could drain).
+        offset_ms > 0  -> this client is playing behind the server (slow)
+        offset_ms < 0  -> this client is playing ahead of the server (fast)
+        synchronized   -> whether the shared clock has converged.
         """
         self._sync_callback = callback
 
-    def _notify_sync(self, pending_chunks: int) -> None:
+    def _is_synced(self) -> bool:
+        client = self._client
+        if client is not None:
+            try:
+                return bool(client.is_time_synchronized())
+            except Exception:
+                pass
+        return False
+
+    def _notify_sync(self, offset_ms: int, synchronized: bool) -> None:
         if not self._sync_callback:
             return
-        # each chunk = 512 samples @48k = 10.67 ms
-        ms = int(pending_chunks * (512 / SAMPLE_RATE) * 1000)
         try:
-            self._sync_callback(ms)
+            self._sync_callback(offset_ms, synchronized)
         except Exception as e:
             logger.debug(f"Sync callback error: {e}")
 

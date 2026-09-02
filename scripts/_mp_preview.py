@@ -26,6 +26,7 @@ mini_player.update_track("Neon Tides", "Halcyon", 238000)
 mini_player.set_artwork(buf.getvalue())
 mini_player.set_volume(65)
 mini_player.set_playing(True)
+mini_player.set_sync(12, True)
 mini_player.show()
 time.sleep(1.2)
 

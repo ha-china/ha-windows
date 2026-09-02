@@ -318,6 +318,7 @@ class HomeAssistantWindows:
             self.sendspin.set_state_callback(self._on_sendspin_state)
             self.sendspin.set_artwork_callback(self._on_sendspin_artwork)
             self.sendspin.set_volume_callback(self._on_sendspin_volume)
+            self.sendspin.set_sync_callback(self._on_sendspin_sync)
             await self.sendspin.start()
             if self.tray:
                 self.tray.set_sendspin_status(self.sendspin.is_connected)
@@ -392,6 +393,14 @@ class HomeAssistantWindows:
             mini_player.set_muted(muted)
         except Exception as e:
             logger.debug(f"Mini player volume update failed: {e}")
+
+    def _on_sendspin_sync(self, offset_ms: int, synchronized: bool) -> None:
+        """Forward the Sendspin playback clock skew to the mini player."""
+        try:
+            from src.ui import mini_player
+            mini_player.set_sync(offset_ms, synchronized)
+        except Exception as e:
+            logger.debug(f"Mini player sync update failed: {e}")
 
     def _on_sendspin_state(self, playing: bool) -> None:
         """Handle Sendspin playback state changes."""

@@ -335,6 +335,7 @@ class _MiniPlayerManager:
         self._lyric_id = None
         self._elapsed_id = None
         self._total_id = None
+        self._sync_id = None
         self._bar_fill_id = None
         self._bar_right_cap_id = None
         self._knob_id = None
@@ -469,6 +470,11 @@ class _MiniPlayerManager:
         self._total_id = canvas.create_text(
             self._bar_x1 + 3, _BAR_Y + 14, text="0:00", anchor="ne",
             fill=_FG_DIM, font=("Segoe UI", 8),
+        )
+        # Playback clock skew vs the Sendspin server, between the time labels.
+        self._sync_id = canvas.create_text(
+            (self._bar_x0 + self._bar_x1 + 3) / 2, _BAR_Y + 14, text="",
+            anchor="center", fill=_FG_DIM, font=("Segoe UI", 8),
         )
 
         # --- transport buttons: anti-aliased circles with hover variants ---
@@ -872,6 +878,22 @@ class _MiniPlayerManager:
         except (tk.TclError, AttributeError):
             pass
 
+    def _apply_sync(self, offset_ms: int, synchronized: bool) -> None:
+        """Show the Sendspin playback clock skew (+ms slow / -ms fast)."""
+        try:
+            if not synchronized or self._sync_id is None:
+                self._canvas.itemconfigure(self._sync_id, text="")
+                return
+            if offset_ms > 0:
+                label = f"+{offset_ms}ms"
+            elif offset_ms < 0:
+                label = f"{offset_ms}ms"
+            else:
+                label = "0ms"
+            self._canvas.itemconfigure(self._sync_id, text=label)
+        except (tk.TclError, AttributeError):
+            pass
+
     def _draw_progress(self, current: int) -> None:
         canvas = self._canvas
         span = self._bar_x1 - self._bar_x0
@@ -1015,6 +1037,10 @@ class _MiniPlayerManager:
         if self._root is not None:
             self._queue.put(("volume", int(volume)))
 
+    def set_sync(self, offset_ms: int, synchronized: bool) -> None:
+        if self._root is not None:
+            self._queue.put(("sync", int(offset_ms), bool(synchronized)))
+
     def set_muted(self, muted: bool) -> None:
         self._muted = bool(muted)
         if self._root is not None:
@@ -1087,6 +1113,10 @@ def set_playing(playing: bool) -> None:
 
 def set_volume(volume: int) -> None:
     _mgr.set_volume(volume)
+
+
+def set_sync(offset_ms: int, synchronized: bool) -> None:
+    _mgr.set_sync(offset_ms, synchronized)
 
 
 def set_muted(muted: bool) -> None:

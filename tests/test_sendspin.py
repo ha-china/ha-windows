@@ -20,20 +20,21 @@ from src.sendspin_player.player import SendspinReceiver
 
 
 class TestClientId:
-    def test_load_or_create_persists(self, tmp_path):
+    def test_load_or_create_identity_persists(self, tmp_path):
         recv = SendspinReceiver(name="Test")
         with patch("src.sendspin_player.player.get_user_data_dir", return_value=tmp_path):
-            cid1 = recv._load_or_create_client_id()
-            cid2 = recv._load_or_create_client_id()
-        assert cid1 == cid2
-        assert len(cid1) == 32
+            ident1 = recv._load_or_create_identity()
+            ident2 = recv._load_or_create_identity()
+        assert ident1.peer_id == ident2.peer_id
 
-    def test_client_id_hex(self, tmp_path):
+    def test_identity_peer_id_is_base64url(self, tmp_path):
+        import re
+
         recv = SendspinReceiver(name="Test")
         with patch("src.sendspin_player.player.get_user_data_dir", return_value=tmp_path):
-            cid = recv._load_or_create_client_id()
-        # 128-bit uuid rendered as 32 hex chars
-        int(cid, 16)
+            ident = recv._load_or_create_identity()
+        # base64url, unpadded, ~43 chars
+        assert re.fullmatch(r"[A-Za-z0-9_-]{43}", ident.peer_id)
 
 
 class TestDeviceInfo:
@@ -207,6 +208,9 @@ class TestPlayback:
 
         recv = SendspinReceiver(name="Test")
         recv._audio_queue = asyncio.Queue()
+        recv._client = MagicMock()
+        recv._client.compute_play_time.return_value = 0  # always "now"
+        recv._client.now_us.return_value = 0
 
         mock_stream = MagicMock()
         mock_sd = MagicMock()
@@ -217,8 +221,8 @@ class TestPlayback:
             patch.dict("sys.modules", {"numpy": np}),
         ):
             pcm = np.zeros(4800, dtype=np.int16).tobytes()
-            await recv._audio_queue.put(pcm)
-            await recv._audio_queue.put(None)
+            await recv._audio_queue.put((0, pcm))  # (play_at_us, payload)
+            await recv._audio_queue.put((0, None))
             task = asyncio.create_task(recv._playback_loop())
             await asyncio.wait_for(task, timeout=5)
 

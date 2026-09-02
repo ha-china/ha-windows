@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-02
+
+### Changed
+- Upgraded all dependencies to latest stable: aiosendspin 6.0.5 -> 9.1.1 (new Noise-encrypted pairing, persistent client Identity, time-synchronized playback), aioesphomeapi -> 46.3.0, zeroconf -> 0.151.3, pygame 2.6.1, pymicro-wakeword 2.4.1, Pillow 12.3.0, sounddevice 0.5.6
+
+### Added
+- Sendspin time-synchronized audio playback: chunks are scheduled at the exact client time via the shared clock, eliminating the buffer-induced audio/UI lag
+- Persistent client identity and pairing store (restarts keep the same Music Assistant player and pairing)
+
 ## [1.0.0] - 2026-08-26
+
 
 First stable release. The Windows satellite is feature-complete for daily use:
 voice assistant with wake words, Sendspin music streaming with a fully themed

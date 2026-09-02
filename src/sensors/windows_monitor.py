@@ -74,10 +74,12 @@ GR_GDIOBJECTS = 0
 GR_USEROBJECTS = 1
 
 # Dynamic key offset for disk sensors (each disk uses 2 keys: usage% and free GB)
-DISK_KEY_OFFSET = 20
+DISK_KEY_OFFSET = 10000
 
 # Dynamic key offset for LibreHardwareMonitor sensors (CPU temp, fans, voltages...)
-HW_SENSOR_KEY_OFFSET = 100
+# Placed well above the interactive-entity range (0-1000: sensors, media=300,
+# config=400, thinking=500, mic_mute=600) so hashed keys can never collide.
+HW_SENSOR_KEY_OFFSET = 100000
 
 
 def _num(section: dict, key: str, default: float = 0) -> float:
@@ -100,12 +102,18 @@ def _opt_num(section: dict, key: str) -> Optional[float]:
 
 
 # Stable key helpers
-def _stable_key(name: str, base: int = 0) -> int:
-    """Generate a deterministic integer key from a string."""
+def _stable_key(name: str, base: int = 0, space: int = 1000) -> int:
+    """Generate a deterministic integer key from a string.
+
+    Deterministic across restarts (same name -> same key) and confined to a
+    [base, base+space) region. Each entity family uses its own base so keys
+    can never collide across families; 1000 hash slots is plenty for the
+    tens of sensors in one family.
+    """
     h = 0
     for c in name:
-        h = (h * 31 + ord(c)) & 0xFFFFF
-    return base + (h % 1000)
+        h = (h * 31 + ord(c)) & 0xFFFFFFFF
+    return base + (h % space)
 
 
 # ---------------------------------------------------------------------------
@@ -591,22 +599,24 @@ class WindowsMonitor:
         available.append(("memory_usage", "Memory Usage", "mdi:memory", SENSOR_KEYS["memory_usage"]))
         available.append(("memory_free", "Memory Free", "mdi:memory", SENSOR_KEYS["memory_free"]))
 
-        # Disk sensors - for each fixed drive, add usage% and free GB
+        # Disk sensors - for each fixed drive, add usage% and free GB.
+        # Keys derive from the mount id (stable across restarts and disk
+        # order) and live in the disk region, away from static/interactive
+        # entity keys.
         disk_info = info.get("disk", {})
-        disk_key = DISK_KEY_OFFSET
         for mount_point in sorted(disk_info.keys()):
             mount_id = self._mount_point_to_object_id(mount_point)
             mount_name = self._mount_point_display_name(mount_point)
 
             # Disk usage %
             usage_id = f"disk_{mount_id}_usage"
+            disk_key = _stable_key(usage_id, DISK_KEY_OFFSET)
             available.append((usage_id, f"Disk {mount_name} Usage", "mdi:harddisk", disk_key))
-            disk_key += 1
 
             # Disk free GB
             free_id = f"disk_{mount_id}_free"
-            available.append((free_id, f"Disk {mount_name} Free", "mdi:harddisk", disk_key))
-            disk_key += 1
+            free_key = _stable_key(free_id, DISK_KEY_OFFSET)
+            available.append((free_id, f"Disk {mount_name} Free", "mdi:harddisk", free_key))
 
         # Battery - only if battery info available
         if info.get("battery"):

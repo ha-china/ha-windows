@@ -6,16 +6,14 @@ Music Assistant runs the Sendspin *server* (port 8927). This app runs a Sendspin
 Music Assistant auto-discovers it and connects. Incoming audio (PCM) is played
 through the default sounddevice output device.
 
-Music Assistant currently ships `aiosendspin[server]==6.0.5`; the wire protocol
-changed substantially in 6.0 (no pairing/PSK handshake on the client side), so
-this module targets aiosendspin 6.x. Only the PLAYER role is advertised, with
-PCM 16-bit 48 kHz stereo, so no `av` dependency is pulled in.
+Targets aiosendspin 9.x: Noise-encrypted pairing, a persistent client Identity
+and time-synchronized playback (play timestamps computed from the shared clock,
+so audio stays in sync with the UI instead of lagging a buffer behind).
 """
 
 import asyncio
 import logging
 import socket
-import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -34,6 +32,11 @@ BIT_DEPTH = 16
 
 # Maximum compressed-audio bytes buffered before playback (about 1 second of PCM).
 BUFFER_CAPACITY = 48000 * CHANNELS * (BIT_DEPTH // 8)
+
+# Time-synchronized playback tuning: see aiosendspin SendspinClient docs.
+STATIC_DELAY_MS = 50.0      # fixed extra latency after clock sync
+REQUIRED_LEAD_MS = 200.0    # decode/pre-buffer lead before the first chunk
+MIN_BUFFER_MS = 200.0       # sustained playback buffer for jitter absorption
 
 
 def get_hostname() -> str:
@@ -87,6 +90,7 @@ class SendspinReceiver:
         self._metadata_callback: Optional[Callable[[dict], None]] = None
         self._connection_callback: Optional[Callable[[bool], None]] = None
         self._state_callback: Optional[Callable[[bool], None]] = None
+        self._sync_callback: Optional[Callable[[int], None]] = None
         self._artwork_callback: Optional[Callable[[bytes], None]] = None
         self._volume_callback: Optional[Callable[[int, bool], None]] = None
         # Software volume: PCM gain applied in the playback loop. This only
@@ -96,6 +100,8 @@ class SendspinReceiver:
         self._playing: bool = False
         self._audio_queue: Optional[asyncio.Queue] = None
         self._client_id: Optional[str] = None
+        self._identity = None          # aiosendspin.noise.keys.Identity (lazy)
+        self._pairing_store = None     # FileClientPairingStore (lazy, async open)
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -159,16 +165,14 @@ class SendspinReceiver:
                 logger.debug(f"Volume callback error: {e}")
 
     def _report_player_state(self) -> None:
-        """Report volume/mute state upstream so Music Assistant stays in sync."""
+        """Report volume/mute availability upstream so Music Assistant stays in sync."""
         client = self._client
         if client is None:
             return
         try:
-            from aiosendspin.models.types import PlayerStateType
-
             task = asyncio.create_task(
                 client.send_player_state(
-                    state=PlayerStateType.SYNCHRONIZED,
+                    available=True,
                     volume=self.volume_percent,
                     muted=self._muted,
                 )
@@ -223,15 +227,21 @@ class SendspinReceiver:
         if self._started:
             return
 
-        from aiosendspin.client import ClientListener, SendspinClient
-        from aiosendspin.models.core import DeviceInfo
+        from aiosendspin.client import ClientListener, PairingSupport, SendspinClient
         from aiosendspin.models.artwork import ArtworkChannel, ClientHelloArtworkSupport
+        from aiosendspin.models.core import DeviceInfo
         from aiosendspin.models.player import ClientHelloPlayerSupport, SupportedAudioFormat
-        from aiosendspin.models.types import AudioCodec, PictureFormat, PlayerCommand, Roles, ArtworkSource
+        from aiosendspin.models.types import AudioCodec, ArtworkSource, PictureFormat, PlayerCommand, Roles
+        from aiosendspin.noise.keys import Identity, b64url_decode
+        from aiosendspin.noise.trust_store import FileClientPairingStore
 
         self._connecting = True
         try:
-            self._client_id = self._load_or_create_client_id()
+            # Persistent client identity: restarts keep the same player + keys.
+            self._identity = self._load_or_create_identity()
+            self._client_id = self._identity.peer_id
+
+            pairing_store = await self._load_pairing_store()
 
             product_name, manufacturer = get_device_info()
             device_info = DeviceInfo(
@@ -264,33 +274,39 @@ class SendspinReceiver:
                 ]
             )
 
+            async def show_pin(pin) -> None:
+                """Show/clear the pairing PIN to the user (None clears)."""
+                self._notify_pairing_pin(pin)
+
+            pairing_support = PairingSupport(pin_display=show_pin)
+
             async def handle_connection(ws) -> None:
-                from aiosendspin.client import SendspinClient
-
-                disconnect_event = asyncio.Event()
-
-                def on_disconnect() -> None:
-                    self._connected = False
-                    disconnect_event.set()
-
-                self._client = SendspinClient(
-                    client_id=self._client_id,
-                    client_name=self.name,
+                client = SendspinClient(
+                    self._identity,
+                    self.name,
                     # PLAYER receives the audio stream; CONTROLLER lets us send
                     # playback commands upstream; METADATA delivers track info;
                     # ARTWORK delivers album cover images.
                     roles=[Roles.PLAYER, Roles.CONTROLLER, Roles.METADATA, Roles.ARTWORK],
+                    pairing_store=pairing_store,
                     player_support=player_support,
                     artwork_support=artwork_support,
                     device_info=device_info,
+                    pairing_support=pairing_support,
+                    static_delay_ms=STATIC_DELAY_MS,
+                    required_lead_time_ms=REQUIRED_LEAD_MS,
+                    min_buffer_ms=MIN_BUFFER_MS,
+                    initial_volume=self.volume_percent,
+                    initial_muted=self._muted,
                 )
-                self._client.add_audio_chunk_listener(self._on_audio_chunk)
-                self._client.add_metadata_listener(self._on_metadata)
-                self._client.add_artwork_listener(self._on_artwork)
-                self._client.add_stream_start_listener(self._on_stream_start)
-                self._client.add_stream_end_listener(self._on_stream_end)
-                self._client.add_server_command_listener(self._on_server_command)
-                self._client.add_disconnect_listener(on_disconnect)
+                self._client = client
+                client.add_audio_chunk_listener(self._on_audio_chunk)
+                client.add_metadata_listener(self._on_metadata)
+                client.add_artwork_listener(self._on_artwork)
+                client.add_stream_start_listener(self._on_stream_start)
+                client.add_stream_end_listener(self._on_stream_end)
+                client.add_server_command_listener(self._on_server_command)
+                client.add_disconnect_listener(self._on_disconnect)
 
                 # Report the PC's REAL volume/mute so MA drops any stale
                 # state it stored for this device (e.g. a mute from a
@@ -307,12 +323,12 @@ class SendspinReceiver:
                 self._connected = True
                 self._notify_connection()
                 try:
-                    # attach_websocket returns after the handshake; keep the
-                    # connection alive until the server disconnects.
-                    await self._client.attach_websocket(ws)
-                    await disconnect_event.wait()
+                    # attach_websocket blocks until the connection closes.
+                    await client.attach_websocket(ws)
                 finally:
                     self._connected = False
+                    if self._client is client:
+                        self._client = None
                     logger.info("Sendspin: Music Assistant disconnected")
                     self._stop_playback()
                     self._notify_connection()
@@ -334,11 +350,53 @@ class SendspinReceiver:
                 self._client_id,
             )
         except ImportError as e:
-            logger.error(f"Sendspin not available (install aiosendspin>=6.0,<7): {e}")
+            logger.error(f"Sendspin not available (install aiosendspin>=9.1.1): {e}")
         except Exception as e:
             logger.error(f"Failed to start Sendspin receiver: {e}")
         finally:
             self._connecting = False
+
+    def _load_or_create_identity(self):
+        """Load or create the persistent client Identity (X25519 key pair)."""
+        from aiosendspin.noise.keys import Identity, b64url_decode, b64url_encode
+
+        path: Path = get_user_data_dir() / "sendspin_identity"
+        try:
+            if path.exists():
+                priv_b64 = path.read_text(encoding="utf-8").strip()
+                if priv_b64:
+                    return Identity.from_private_bytes(b64url_decode(priv_b64))
+        except Exception as e:
+            logger.warning(f"Failed to load sendspin identity: {e}")
+        identity = Identity.generate()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(b64url_encode(identity.private_bytes), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to persist sendspin identity: {e}")
+        return identity
+
+    async def _load_pairing_store(self):
+        """Open the file-backed pairing store (persists Noise PSKs across runs)."""
+        from aiosendspin.noise.trust_store import FileClientPairingStore
+
+        path: Path = get_user_data_dir() / "sendspin_pairing.json"
+        self._pairing_store = await FileClientPairingStore.open(path)
+        return self._pairing_store
+
+    def _notify_pairing_pin(self, pin) -> None:
+        """Expose the pairing PIN (str or None=clear) to the UI/notifications."""
+        try:
+            if pin:
+                logger.info(f"Sendspin pairing PIN: {pin}")
+            else:
+                logger.debug("Sendspin pairing PIN cleared")
+        except Exception as e:
+            logger.debug(f"Pairing pin notify error: {e}")
+
+    def _on_disconnect(self) -> None:
+        """Called when the current Sendspin connection closes."""
+        self._connected = False
 
     def _get_app_version(self) -> Optional[str]:
         """Return the app version string, if available."""
@@ -348,24 +406,6 @@ class SendspinReceiver:
             return __version__
         except Exception:
             return None
-
-    def _load_or_create_client_id(self) -> str:
-        """Persist a stable client id so Music Assistant keeps the same player."""
-        path: Path = get_user_data_dir() / "sendspin_client_id"
-        try:
-            if path.exists():
-                value = path.read_text(encoding="utf-8").strip()
-                if value:
-                    return value
-        except Exception as e:
-            logger.warning(f"Failed to read sendspin client id: {e}")
-        client_id = uuid.uuid4().hex
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(client_id, encoding="utf-8")
-        except Exception as e:
-            logger.warning(f"Failed to persist sendspin client id: {e}")
-        return client_id
 
     async def stop(self) -> None:
         """Stop the listener, disconnect clients and stop playback."""
@@ -396,7 +436,7 @@ class SendspinReceiver:
     # ------------------------------------------------------------------ audio
 
     def _on_audio_chunk(self, timestamp_us: int, payload: bytes, audio_format) -> None:
-        """Queue incoming PCM audio for playback on the output device."""
+        """Queue incoming PCM audio for time-synchronized playback."""
         try:
             if audio_format.codec.value != "pcm":
                 logger.warning("Unexpected codec %s, dropping chunk", audio_format.codec.value)
@@ -410,19 +450,44 @@ class SendspinReceiver:
                     len(payload),
                     audio_format.codec.value,
                 )
-            self._audio_queue.put_nowait(payload)
+            play_at_us = self._compute_play_time(timestamp_us)
+            self._audio_queue.put_nowait((play_at_us, payload))
         except Exception as e:
             logger.debug(f"Audio chunk error: {e}")
 
+    def _compute_play_time(self, server_timestamp_us: int) -> int:
+        """Convert a server timestamp to the client clock time to play it."""
+        client = self._client
+        if client is not None:
+            try:
+                return client.compute_play_time(server_timestamp_us)
+            except Exception as e:
+                logger.debug(f"compute_play_time failed: {e}")
+        return self._now_us()
+
+    def _now_us(self) -> int:
+        client = self._client
+        if client is not None:
+            try:
+                return client.now_us()
+            except Exception:
+                pass
+        return int(asyncio.get_event_loop().time() * 1_000_000)
+
     async def _playback_loop(self) -> None:
-        """Consume PCM from the queue and stream it to sounddevice."""
+        """Consume PCM and stream it to sounddevice at the computed time.
+
+        aiosendspin's clock sync lets us schedule each chunk at the exact
+        client time the server intended, so playback stays glued to the UI
+        instead of drifting behind a growing buffer.
+        """
         import sounddevice as sd
         import numpy as np
 
         stream: Optional[sd.OutputStream] = None
         try:
             while True:
-                chunk = await self._audio_queue.get()
+                play_at_us, chunk = await self._audio_queue.get()
                 if chunk is None:
                     break
                 if stream is None:
@@ -430,11 +495,18 @@ class SendspinReceiver:
                         samplerate=SAMPLE_RATE,
                         channels=CHANNELS,
                         dtype="int16",
-                        blocksize=2048,
+                        blocksize=512,
+                        latency="low",
                     )
                     stream.start()
+                delay_us = play_at_us - self._now_us()
+                if delay_us > 0:
+                    # Play exactly on schedule.
+                    await asyncio.sleep(delay_us / 1_000_000)
+                # else: already late -> play immediately (no extra buffering).
                 data = np.frombuffer(chunk, dtype=np.int16).reshape(-1, CHANNELS)
                 stream.write(data)
+                self._notify_sync(max(0, (play_at_us - self._now_us()) // 1000))
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -511,6 +583,24 @@ class SendspinReceiver:
                 self._state_callback(playing)
             except Exception as e:
                 logger.debug(f"State callback error: {e}")
+
+    def set_sync_callback(self, callback: Optional[Callable[[int], None]]) -> None:
+        """Register a callback receiving the audio buffer backlog in ms.
+
+        0 means playback is real-time; larger values mean the audio is
+        lagging behind by that much (MA pushed faster than we could drain).
+        """
+        self._sync_callback = callback
+
+    def _notify_sync(self, pending_chunks: int) -> None:
+        if not self._sync_callback:
+            return
+        # each chunk = 512 samples @48k = 10.67 ms
+        ms = int(pending_chunks * (512 / SAMPLE_RATE) * 1000)
+        try:
+            self._sync_callback(ms)
+        except Exception as e:
+            logger.debug(f"Sync callback error: {e}")
 
     def _on_stream_start(self, message) -> None:
         logger.info("Sendspin: stream started")

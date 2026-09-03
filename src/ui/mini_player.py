@@ -640,8 +640,12 @@ class _MiniPlayerManager:
         return ImageTk.PhotoImage(ph)
 
     def ensure(self) -> bool:
-        if self._root is not None:
+        # The thread may have died (mainloop crashed) while _root is still
+        # set; without checking liveness, show() silently no-ops forever.
+        if self._root is not None and self._thread and self._thread.is_alive():
             return True
+        if self._thread and not self._thread.is_alive():
+            self._root = None  # crashed: start fresh next time
         if self._thread and self._thread.is_alive():
             return self._ready.wait(timeout=3)
         self._ready.clear()
@@ -699,6 +703,10 @@ class _MiniPlayerManager:
     # ---------- event pump ----------
 
     def _poll(self) -> None:
+        # Drain the message queue, then refresh lyrics/progress. Any exception
+        # must NOT break the after-loop: a single broken tick would silently
+        # kill the whole tk thread, leaving ensure() reporting "alive" via
+        # _root (set before mainloop) while no one consumes the queue.
         try:
             while True:
                 kind, *args = self._queue.get_nowait()
@@ -707,9 +715,23 @@ class _MiniPlayerManager:
                     handler(*args)
         except queue.Empty:
             pass
-        self._update_lyric_line()
-        self._update_progress_bar()
-        self._root.after(_LYRIC_POLL_MS, self._poll)
+        except Exception as e:
+            logger.debug(f"Mini player poll queue error: {e}")
+        try:
+            self._update_lyric_line()
+        except Exception as e:
+            logger.debug(f"Mini player lyric update error: {e}")
+        try:
+            self._update_progress_bar()
+        except Exception as e:
+            logger.debug(f"Mini player progress update error: {e}")
+        try:
+            self._root.after(_LYRIC_POLL_MS, self._poll)
+        except Exception as e:
+            # Root was destroyed; this thread is done. Mark dead so ensure()
+            # starts a new one on the next show().
+            logger.debug(f"Mini player poll loop terminated: {e}")
+            self._root = None
 
     # ---------- state application (tk thread) ----------
 

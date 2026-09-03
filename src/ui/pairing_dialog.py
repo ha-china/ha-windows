@@ -60,8 +60,10 @@ class _PairingDialogManager:
         root.mainloop()
 
     def ensure(self) -> bool:
-        if self._root is not None:
+        if self._root is not None and self._thread and self._thread.is_alive():
             return True
+        if self._thread and not self._thread.is_alive():
+            self._root = None
         if self._thread and self._thread.is_alive():
             return self._ready.wait(timeout=3)
         self._ready.clear()
@@ -80,7 +82,13 @@ class _PairingDialogManager:
                     handler(*args)
         except queue.Empty:
             pass
-        self._root.after(100, self._poll)
+        except Exception as e:
+            logger.debug(f"Pairing dialog poll queue error: {e}")
+        try:
+            self._root.after(100, self._poll)
+        except Exception as e:
+            logger.debug(f"Pairing dialog poll loop terminated: {e}")
+            self._root = None
 
     # ---------- PIN popup ----------
 

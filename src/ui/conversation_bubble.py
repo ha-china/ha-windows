@@ -71,8 +71,10 @@ class _BubbleManager:
         root.mainloop()
 
     def ensure(self) -> bool:
-        if self._root is not None:
+        if self._root is not None and self._thread and self._thread.is_alive():
             return True
+        if self._thread and not self._thread.is_alive():
+            self._root = None
         if self._thread and self._thread.is_alive():
             return self._ready.wait(timeout=3)
         self._ready.clear()
@@ -90,12 +92,18 @@ class _BubbleManager:
                 self._show(msg_type, text)
         except queue.Empty:
             pass
+        except Exception as e:
+            logger.debug(f"Bubble poll queue error: {e}")
 
-        if self._remaining_ms > 0:
-            self._remaining_ms -= 100
-            if self._remaining_ms <= 0 and self._win is not None:
-                self._win.withdraw()
-        self._root.after(100, self._poll)
+        try:
+            if self._remaining_ms > 0:
+                self._remaining_ms -= 100
+                if self._remaining_ms <= 0 and self._win is not None:
+                    self._win.withdraw()
+            self._root.after(100, self._poll)
+        except Exception as e:
+            logger.debug(f"Bubble poll loop terminated: {e}")
+            self._root = None
 
     def _show(self, msg_type: str, text: str) -> None:
         color = _BG_COLORS.get(msg_type, _BG_COLORS["info"])

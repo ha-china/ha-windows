@@ -323,7 +323,19 @@ class HomeAssistantWindows:
             self.sendspin.set_sync_callback(self._on_sendspin_sync)
             self.sendspin.set_pairing_pin_callback(self._on_sendspin_pairing_pin)
             self.sendspin.set_pairing_mismatch_callback(self._on_sendspin_pairing_mismatch)
-            await self.sendspin.start()
+            # Retry: on immediate restart after quit, port 8928 may still be
+            # in TIME_WAIT or held by the exiting process. start() swallows
+            # the bind error internally, so check is_running and retry.
+            for attempt in range(6):
+                await self.sendspin.start()
+                if self.sendspin.is_running:
+                    break
+                if attempt < 5:
+                    logger.warning(
+                        f"Sendspin start failed (attempt {attempt+1}/6), "
+                        f"port may be busy, retrying in 2s..."
+                    )
+                    await asyncio.sleep(2)
             if self.tray:
                 self.tray.set_sendspin_status(self.sendspin.is_connected)
         except ImportError as e:

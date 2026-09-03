@@ -932,6 +932,28 @@ class HomeAssistantWindows:
 
 def main():
     """Main function"""
+    # Single-instance lock: a named mutex held for the process lifetime.
+    # Works for both bare python and frozen EXE (mutex name is static, not
+    # path-dependent, so the criterion is "one HA Windows per machine").
+    # The OS releases the mutex when the process exits (even on crash),
+    # preventing the port-8928 TIME_WAIT / stale-listener scenario where an
+    # immediate restart races the previous process's shutdown.
+    try:
+        import ctypes
+        from ctypes import wintypes
+        _MUTEX_NAME = "Global\\HomeAssistantWindows-SingleInstance"
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.restype = wintypes.HANDLE
+        kernel32.CreateMutexW.argtypes = [wintypes.LPCVOID, wintypes.BOOL, wintypes.LPCWSTR]
+        handle = kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+        # ERROR_ALREADY_EXISTS (183) means another instance holds the mutex.
+        if handle and ctypes.get_last_error() == 183:
+            print("Another instance is already running. Exiting.", flush=True)
+            sys.exit(0)
+    except Exception:
+        # Non-Windows or ctypes unavailable: skip the lock (best-effort).
+        pass
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(
         description="Home Assistant Windows Client - ESPHome Device Simulator"

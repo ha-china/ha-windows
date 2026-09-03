@@ -94,7 +94,7 @@ class _PairingDialogManager:
 
     def _apply_show_pin(self, pin: str) -> None:
         self._destroy_win()
-        win = self._build_win("Sendspin 配对")
+        win = self._build_win(t('sendspin_pairing_title'))
         self._win = win
         self._pin = str(pin)
 

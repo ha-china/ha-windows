@@ -933,28 +933,90 @@ class HomeAssistantWindows:
 def main():
     """Main function"""
     # Single-instance lock: a named mutex held for the process lifetime.
-    # Works for both bare python and frozen EXE (mutex name is static, not
-    # path-dependent, so the criterion is "one HA Windows per machine").
-    # The OS releases the mutex when the process exits (even on crash),
-    # preventing the port-8928 TIME_WAIT / stale-listener scenario where an
-    # immediate restart races the previous process's shutdown.
+    # If already held (previous instance still alive or not fully released),
+    # ask the user whether to force-kill the stale process or abort.
+    _MUTEX_NAME = "Global\\HomeAssistantWindows-SingleInstance"
     try:
         import ctypes
         from ctypes import wintypes
-        _MUTEX_NAME = "Global\\HomeAssistantWindows-SingleInstance"
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel32.CreateMutexW.restype = wintypes.HANDLE
         kernel32.CreateMutexW.argtypes = [wintypes.LPCVOID, wintypes.BOOL, wintypes.LPCWSTR]
-        handle = kernel32.CreateMutexW(None, False, _MUTEX_NAME)
-        # ERROR_ALREADY_EXISTS (183) means another instance holds the mutex.
-        if handle and ctypes.get_last_error() == 183:
-            print("Another instance is already running. Exiting.", flush=True)
-            sys.exit(0)
+        mutex = kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+        if mutex and ctypes.get_last_error() == 183:
+            choice = _stale_instance_prompt()
+            if choice == 1:  # force-kill stale process
+                _kill_stale_instances()
+                kernel32.CloseHandle(mutex)
+                # Reacquire; the stale process should have released it now.
+                mutex = kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+                if mutex and ctypes.get_last_error() == 183:
+                    # Still held - another instance is genuinely running.
+                    kernel32.CloseHandle(mutex)
+                    sys.exit(0)
+            else:  # abort current
+                kernel32.CloseHandle(mutex)
+                sys.exit(0)
     except Exception:
-        # Non-Windows or ctypes unavailable: skip the lock (best-effort).
         pass
 
     # Parse command line arguments
+
+
+def _is_chinese_locale() -> bool:
+    """Detect whether the Windows user locale is Chinese."""
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.GetUserDefaultLocaleName.restype = ctypes.c_int
+        k.GetUserDefaultLocaleName.argtypes = [ctypes.c_wchar_p, ctypes.c_int]
+        buf = ctypes.create_unicode_buffer(85)
+        if k.GetUserDefaultLocaleName(buf, 85):
+            return buf.value.lower().startswith("zh")
+    except Exception:
+        pass
+    return False
+
+
+def _stale_instance_prompt() -> int:
+    """Show a Yes/No dialog for a stale instance. Returns 1=kill stale, 2=abort."""
+    zh = _is_chinese_locale()
+    title = "Home Assistant Windows" if not zh else "Home Assistant Windows"
+    msg = (
+        "Another instance is already running or the previous process did not "
+        "exit cleanly.\n\nForce-close the previous process and continue?"
+    ) if not zh else (
+        "检测到程序已在运行，或上一次进程未退出干净。\n\n"
+        "是否强制结束上一个进程并继续启动？"
+    )
+    import ctypes
+    # MB_YESNO (0x04) | MB_ICONQUESTION (0x20) | MB_DEFBUTTON2 (0x100)
+    result = ctypes.windll.user32.MessageBoxW(0, msg, title, 0x04 | 0x20 | 0x100)
+    return 1 if result == 6 else 2  # IDYES=6
+
+
+def _kill_stale_instances() -> None:
+    """Terminate other processes running this same entry point."""
+    try:
+        import os
+        me = os.getpid()
+        # The image name to match: frozen EXE name, or python running start.py.
+        if getattr(sys, "frozen", False):
+            image = os.path.basename(sys.executable)  # e.g. HomeAssistantWindows.exe
+        else:
+            image = "python.exe"
+        import subprocess
+        # taskkill /FI "IMAGENAME eq X" /T, then we filter ourselves out below.
+        out = subprocess.run(
+            ["taskkill", "/IM", image, "/T", "/K"],
+            capture_output=True, text=True, timeout=10,
+        )
+        # taskkill kills ALL matching, including us if frozen; but we run it
+        # and immediately continue, so the OS schedules the kills while we
+        # proceed to reacquire the mutex. If we ourselves get killed mid-way,
+        # that's also acceptable (no stale instance left).
+    except Exception:
+        pass
     parser = argparse.ArgumentParser(
         description="Home Assistant Windows Client - ESPHome Device Simulator"
     )

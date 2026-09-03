@@ -930,6 +930,58 @@ class HomeAssistantWindows:
         os._exit(0)
 
 
+def _stale_instance_prompt() -> int:
+    """Show a Yes/No dialog for a stale instance. Returns 1=kill stale, 2=abort."""
+    from src.i18n import t
+    title = t('single_instance_title')
+    msg = t('single_instance_msg')
+    import ctypes
+    # MB_YESNO (0x04) | MB_ICONQUESTION (0x20) | MB_DEFBUTTON2 (0x100)
+    result = ctypes.windll.user32.MessageBoxW(0, msg, title, 0x04 | 0x20 | 0x100)
+    return 1 if result == 6 else 2  # IDYES=6
+
+
+def _kill_stale_instances() -> None:
+    """Terminate other processes running this same entry point.
+
+    Matches by command-line signature, NOT by image name: ``python.exe`` is
+    shared by many unrelated programs, so killing by name would be reckless.
+    Frozen EXEs have a unique executable path which is safe to match.
+    """
+    import os
+    import subprocess
+    me = os.getpid()
+    try:
+        if getattr(sys, "frozen", False):
+            # Frozen: match the unique EXE path, exclude self.
+            my_exe = os.path.normcase(os.path.abspath(sys.executable))
+            cmd = (
+                f'Get-CimInstance Win32_Process | Where-Object '
+                f'{{ $_.ProcessId -ne {me} -and $_.ExecutablePath -ne $null }} | '
+                f'Where-Object {{ (Resolve-Path $_.ExecutablePath).Path -eq "{my_exe}" }} | '
+                f'ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}'
+            )
+            subprocess.run(
+                ["powershell", "-NoProfile", "-Command", cmd],
+                capture_output=True, timeout=10,
+            )
+        else:
+            # Bare python: match by the start.py script path in command line.
+            script_marker = os.path.normcase(os.path.abspath(os.path.join(
+                os.path.dirname(__file__), "..", "start.py")))
+            cmd = (
+                f'Get-CimInstance Win32_Process | Where-Object '
+                f'{{ $_.ProcessId -ne {me} -and $_.CommandLine -like "*{script_marker}*" }} | '
+                f'ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}'
+            )
+            subprocess.run(
+                ["powershell", "-NoProfile", "-Command", cmd],
+                capture_output=True, timeout=10,
+            )
+    except Exception:
+        pass
+
+
 def main():
     """Main function"""
     # Single-instance lock: a named mutex held for the process lifetime.
@@ -961,62 +1013,6 @@ def main():
         pass
 
     # Parse command line arguments
-
-
-def _is_chinese_locale() -> bool:
-    """Detect whether the Windows user locale is Chinese."""
-    try:
-        import ctypes
-        k = ctypes.windll.kernel32
-        k.GetUserDefaultLocaleName.restype = ctypes.c_int
-        k.GetUserDefaultLocaleName.argtypes = [ctypes.c_wchar_p, ctypes.c_int]
-        buf = ctypes.create_unicode_buffer(85)
-        if k.GetUserDefaultLocaleName(buf, 85):
-            return buf.value.lower().startswith("zh")
-    except Exception:
-        pass
-    return False
-
-
-def _stale_instance_prompt() -> int:
-    """Show a Yes/No dialog for a stale instance. Returns 1=kill stale, 2=abort."""
-    zh = _is_chinese_locale()
-    title = "Home Assistant Windows" if not zh else "Home Assistant Windows"
-    msg = (
-        "Another instance is already running or the previous process did not "
-        "exit cleanly.\n\nForce-close the previous process and continue?"
-    ) if not zh else (
-        "检测到程序已在运行，或上一次进程未退出干净。\n\n"
-        "是否强制结束上一个进程并继续启动？"
-    )
-    import ctypes
-    # MB_YESNO (0x04) | MB_ICONQUESTION (0x20) | MB_DEFBUTTON2 (0x100)
-    result = ctypes.windll.user32.MessageBoxW(0, msg, title, 0x04 | 0x20 | 0x100)
-    return 1 if result == 6 else 2  # IDYES=6
-
-
-def _kill_stale_instances() -> None:
-    """Terminate other processes running this same entry point."""
-    try:
-        import os
-        me = os.getpid()
-        # The image name to match: frozen EXE name, or python running start.py.
-        if getattr(sys, "frozen", False):
-            image = os.path.basename(sys.executable)  # e.g. HomeAssistantWindows.exe
-        else:
-            image = "python.exe"
-        import subprocess
-        # taskkill /FI "IMAGENAME eq X" /T, then we filter ourselves out below.
-        out = subprocess.run(
-            ["taskkill", "/IM", image, "/T", "/K"],
-            capture_output=True, text=True, timeout=10,
-        )
-        # taskkill kills ALL matching, including us if frozen; but we run it
-        # and immediately continue, so the OS schedules the kills while we
-        # proceed to reacquire the mutex. If we ourselves get killed mid-way,
-        # that's also acceptable (no stale instance left).
-    except Exception:
-        pass
     parser = argparse.ArgumentParser(
         description="Home Assistant Windows Client - ESPHome Device Simulator"
     )
@@ -1034,8 +1030,8 @@ def _kill_stale_instances() -> None:
     parser.add_argument(
         '--language',
         choices=['zh_CN', 'en_US'],
-        default='en_US',
-        help='Interface language'
+        default=None,
+        help='Interface language (default: auto-detect)'
     )
     parser.add_argument(
         '--debug',
@@ -1045,8 +1041,9 @@ def _kill_stale_instances() -> None:
 
     args = parser.parse_args()
 
-    # Set language
-    set_language(args.language)
+    # Set language (only override if explicitly passed; else i18n auto-detects)
+    if args.language:
+        set_language(args.language)
 
     # Set log level
     if args.debug:

@@ -85,6 +85,8 @@ class I18n:
                 'sendspin_pairing_mismatch_msg': '本设备可能已在其他 Music Assistant 实例配对。\n是否清除配对记录并重新配对？',
                 'sendspin_pairing_repair': '重新配对',
                 'sendspin_pairing_cancel': '取消',
+                'single_instance_title': 'Home Assistant Windows',
+                'single_instance_msg': '检测到程序已在运行，或上一次进程未退出干净。\n\n是否强制结束上一个进程并继续启动？',
                 'conversation_you_said': '你',
                 'conversation_assistant': '助手',
                 'error_no_speech': '没识别到语音，请再试一次',
@@ -218,6 +220,8 @@ class I18n:
                 'sendspin_pairing_mismatch_msg': 'This device may have been paired with another\nMusic Assistant instance. Clear pairing and re-pair?',
                 'sendspin_pairing_repair': 'Re-pair',
                 'sendspin_pairing_cancel': 'Cancel',
+                'single_instance_title': 'Home Assistant Windows',
+                'single_instance_msg': 'Another instance is already running or the previous process did not exit cleanly.\n\nForce-close the previous process and continue?',
                 'conversation_you_said': 'You',
                 'conversation_assistant': 'Assistant',
                 'error_no_speech': 'No speech recognized, please try again',
@@ -282,13 +286,17 @@ class I18n:
         }
 
     def _detect_system_language(self) -> str:
-        """
-        Auto-detect system language
-
-        Returns:
-            str: Language code ('zh_CN' or 'en_US')
-        """
-        # Force English for logs
+        """Auto-detect system language ('zh_CN' or 'en_US')."""
+        try:
+            import ctypes
+            k = ctypes.windll.kernel32
+            k.GetUserDefaultLocaleName.restype = ctypes.c_int
+            k.GetUserDefaultLocaleName.argtypes = [ctypes.c_wchar_p, ctypes.c_int]
+            buf = ctypes.create_unicode_buffer(85)
+            if k.GetUserDefaultLocaleName(buf, 85) and buf.value.lower().startswith("zh"):
+                return 'zh_CN'
+        except Exception:
+            pass
         return 'en_US'
 
     def t(self, key: str, *args, **kwargs) -> str:

@@ -18,6 +18,7 @@ import argparse
 import socket
 import threading
 import platform
+from typing import Optional
 
 # PyInstaller path setup
 if getattr(sys, 'frozen', False):
@@ -320,6 +321,8 @@ class HomeAssistantWindows:
             self.sendspin.set_volume_callback(self._on_sendspin_volume)
             self.sendspin.set_stream_event_callback(self._on_sendspin_stream_event)
             self.sendspin.set_sync_callback(self._on_sendspin_sync)
+            self.sendspin.set_pairing_pin_callback(self._on_sendspin_pairing_pin)
+            self.sendspin.set_pairing_mismatch_callback(self._on_sendspin_pairing_mismatch)
             await self.sendspin.start()
             if self.tray:
                 self.tray.set_sendspin_status(self.sendspin.is_connected)
@@ -416,6 +419,40 @@ class HomeAssistantWindows:
             mini_player.set_sync(offset_ms, synchronized)
         except Exception as e:
             logger.debug(f"Mini player sync update failed: {e}")
+
+    def _on_sendspin_pairing_pin(self, pin: Optional[str]) -> None:
+        """Show/clear the Sendspin pairing PIN popup."""
+        try:
+            from src.ui import pairing_dialog
+            if pin:
+                pairing_dialog.show_pin(pin)
+            else:
+                pairing_dialog.hide_pin()
+        except Exception as e:
+            logger.debug(f"Pairing PIN dialog failed: {e}")
+
+    def _on_sendspin_pairing_mismatch(self) -> None:
+        """PSK mismatch detected: prompt the user to re-pair."""
+        try:
+            from src.ui import pairing_dialog
+            pairing_dialog.show_mismatch(self._repair_sendspin_pairing)
+        except Exception as e:
+            logger.debug(f"Pairing mismatch dialog failed: {e}")
+
+    def _repair_sendspin_pairing(self) -> None:
+        """User confirmed re-pairing: restart Sendspin with a cleared pairing store."""
+        logger.info("Sendspin: user requested re-pair, clearing pairing store")
+        if self._event_loop and not self._event_loop.is_closed():
+            asyncio.run_coroutine_threadsafe(self._restart_sendspin(), self._event_loop)
+
+    async def _restart_sendspin(self) -> None:
+        try:
+            await self._stop_sendspin()
+            if self.sendspin:
+                self.sendspin.reset_pairing()
+            await self._start_sendspin()
+        except Exception as e:
+            logger.error(f"Sendspin re-pair restart failed: {e}")
 
     def _on_sendspin_state(self, playing: bool) -> None:
         """Handle Sendspin playback state changes."""

@@ -105,6 +105,9 @@ class SendspinReceiver:
         self._stream_event_callback: Optional[Callable[[str], None]] = None
         self._artwork_callback: Optional[Callable[[bytes], None]] = None
         self._volume_callback: Optional[Callable[[int, bool], None]] = None
+        self._pairing_pin_callback: Optional[Callable[[Optional[str]], None]] = None
+        self._pairing_mismatch_callback: Optional[Callable[[], None]] = None
+        self._handshake_failures = 0
         # Software volume: PCM gain applied in the playback loop. This only
         # affects the music stream, not the Windows system volume.
         self._volume: float = 1.0   # 0.0 - 1.0
@@ -144,6 +147,14 @@ class SendspinReceiver:
     def set_volume_callback(self, callback: Callable[[int, bool], None]) -> None:
         """Register a callback notified on volume/mute changes: (percent, muted)."""
         self._volume_callback = callback
+
+    def set_pairing_pin_callback(self, callback: Callable[[Optional[str]], None]) -> None:
+        """Register a callback to show/clear the pairing PIN (None=clear)."""
+        self._pairing_pin_callback = callback
+
+    def set_pairing_mismatch_callback(self, callback: Callable[[], None]) -> None:
+        """Register a callback notified when a PSK mismatch is detected."""
+        self._pairing_mismatch_callback = callback
 
     @property
     def volume_percent(self) -> int:
@@ -318,7 +329,18 @@ class SendspinReceiver:
                 client.add_stream_start_listener(self._on_stream_start)
                 client.add_stream_end_listener(self._on_stream_end)
                 client.add_server_command_listener(self._on_server_command)
-                client.add_disconnect_listener(self._on_disconnect)
+
+                # Track whether the handshake succeeded: the disconnect
+                # listener fires ONLY for an admitted connection, so if it
+                # hasn't fired by the time attach_websocket returns, the
+                # handshake failed (e.g. PSK mismatch).
+                admitted = [False]
+
+                def _on_admitted_disconnect() -> None:
+                    admitted[0] = True
+                    self._on_disconnect()
+
+                client.add_disconnect_listener(_on_admitted_disconnect)
 
                 # Report the PC's REAL volume/mute so MA drops any stale
                 # state it stored for this device (e.g. a mute from a
@@ -344,6 +366,10 @@ class SendspinReceiver:
                     logger.info("Sendspin: Music Assistant disconnected")
                     self._stop_playback()
                     self._notify_connection()
+                    if admitted[0]:
+                        self._handshake_failures = 0
+                    else:
+                        self._on_handshake_failure()
 
             self._listener = ClientListener(
                 client_id=self._client_id,
@@ -403,12 +429,53 @@ class SendspinReceiver:
                 logger.info(f"Sendspin pairing PIN: {pin}")
             else:
                 logger.debug("Sendspin pairing PIN cleared")
+            if self._pairing_pin_callback:
+                self._pairing_pin_callback(str(pin) if pin else None)
         except Exception as e:
             logger.debug(f"Pairing pin notify error: {e}")
 
     def _on_disconnect(self) -> None:
         """Called when the current Sendspin connection closes."""
         self._connected = False
+
+    def _on_handshake_failure(self) -> None:
+        """Handle a connection whose Noise handshake never completed.
+
+        A persistent mismatch (stale/foreign PSK) surfaces as repeated rapid
+        connect/disconnect cycles. Only prompt after enough consecutive
+        failures, and only when a pairing record actually exists.
+        """
+        self._handshake_failures += 1
+        if self._handshake_failures >= 3 and self._has_pairing_records():
+            self._handshake_failures = 0
+            logger.warning("Sendspin: PSK mismatch detected (handshake failed)")
+            if self._pairing_mismatch_callback:
+                try:
+                    self._pairing_mismatch_callback()
+                except Exception as e:
+                    logger.debug(f"Pairing mismatch callback error: {e}")
+
+    def _has_pairing_records(self) -> bool:
+        """True when a persistent pairing record exists on disk."""
+        try:
+            path: Path = get_user_data_dir() / "sendspin_pairing.json"
+            return path.exists()
+        except Exception:
+            return False
+
+    def reset_pairing(self) -> None:
+        """Delete the persistent pairing store so the next connect re-pairs.
+
+        Caller should stop/restart the receiver afterwards.
+        """
+        try:
+            path: Path = get_user_data_dir() / "sendspin_pairing.json"
+            if path.exists():
+                path.unlink()
+                logger.info("Sendspin: pairing store deleted")
+        except Exception as e:
+            logger.error(f"Failed to delete pairing store: {e}")
+        self._handshake_failures = 0
 
     def _get_app_version(self) -> Optional[str]:
         """Return the app version string, if available."""

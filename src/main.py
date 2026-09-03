@@ -590,7 +590,6 @@ class HomeAssistantWindows:
             on_sendspin_toggle=self._on_tray_sendspin_toggle,
             on_run_as_admin=self._relaunch_as_admin,
             on_mini_player_toggle=self._on_tray_mini_player_toggle,
-            on_sendspin_repair=self._repair_sendspin_pairing,
         )
 
         # Apply saved mini player preference and wire its handlers

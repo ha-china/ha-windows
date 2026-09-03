@@ -19,6 +19,9 @@ _WIDTH = 420
 _HEIGHT = 250
 _ALPHA = 0.96
 
+_MARGIN = 16        # distance from screen edges (matches mini player)
+_TASKBAR = 48       # approximate taskbar height
+
 # Palette (matches the mini player)
 _BG = "#1A1F2E"
 _BG_CARD = "#2A3350"
@@ -40,6 +43,8 @@ class _PairingDialogManager:
         self._ready = threading.Event()
         self._queue: "queue.Queue[tuple]" = queue.Queue()
         self._win: Optional[tk.Toplevel] = None
+        self._pin = ""
+        self._prompt_label = None
         self._pin_label = None
         self._after_hide = None  # job id for auto-hide
         self._on_yes: Optional[Callable] = None
@@ -83,21 +88,43 @@ class _PairingDialogManager:
         self._destroy_win()
         win = self._build_win("Sendspin 配对")
         self._win = win
+        self._pin = str(pin)
 
         tk.Label(win, text=f"\U0001F50A  {t('sendspin_pairing_title')}",
                  font=("Microsoft YaHei UI", 14, "bold"),
                  fg=_FG, bg=_BG, anchor="center").place(x=0, y=22, width=_WIDTH)
 
-        # Large, eye-catching PIN on a tinted card
+        # Large, eye-catching PIN on a tinted card; click to copy to clipboard
         card = tk.Frame(win, bg=_BG_CARD, highlightthickness=0)
         card.place(x=60, y=72, width=_WIDTH - 120, height=110)
-        tk.Label(card, text=pin, font=("Segoe UI", 54, "bold"),
-                 fg=_ACCENT, bg=_BG_CARD, anchor="center").pack(fill="both", expand=True)
+        pin_label = tk.Label(card, text=pin, font=("Segoe UI", 54, "bold"),
+                             fg=_ACCENT, bg=_BG_CARD, anchor="center",
+                             cursor="hand2")
+        pin_label.pack(fill="both", expand=True)
+        pin_label.bind("<Button-1>", lambda e: self._copy_pin())
+        self._pin_label = pin_label
 
-        tk.Label(win, text=t('sendspin_pairing_pin_prompt'), font=("Microsoft YaHei UI", 10),
-                 fg=_FG_DIM, bg=_BG, anchor="center").place(x=0, y=208, width=_WIDTH)
+        self._prompt_label = tk.Label(
+            win, text=t('sendspin_pairing_pin_prompt'), font=("Microsoft YaHei UI", 10),
+            fg=_FG_DIM, bg=_BG, anchor="center")
+        self._prompt_label.place(x=0, y=208, width=_WIDTH)
 
         self._center_and_show(win)
+
+    def _copy_pin(self) -> None:
+        """Copy the PIN to the clipboard and show confirmation."""
+        if self._root is not None:
+            try:
+                self._root.clipboard_clear()
+                self._root.clipboard_append(self._pin)
+                self._root.update()
+            except tk.TclError:
+                pass
+        if self._prompt_label is not None:
+            try:
+                self._prompt_label.configure(text=t('sendspin_pairing_pin_copied'))
+            except tk.TclError:
+                pass
 
     def _apply_hide_pin(self) -> None:
         self._destroy_win()
@@ -155,8 +182,9 @@ class _PairingDialogManager:
         win.update_idletasks()
         sw = win.winfo_screenwidth()
         sh = win.winfo_screenheight()
-        x = (sw - _WIDTH) // 2
-        y = (sh - _HEIGHT) // 2
+        # Same bottom-right placement as the mini player
+        x = sw - _WIDTH - _MARGIN
+        y = sh - _HEIGHT - _MARGIN - _TASKBAR
         win.geometry(f"+{x}+{y}")
         win.deiconify()
         win.lift()

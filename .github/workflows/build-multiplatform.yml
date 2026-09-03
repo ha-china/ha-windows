@@ -222,22 +222,22 @@ jobs:
           path: |
             build-logs/**
             build/**
-          retention-days: 14
+          retention-days: 7
           if-no-files-found: warn
-      
+       
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v7
         with:
           name: ha-assistant-windows-exe
           path: dist/HomeAssistantWindows.exe
-          retention-days: 30
-      
+          retention-days: 7
+       
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v7
         with:
           name: ha-assistant-windows-installer
           path: dist/HomeAssistantWindows_Setup.exe
-          retention-days: 30
+          retention-days: 7
 
   release:
     name: Create Release

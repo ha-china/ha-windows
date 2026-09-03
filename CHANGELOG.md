@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-04
+
+### Fixed
+- SyncAudioPlayer: fixed `SAMPLE_RATE` undefined in PortAudio callback (NameError crashed audio, could take down the receiver → no mDNS → MA couldn't discover); fixed partial-chunk overwriting the next queued frame; fixed `_dac_to_loop_us` double-call polluting clock calibration
+- tk UI threads (mini player / pairing dialog / conversation bubble): `ensure()` now checks thread liveness, `_poll()` wraps all ticks in try/except so the after-loop never dies silently (was the root cause of mini player disappearing); dead threads now auto-restart on next `show()`
+- `_on_stream_start`/`_on_stream_end`: wrapped `_start_player()`/`_stop_playback()` in try/except so a player failure no longer blocks the playing-state callback (mini player now always shows)
+- Sendspin receiver start: retries up to 6 times (2s interval) when port 8928 is busy, instead of silently entering a zombie state on immediate restart
+- Single-instance lock via named mutex (`Global\HomeAssistantWindows-SingleInstance`): prevents port-8928 races on quick relaunch; on conflict shows a bilingual dialog (force-kill stale process or abort), kills by command-line/EXE path (never kills unrelated `python.exe`)
+- i18n `_detect_system_language`: now actually detects the Windows user locale via `GetUserDefaultLocaleName` instead of forcing `en_US`; `--language` defaults to auto-detect
+
+### Added
+- Sendspin pairing PIN popup (tkinter, dark theme, matches mini player position): large 54pt PIN on tinted card, click-to-copy to clipboard, auto-hides on pairing completion
+- PSK mismatch detection: 3 consecutive handshake failures + existing pairing record → re-pair confirmation dialog; `reset_pairing()` clears the pairing store
+- CI artifacts retention reduced to 7 days
+
 ## [1.1.0] - 2026-09-02
 
 ### Changed

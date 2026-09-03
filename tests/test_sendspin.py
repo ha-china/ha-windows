@@ -177,54 +177,98 @@ class TestMetadata:
 
 
 class TestAudioChunk:
-    def test_pcm_chunk_queued(self):
+    def _ready_player(self):
+        player = MagicMock()
+        player.is_ready.return_value = True
+        return player
+
+    def test_pcm_chunk_forwarded_to_player(self):
         recv = SendspinReceiver(name="Test")
-        recv._audio_queue = asyncio.Queue()
+        recv._player = self._ready_player()
         audio_format = MagicMock()
         audio_format.codec.value = "pcm"
-        recv._on_audio_chunk(0, b"\x00" * 4800, audio_format)
-        assert not recv._audio_queue.empty()
+        recv._on_audio_chunk(12345, b"\x00" * 4800, audio_format)
+        recv._player.enqueue.assert_called_once_with(12345, b"\x00" * 4800)
 
     def test_non_pcm_chunk_dropped(self):
         recv = SendspinReceiver(name="Test")
-        recv._audio_queue = asyncio.Queue()
+        recv._player = self._ready_player()
         audio_format = MagicMock()
         audio_format.codec.value = "flac"
         recv._on_audio_chunk(0, b"\x00" * 4800, audio_format)
-        assert recv._audio_queue.empty()
+        recv._player.enqueue.assert_not_called()
 
-    def test_chunk_ignored_when_no_stream(self):
+    def test_chunk_ignored_when_no_player(self):
         recv = SendspinReceiver(name="Test")
-        recv._audio_queue = None
+        recv._player = None
         audio_format = MagicMock()
         audio_format.codec.value = "pcm"
         recv._on_audio_chunk(0, b"\x00" * 4800, audio_format)  # should not raise
 
 
 class TestPlayback:
-    @pytest.mark.asyncio
-    async def test_playback_loop_writes_to_stream(self):
-        import numpy as np
+    """The playback path is PortAudio callback mode (SyncAudioPlayer); these
+    tests drive the callback directly instead of an asyncio loop."""
 
-        recv = SendspinReceiver(name="Test")
-        recv._audio_queue = asyncio.Queue()
-        recv._client = MagicMock()
+    def _make_player(self, compute_play_time=None, now_us=0):
+        from src.sendspin_player.sync_audio_player import SyncAudioPlayer
 
-        mock_stream = MagicMock()
-        mock_sd = MagicMock()
-        mock_sd.OutputStream.return_value = mock_stream
+        player = SyncAudioPlayer(
+            compute_play_time=compute_play_time or (lambda ts: ts),
+            now_us=lambda: now_us,
+            is_synced=lambda: True,
+            on_skew=lambda ms, ok: None,
+        )
+        player._stream = MagicMock()  # pretend started so enqueue() accepts data
+        player._started = True
+        player._stream.time = 0.0
+        return player
 
-        with (
-            patch.dict("sys.modules", {"sounddevice": mock_sd}),
-            patch.dict("sys.modules", {"numpy": np}),
-        ):
-            pcm = np.zeros(4800, dtype=np.int16).tobytes()
-            await recv._audio_queue.put(pcm)
-            await recv._audio_queue.put(None)
-            task = asyncio.create_task(recv._playback_loop())
-            await asyncio.wait_for(task, timeout=5)
+    def _out_buffer(self, frames=2048):
+        import ctypes
 
-        mock_stream.start.assert_called_once()
-        assert mock_stream.write.call_count >= 1
-        mock_stream.stop.assert_called_once()
-        mock_stream.close.assert_called_once()
+        return (ctypes.c_char * (frames * 4))()  # int16 stereo
+
+    def _silence(self, frames=2048):
+        return b"\x00" * (frames * 4)
+
+    def test_callback_fills_silence_before_startup_buffer(self):
+        player = self._make_player(now_us=60_000_000)
+        for i in range(12):  # below _MIN_CHUNKS_TO_START(16)
+            player.enqueue(i * 10000, b"\x01" * 4800)
+
+        out = self._out_buffer()
+        mock_time = MagicMock()
+        mock_time.outputBufferDacTime = 100.0
+        player._audio_callback(out, 2048, mock_time, None)
+
+        # Start gate: not enough buffered chunks yet -> pure silence
+        assert out.raw == self._silence()
+
+    def test_callback_writes_pcm_when_due_and_buffered(self):
+        player = self._make_player(now_us=60_000_000)
+        for i in range(16):  # reach the startup threshold
+            player.enqueue(1000 + i * 10000, b"\x01" * 4800)  # due (play_at << now)
+
+        out = self._out_buffer()
+        mock_time = MagicMock()
+        mock_time.outputBufferDacTime = 100.0
+        player._audio_callback(out, 2048, mock_time, None)
+
+        # 16 due chunks -> real PCM written, not silence
+        assert out.raw != self._silence()
+        assert b"\x01" in out.raw
+
+    def test_callback_respects_schedule(self):
+        player = self._make_player(now_us=0)
+        # Scheduled far in the future: play_at = ts >> loop_us(0)
+        for i in range(16):
+            player.enqueue(61_000_000 + i * 10000, b"\x01" * 4800)
+
+        out = self._out_buffer()
+        mock_time = MagicMock()
+        mock_time.outputBufferDacTime = 0.0
+        player._audio_callback(out, 2048, mock_time, None)
+
+        # Not due yet -> pure silence (future-scheduled chunks wait)
+        assert out.raw == self._silence()

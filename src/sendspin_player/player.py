@@ -19,6 +19,8 @@ from typing import Callable, Optional
 
 from src.core.models import get_user_data_dir
 
+from src.sendspin_player.sync_audio_player import SyncAudioPlayer
+
 logger = logging.getLogger(__name__)
 
 PLAYER_NAME = "HA Windows"
@@ -93,7 +95,6 @@ class SendspinReceiver:
         self.name = name or get_hostname()
         self._listener: Optional[object] = None
         self._client: Optional[object] = None
-        self._stream_task: Optional[asyncio.Task] = None
         self._started = False
         self._connecting = False
         self._connected = False
@@ -109,8 +110,7 @@ class SendspinReceiver:
         self._volume: float = 1.0   # 0.0 - 1.0
         self._muted: bool = False
         self._playing: bool = False
-        self._audio_queue: Optional[asyncio.Queue] = None
-        self._pending_samples = 0       # total samples still awaiting playback
+        self._player: Optional[SyncAudioPlayer] = None   # DAC-clocked sync player
         self._client_id: Optional[str] = None
         self._identity = None          # aiosendspin.noise.keys.Identity (lazy)
         self._pairing_store = None     # FileClientPairingStore (lazy, async open)
@@ -422,13 +422,6 @@ class SendspinReceiver:
     async def stop(self) -> None:
         """Stop the listener, disconnect clients and stop playback."""
         self._started = False
-        if self._stream_task:
-            self._stream_task.cancel()
-            try:
-                await self._stream_task
-            except asyncio.CancelledError:
-                pass
-            self._stream_task = None
         self._stop_playback()
 
         if self._client is not None:
@@ -448,87 +441,40 @@ class SendspinReceiver:
     # ------------------------------------------------------------------ audio
 
     def _on_audio_chunk(self, timestamp_us: int, payload: bytes, audio_format) -> None:
-        """Queue incoming PCM audio for real-time playback."""
+        """Feed incoming PCM to the DAC-clocked sync player."""
         try:
-            if audio_format.codec.value != "pcm":
-                logger.warning("Unexpected codec %s, dropping chunk", audio_format.codec.value)
+            codec = getattr(audio_format, "codec", None)
+            codec_value = codec.value if hasattr(codec, "value") else str(codec)
+            if codec_value != "pcm":
+                logger.warning("Unexpected codec %s, dropping chunk", codec_value)
                 return
-            if self._audio_queue is None:
+            if self._player is None or not self._player.is_ready():
                 return
             if not getattr(self, "_chunk_logged", False):
                 self._chunk_logged = True
                 logger.info(
                     "Sendspin: first audio chunk (%d bytes, codec=%s)",
                     len(payload),
-                    audio_format.codec.value,
+                    codec_value,
                 )
-            samples = len(payload) // (CHANNELS * (BIT_DEPTH // 8))
-            self._pending_samples += samples
-            self._audio_queue.put_nowait(payload)
+            self._player.enqueue(timestamp_us, payload)
         except Exception as e:
             logger.debug(f"Audio chunk error: {e}")
 
-    async def _playback_loop(self) -> None:
-        """Consume PCM and write it to sounddevice immediately.
-
-        No per-chunk scheduling against the server clock: sounddevice runs on
-        its own real-time clock with an internal buffer, so aligning each
-        write to a computed instant just accumulates scheduling+write
-        overhead every chunk (the reported skew grows monotonically in either
-        sign). Instead: keep the sounddevice buffer small, write as soon as
-        data arrives, and report the *pending backlog* - a bounded quantity
-        that drops stale chunks when it exceeds the cap.
-        """
-        import sounddevice as sd
-        import numpy as np
-
-        stream: Optional[sd.OutputStream] = None
-        try:
-            while True:
-                chunk = await self._audio_queue.get()
-                if chunk is None:
-                    break
-                if stream is None:
-                    stream = sd.OutputStream(
-                        samplerate=SAMPLE_RATE,
-                        channels=CHANNELS,
-                        dtype="int16",
-                        blocksize=512,
-                        latency="low",
-                    )
-                    stream.start()
-                data = np.frombuffer(chunk, dtype=np.int16).reshape(-1, CHANNELS)
-                stream.write(data)
-                samples = data.shape[0]
-                self._pending_samples = max(0, self._pending_samples - samples)
-                # Catch up: too much backlog -> drop old chunks (bounded).
-                while self._audio_queue.qsize() > _MAX_QUEUE_DEPTH:
-                    try:
-                        dropped = self._audio_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
-                    self._pending_samples = max(
-                        0, self._pending_samples - len(dropped) // (CHANNELS * 2)
-                    )
-                pending_ms = int(self._pending_samples / SAMPLE_RATE * 1000)
-                self._notify_sync(pending_ms, self._is_synced())
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.error(f"Sendspin playback error: {e}")
-        finally:
-            if stream:
-                try:
-                    stream.stop()
-                    stream.close()
-                except Exception:
-                    pass
+    def _start_player(self) -> None:
+        """Create (once) the DAC-clocked sync player and start its stream."""
+        if self._player is None:
+            self._player = SyncAudioPlayer(
+                compute_play_time=self._compute_play_time,
+                now_us=self._now_us,
+                is_synced=self._is_synced,
+                on_skew=self._notify_sync,
+            )
+        self._player.start()
 
     def _stop_playback(self) -> None:
-        if self._stream_task:
-            self._stream_task.cancel()
-            self._stream_task = None
-        self._audio_queue = None
+        if self._player is not None:
+            self._player.stop()
 
     def _notify_connection(self) -> None:
         """Notify the registered callback of the current connection state."""
@@ -611,6 +557,30 @@ class SendspinReceiver:
                 pass
         return False
 
+    def _compute_play_time(self, server_timestamp_us: int) -> int:
+        """Convert a server timestamp to the loop-clock play instant (µs)."""
+        client = self._client
+        if client is not None:
+            try:
+                return int(client.compute_play_time(server_timestamp_us))
+            except Exception as e:
+                logger.debug(f"compute_play_time failed: {e}")
+        return self._now_us()
+
+    def _now_us(self) -> int:
+        client = self._client
+        if client is not None:
+            try:
+                return int(client.now_us())
+            except Exception:
+                pass
+        try:
+            import time as _time
+
+            return int(_time.monotonic() * 1_000_000)
+        except Exception:
+            return 0
+
     def _notify_sync(self, offset_ms: int, synchronized: bool) -> None:
         if not self._sync_callback:
             return
@@ -626,15 +596,18 @@ class SendspinReceiver:
                 self._stream_event_callback("start")
             except Exception as e:
                 logger.debug(f"Stream event callback error: {e}")
-        self._audio_queue = asyncio.Queue()
-        self._pending_samples = 0
-        if self._stream_task is None or self._stream_task.done():
-            self._stream_task = asyncio.create_task(self._playback_loop())
+        try:
+            self._start_player()
+        except Exception as e:
+            logger.error(f"Failed to start sync audio player: {e}")
         self._set_playing(True, "stream start")
 
     def _on_stream_end(self, roles) -> None:
         logger.info("Sendspin: stream ended")
-        self._stop_playback()
+        try:
+            self._stop_playback()
+        except Exception as e:
+            logger.error(f"Failed to stop playback: {e}")
         self._set_playing(False, "stream end")
 
     def _on_server_command(self, payload) -> None:

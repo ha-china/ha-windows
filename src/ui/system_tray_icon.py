@@ -103,6 +103,7 @@ class SystemTrayIcon:
         self._on_bubble_toggle: Optional[Callable] = None
         self._on_mini_player_toggle: Optional[Callable] = None
         self._on_sendspin_toggle: Optional[Callable] = None
+        self._on_sendspin_repair: Optional[Callable] = None
         self._on_conversation: Optional[Callable] = None
         self._on_run_as_admin: Optional[Callable] = None
         self._version = "0.0.0"
@@ -296,6 +297,14 @@ class SystemTrayIcon:
             except Exception as e:
                 logger.error(f"Failed to toggle Sendspin player: {e}")
 
+    def _repair_sendspin(self) -> None:
+        logger.info("Sendspin re-pair requested from tray menu")
+        if self._on_sendspin_repair:
+            try:
+                self._on_sendspin_repair()
+            except Exception as e:
+                logger.error(f"Failed to repair Sendspin pairing: {e}")
+
     def _sendspin_connected_label(self) -> str:
         if self._sendspin_connected:
             return f"{_i18n.t('sendspin_player')}: {_i18n.t('sendspin_connected')}"
@@ -317,6 +326,12 @@ class SystemTrayIcon:
                 _i18n.t('sendspin_enabled'),
                 lambda icon, item: self._toggle_sendspin(),
                 checked=lambda item: self._current_sendspin_enabled(),
+            )
+        )
+        items.append(
+            pystray.MenuItem(
+                _i18n.t('sendspin_repair_menu'),
+                lambda icon, item: self._repair_sendspin(),
             )
         )
         items.append(
@@ -437,7 +452,8 @@ class SystemTrayIcon:
                       on_bubble_toggle: Callable = None,
                       on_sendspin_toggle: Callable = None,
                       on_run_as_admin: Callable = None,
-                      on_mini_player_toggle: Callable = None) -> None:
+                      on_mini_player_toggle: Callable = None,
+                      on_sendspin_repair: Callable = None) -> None:
         self._on_quit = on_quit
         if on_mic_change is not None:
             self._on_mic_change = on_mic_change
@@ -453,6 +469,8 @@ class SystemTrayIcon:
             self._on_run_as_admin = on_run_as_admin
         if on_mini_player_toggle is not None:
             self._on_mini_player_toggle = on_mini_player_toggle
+        if on_sendspin_repair is not None:
+            self._on_sendspin_repair = on_sendspin_repair
 
     def set_sendspin_status(self, connected: bool) -> None:
         """Update the displayed Sendspin connection status and refresh the menu."""

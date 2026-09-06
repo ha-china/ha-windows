@@ -9,6 +9,7 @@ instant and writes real PCM only when due - silence otherwise. A server-time
 cursor plus smooth cursor correction keeps the audio permanently inside the
 target skew window (no monotonically growing backlog).
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,15 +24,15 @@ logger = logging.getLogger(__name__)
 SAMPLE_RATE = 48000
 CHANNELS = 2
 BIT_DEPTH = 16
-_BYTES_PER_FRAME = CHANNELS * (BIT_DEPTH // 8)   # 4 bytes / frame (int16 stereo)
+_BYTES_PER_FRAME = CHANNELS * (BIT_DEPTH // 8)  # 4 bytes / frame (int16 stereo)
 
 
 class SyncAudioPlayer:
     """PortAudio callback-mode player aligned to the server timeline."""
 
-    _MIN_CHUNKS_TO_START = 16        # buffer this many chunks before first sound
-    _BLOCKSIZE = 2048                # PortAudio frames per callback (~42 ms @ 48 kHz)
-    _CORRECTION_DEADBAND_US = 2000   # ignore skew below this
+    _MIN_CHUNKS_TO_START = 16  # buffer this many chunks before first sound
+    _BLOCKSIZE = 2048  # PortAudio frames per callback (~42 ms @ 48 kHz)
+    _CORRECTION_DEADBAND_US = 2000  # ignore skew below this
     _REANCHOR_THRESHOLD_US = 500000  # reset cursor if skew exceeds this
     _REANCHOR_COOLDOWN_US = 5000000
 
@@ -55,7 +56,7 @@ class SyncAudioPlayer:
         self._dac_loop_samples: list[tuple[float, float]] = []
         self._dac_loop_ratio = 1.0
         self._cursor_us = 0
-        self._cursor_rem_us = 0   # sub-µs remainder for exact sample pacing
+        self._cursor_rem_us = 0  # sub-µs remainder for exact sample pacing
         self._first_ts: Optional[int] = None
         self._has_played = False
         self._last_reanchor_loop = 0
@@ -75,19 +76,46 @@ class SyncAudioPlayer:
 
             device_id = resolve_output_device(self.device)
 
-        self._stream = sd.RawOutputStream(
-            samplerate=SAMPLE_RATE,
-            channels=CHANNELS,
-            dtype="int16",
-            blocksize=self._BLOCKSIZE,
-            callback=self._audio_callback,
-            latency="high",
-            device=device_id,
+        try:
+            self._stream = sd.RawOutputStream(
+                samplerate=SAMPLE_RATE,
+                channels=CHANNELS,
+                dtype="int16",
+                blocksize=self._BLOCKSIZE,
+                callback=self._audio_callback,
+                latency="high",
+                device=device_id,
+            )
+            self._stream.start()
+        except Exception as e:
+            if device_id is not None:
+                # A stale selection (unplugged device, changed index) must
+                # never kill playback: retry once on the system default.
+                logger.warning(
+                    f"SyncAudioPlayer: failed to open output device "
+                    f"'{self.device}' (idx {device_id}): {e}, falling back to default"
+                )
+                self._stream = sd.RawOutputStream(
+                    samplerate=SAMPLE_RATE,
+                    channels=CHANNELS,
+                    dtype="int16",
+                    blocksize=self._BLOCKSIZE,
+                    callback=self._audio_callback,
+                    latency="high",
+                )
+                self._stream.start()
+            else:
+                raise
+
+        active = sd.query_devices(self._stream.device)
+        hostapi = sd.query_hostapis(active["hostapi"])["name"]
+        logger.info(
+            "SyncAudioPlayer: stream started on [%s] %s (blocksize=%d, latency=high)",
+            hostapi,
+            active["name"],
+            self._BLOCKSIZE,
         )
-        self._stream.start()
         self._started = True
-        logger.info("SyncAudioPlayer: stream started (blocksize=%d, latency=high)",
-                    self._BLOCKSIZE)
 
     def stop(self) -> None:
         if self._stream is not None:
@@ -154,8 +182,7 @@ class SyncAudioPlayer:
                 self._cursor_us = self._compute_play_time(self._first_ts)
             self._has_played = True
             self._last_reanchor_loop = loop_us
-            logger.info("SyncAudioPlayer: starting after %d buffered chunks",
-                        self._queue.qsize())
+            logger.info("SyncAudioPlayer: starting after %d buffered chunks", self._queue.qsize())
 
         # Underflow guard: keep consuming while there is any audio
         if not self._queue.empty() or self._leftover is not None:
@@ -176,7 +203,7 @@ class SyncAudioPlayer:
                 chunk_samples = len(data) // _BYTES_PER_FRAME
                 take = min(chunk_samples, samples_needed)
                 take_bytes = take * _BYTES_PER_FRAME
-                outdata[out_pos:out_pos + take_bytes] = data[:take_bytes]
+                outdata[out_pos : out_pos + take_bytes] = data[:take_bytes]
                 out_pos += take_bytes
                 samples_needed -= take
                 self._advance_cursor(take)
@@ -198,7 +225,7 @@ class SyncAudioPlayer:
             chunk_samples = len(data) // _BYTES_PER_FRAME
             take = min(chunk_samples, samples_needed)
             take_bytes = take * _BYTES_PER_FRAME
-            outdata[out_pos:out_pos + take_bytes] = data[:take_bytes]
+            outdata[out_pos : out_pos + take_bytes] = data[:take_bytes]
             out_pos += take_bytes
             samples_needed -= take
             self._advance_cursor(take)

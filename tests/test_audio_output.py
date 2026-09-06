@@ -46,6 +46,85 @@ class TestResolveOutputDevice:
     def test_unknown_device_resolves_to_none(self):
         assert resolve_output_device("Definitely Not A Real Device") is None
 
+    def test_duplicate_names_prefer_wasapi(self):
+        """A name present in several host APIs SHALL resolve to the WASAPI entry.
+
+        The tray menu lists WASAPI devices; resolving to the MME/DirectSound
+        duplicate would open a different host API than advertised.
+        """
+        import sounddevice as sd
+
+        devices = sd.query_devices()
+        wasapi = None
+        for i, api in enumerate(sd.query_hostapis()):
+            if "WASAPI" in api["name"]:
+                wasapi = i
+                break
+
+        duplicated = None
+        seen: dict = {}
+        for i, dev in enumerate(devices):
+            if dev["max_output_channels"] <= 0:
+                continue
+            seen.setdefault(dev["name"], []).append(i)
+        for name, indexes in seen.items():
+            if len(indexes) > 1 and any(devices[i]["hostapi"] == wasapi for i in indexes):
+                duplicated = name
+                break
+
+        if duplicated is None:
+            pytest.skip("No output device name duplicated across host APIs")
+
+        resolved = resolve_output_device(duplicated)
+
+        assert resolved is not None, "Duplicated name should resolve"
+        assert devices[resolved]["hostapi"] == wasapi, (
+            f"'{duplicated}' resolved to host API "
+            f"'{sd.query_hostapis(devices[resolved]['hostapi'])['name']}', expected WASAPI"
+        )
+
+
+class TestSendspinOutputDeviceSwitch:
+    def test_live_player_device_is_updated_before_restart(self):
+        """set_output_device SHALL update the live player's device.
+
+        Regression: the restart reused the player created at startup, whose
+        device was still the startup selection - every switch silently
+        reopened the system default (issue #12 follow-up).
+        """
+        from unittest.mock import MagicMock
+
+        from src.sendspin_player.player import SendspinReceiver
+
+        receiver = SendspinReceiver(name="test", output_device=None)
+        player = MagicMock()
+        player.is_ready.return_value = True
+        player.device = None
+        receiver._player = player
+
+        receiver.set_output_device("Headphones")
+
+        assert player.device == "Headphones", "Live player must be re-pointed at the new device before restart"
+        player.stop.assert_called_once()
+        player.start.assert_called_once()
+
+    def test_switch_while_stopped_updates_player_for_next_stream(self):
+        from unittest.mock import MagicMock
+
+        from src.sendspin_player.player import SendspinReceiver
+
+        receiver = SendspinReceiver(name="test", output_device=None)
+        player = MagicMock()
+        player.is_ready.return_value = False
+        player.device = None
+        receiver._player = player
+
+        receiver.set_output_device("Headphones")
+
+        assert player.device == "Headphones"
+        player.stop.assert_not_called()
+        player.start.assert_not_called()
+
 
 class TestApplyOutputDevice:
     def test_selection_is_recorded(self):

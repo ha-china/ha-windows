@@ -36,9 +36,9 @@ BIT_DEPTH = 16
 BUFFER_CAPACITY = 48000 * CHANNELS * (BIT_DEPTH // 8)
 
 # Time-synchronized playback tuning: see aiosendspin SendspinClient docs.
-STATIC_DELAY_MS = 50.0      # fixed extra delay after clock sync
-REQUIRED_LEAD_MS = 200.0    # decode/pre-buffer lead before the first chunk
-MIN_BUFFER_MS = 200.0       # sustained playback buffer for jitter absorption
+STATIC_DELAY_MS = 50.0  # fixed extra delay after clock sync
+REQUIRED_LEAD_MS = 200.0  # decode/pre-buffer lead before the first chunk
+MIN_BUFFER_MS = 200.0  # sustained playback buffer for jitter absorption
 # Local target buffer: we feed sounddevice this much AHEAD of the server
 # clock instead of exactly on time. A fixed buffer absorbs scheduling jitter,
 # write() blocking and clock-drift residuals; chasing the exact play time
@@ -91,8 +91,7 @@ def get_device_info():
 class SendspinReceiver:
     """Sendspin client that Music Assistant discovers and streams audio to."""
 
-    def __init__(self, name: Optional[str] = None,
-                 output_device: Optional[str] = None):
+    def __init__(self, name: Optional[str] = None, output_device: Optional[str] = None):
         self.name = name or get_hostname()
         self._output_device = output_device  # device name, None = system default
         self._listener: Optional[object] = None
@@ -112,13 +111,13 @@ class SendspinReceiver:
         self._handshake_failures = 0
         # Software volume: PCM gain applied in the playback loop. This only
         # affects the music stream, not the Windows system volume.
-        self._volume: float = 1.0   # 0.0 - 1.0
+        self._volume: float = 1.0  # 0.0 - 1.0
         self._muted: bool = False
         self._playing: bool = False
-        self._player: Optional[SyncAudioPlayer] = None   # DAC-clocked sync player
+        self._player: Optional[SyncAudioPlayer] = None  # DAC-clocked sync player
         self._client_id: Optional[str] = None
-        self._identity = None          # aiosendspin.noise.keys.Identity (lazy)
-        self._pairing_store = None     # FileClientPairingStore (lazy, async open)
+        self._identity = None  # aiosendspin.noise.keys.Identity (lazy)
+        self._pairing_store = None  # FileClientPairingStore (lazy, async open)
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -227,8 +226,7 @@ class SendspinReceiver:
         logger.debug(f"Sendspin: playing={playing} ({source})")
         self._notify_state(playing)
 
-    async def send_media_command(self, command, volume: Optional[int] = None,
-                                 mute: Optional[bool] = None) -> None:
+    async def send_media_command(self, command, volume: Optional[int] = None, mute: Optional[bool] = None) -> None:
         """Send a playback control command upstream to Music Assistant.
 
         command: aiosendspin MediaCommand (PLAY/PAUSE/STOP/NEXT/PREVIOUS/VOLUME/MUTE/...)
@@ -241,9 +239,11 @@ class SendspinReceiver:
             return
         try:
             await client.send_group_command(command, volume=volume, mute=mute)
-            logger.info(f"Sendspin: sent command {getattr(command, 'name', command)}"
-                        f"{f' volume={volume}' if volume is not None else ''}"
-                        f"{f' mute={mute}' if mute is not None else ''}")
+            logger.info(
+                f"Sendspin: sent command {getattr(command, 'name', command)}"
+                f"{f' volume={volume}' if volume is not None else ''}"
+                f"{f' mute={mute}' if mute is not None else ''}"
+            )
         except Exception as e:
             logger.error(f"Sendspin: failed to send command: {e}")
 
@@ -545,18 +545,23 @@ class SendspinReceiver:
     def set_output_device(self, device_name: Optional[str]) -> None:
         """Switch the playback output device (None/"" = system default).
 
-        When a stream is currently open it is restarted on the new device;
-        otherwise the next stream picks the selection up.
+        The live player's device is updated before the restart: start()
+        reads self.device, so restarting without updating it would silently
+        reopen the stream on the previous (e.g. system default) device.
         """
         device_name = device_name or None
         if device_name == self._output_device:
             return
         self._output_device = device_name
         logger.info(f"Sendspin: output device set to {device_name or 'system default'}")
-        if self._player is not None and self._player.is_ready():
+        player = self._player
+        if player is None:
+            return
+        player.device = device_name
+        if player.is_ready():
             try:
-                self._player.stop()
-                self._player.start()
+                player.stop()
+                player.start()
                 logger.info("Sendspin: playback restarted on new output device")
             except Exception as e:
                 logger.error(f"Failed to restart playback on new output device: {e}")
@@ -625,7 +630,7 @@ class SendspinReceiver:
                 logger.debug(f"State callback error: {e}")
 
     def set_stream_event_callback(self, callback: Optional[Callable[[str], None]]) -> None:
-        """Register a callback for stream lifecycle events: "start" / "end". """
+        """Register a callback for stream lifecycle events: "start" / "end"."""
         self._stream_event_callback = callback
 
     def set_sync_callback(self, callback: Optional[Callable[[int, bool], None]]) -> None:

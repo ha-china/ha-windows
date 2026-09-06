@@ -59,19 +59,39 @@ def resolve_output_device(device_name: Optional[str]) -> Optional[int]:
     """Resolve an output device name to a PortAudio index.
 
     Returns None for the system default or when the name is not found.
+    Every name exists once per host API; the WASAPI entry is preferred so
+    the opened device matches the name shown in the tray menu (MME truncates
+    names, and DirectSound/WDM-KS would be an arbitrary pick otherwise).
     """
     if not device_name:
         return None
     try:
         import sounddevice as sd
 
-        for i, dev in enumerate(sd.query_devices()):
-            if dev["name"] == device_name and dev["max_output_channels"] > 0:
+        devices = list(enumerate(sd.query_devices()))
+        wasapi = None
+        try:
+            for i, api in enumerate(sd.query_hostapis()):
+                if "WASAPI" in api["name"]:
+                    wasapi = i
+                    break
+        except Exception:
+            pass
+
+        fallback = None
+        for i, dev in devices:
+            if dev["max_output_channels"] <= 0 or dev["name"] != device_name:
+                continue
+            if wasapi is not None and dev["hostapi"] == wasapi:
                 return i
+            if fallback is None:
+                fallback = i
+        if fallback is None:
+            logger.warning(f"Specified output device not found: {device_name}, using system default")
+        return fallback
     except Exception as e:
         logger.error(f"Failed to resolve output device: {e}")
-    logger.warning(f"Specified output device not found: {device_name}, using system default")
-    return None
+        return None
 
 
 def get_selected_device() -> str:

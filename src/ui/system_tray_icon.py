@@ -99,6 +99,7 @@ class SystemTrayIcon:
         }
         self._on_quit: Optional[Callable] = None
         self._on_mic_change: Optional[Callable] = None
+        self._on_output_change: Optional[Callable] = None
         self._on_mute_change: Optional[Callable] = None
         self._on_bubble_toggle: Optional[Callable] = None
         self._on_mini_player_toggle: Optional[Callable] = None
@@ -229,6 +230,36 @@ class SystemTrayIcon:
             )
 
         for name in [""] + AudioRecorder.list_microphones():
+            yield item_for(name)
+
+    # --- Output device ---------------------------------------------------------
+
+    def _current_output_device(self) -> str:
+        if self._state is None:
+            return ""
+        return getattr(self._state.preferences, 'output_device', "")
+
+    def _select_output_device(self, device_name: str) -> None:
+        logger.info(f"Output device menu selected: {device_name or 'system default'}")
+        if self._on_output_change:
+            try:
+                self._on_output_change(device_name)
+            except Exception as e:
+                logger.error(f"Failed to switch output device: {e}")
+
+    def _output_menu_items(self):
+        """Build the output device radio list (rebuilt each time the menu opens)."""
+        from src.core.audio_output import list_output_devices
+
+        def item_for(name: str):
+            return pystray.MenuItem(
+                name or _i18n.t('settings_default_device'),
+                lambda icon, item: self._select_output_device(name),
+                checked=lambda item: self._current_output_device() == name,
+                radio=True,
+            )
+
+        for name in [""] + list_output_devices():
             yield item_for(name)
 
     def _current_muted(self) -> bool:
@@ -373,6 +404,10 @@ class SystemTrayIcon:
                 ),
                 pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
                 pystray.MenuItem(
+                    _i18n.t('settings_output_device'),
+                    pystray.Menu(self._output_menu_items),
+                ),
+                pystray.MenuItem(
                     _i18n.t('run_as_admin'),
                     self._on_run_as_admin_menu,
                     visible=lambda item: not self._is_admin(),
@@ -433,6 +468,7 @@ class SystemTrayIcon:
             )
 
     def set_callbacks(self, on_quit: Callable = None, on_mic_change: Callable = None,
+                      on_output_change: Callable = None,
                       on_mute_change: Callable = None, on_conversation: Callable = None,
                       on_bubble_toggle: Callable = None,
                       on_sendspin_toggle: Callable = None,
@@ -441,6 +477,8 @@ class SystemTrayIcon:
         self._on_quit = on_quit
         if on_mic_change is not None:
             self._on_mic_change = on_mic_change
+        if on_output_change is not None:
+            self._on_output_change = on_output_change
         if on_mute_change is not None:
             self._on_mute_change = on_mute_change
         if on_conversation is not None:

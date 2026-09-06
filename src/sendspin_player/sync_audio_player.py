@@ -41,11 +41,13 @@ class SyncAudioPlayer:
         now_us: Callable[[], int],
         is_synced: Callable[[], bool],
         on_skew: Callable[[int, bool], None],
+        device: Optional[str] = None,
     ) -> None:
         self._compute_play_time = compute_play_time
         self._now_us = now_us
         self._is_synced = is_synced
         self._on_skew = on_skew
+        self.device = device  # output device name, None = system default
         self._queue: "queue.Queue[tuple[int, bytes]]" = queue.Queue()
         self._leftover: Optional[tuple[int, bytes]] = None  # partial chunk tail
         self._stream = None
@@ -67,6 +69,12 @@ class SyncAudioPlayer:
             return
         import sounddevice as sd
 
+        device_id = None
+        if self.device:
+            from src.core.audio_output import resolve_output_device
+
+            device_id = resolve_output_device(self.device)
+
         self._stream = sd.RawOutputStream(
             samplerate=SAMPLE_RATE,
             channels=CHANNELS,
@@ -74,6 +82,7 @@ class SyncAudioPlayer:
             blocksize=self._BLOCKSIZE,
             callback=self._audio_callback,
             latency="high",
+            device=device_id,
         )
         self._stream.start()
         self._started = True
@@ -95,6 +104,10 @@ class SyncAudioPlayer:
         self._cursor_rem_us = 0
         self._first_ts = None
         self._has_played = False
+        # The next stream may target a different device: re-anchor the DAC
+        # clock mapping instead of reusing the previous DAC's drift ratio.
+        self._dac_loop_samples = []
+        self._dac_loop_ratio = 1.0
 
     def enqueue(self, server_timestamp_us: int, data: bytes) -> None:
         """Queue a PCM chunk (any thread)."""

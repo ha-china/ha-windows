@@ -212,6 +212,7 @@ class Preferences:
     volume: Optional[float] = None
     voice_input_hotkey: str = ""
     mic_device: str = ""  # microphone name, "" = system default
+    output_device: str = ""  # output device name, "" = system default
     muted: bool = False
     conversation_bubble_enabled: bool = True
     sendspin_enabled: bool = True
@@ -357,6 +358,7 @@ class AudioPlayer:
             self._vlc_instance = vlc.Instance('--no-xlib')
             self._vlc_player = self._vlc_instance.media_player_new()
             self._vlc_available = True
+            self._apply_vlc_output_device()
             logger.debug("VLC player initialized (streaming supported)")
         except Exception as e:
             logger.debug(f"VLC not available (install VLC for streaming): {e}")
@@ -410,11 +412,31 @@ class AudioPlayer:
             )
             self._play_thread.start()
 
+    def _apply_vlc_output_device(self) -> None:
+        """Best-effort: route VLC to the user-selected output device (issue #12)."""
+        if not (self._vlc_available and self._vlc_player):
+            return
+        from src.core.audio_output import get_selected_device, resolve_endpoint_id
+
+        name = get_selected_device()
+        if not name:
+            return
+        try:
+            endpoint = resolve_endpoint_id(name)
+            if endpoint is None:
+                logger.debug(f"VLC output device endpoint not found: {name}")
+                return
+            if self._vlc_player.audio_output_device_set("mmdevice", endpoint) == 0:
+                logger.debug(f"VLC output device: {name}")
+        except Exception as e:
+            logger.debug(f"VLC output device switch failed: {e}")
+
     def _play_vlc(self, url: str, playback_id: int) -> None:
         """Play with VLC (true streaming)"""
         try:
             import vlc
 
+            self._apply_vlc_output_device()
             media = self._vlc_instance.media_new(url)
             self._vlc_player.set_media(media)
             self._vlc_player.audio_set_volume(self._volume)

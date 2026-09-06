@@ -4,7 +4,7 @@ Sendspin audio receiver (client side).
 Music Assistant runs the Sendspin *server* (port 8927). This app runs a Sendspin
 *client* that advertises itself via mDNS (`_sendspin._tcp.local.`) on port 8928;
 Music Assistant auto-discovers it and connects. Incoming audio (PCM) is played
-through the default sounddevice output device.
+through the selected output device (the system default unless overridden).
 
 Targets aiosendspin 9.x: Noise-encrypted pairing, a persistent client Identity
 and time-synchronized playback (play timestamps computed from the shared clock,
@@ -91,8 +91,10 @@ def get_device_info():
 class SendspinReceiver:
     """Sendspin client that Music Assistant discovers and streams audio to."""
 
-    def __init__(self, name: Optional[str] = None):
+    def __init__(self, name: Optional[str] = None,
+                 output_device: Optional[str] = None):
         self.name = name or get_hostname()
+        self._output_device = output_device  # device name, None = system default
         self._listener: Optional[object] = None
         self._client: Optional[object] = None
         self._started = False
@@ -530,14 +532,34 @@ class SendspinReceiver:
 
     def _start_player(self) -> None:
         """Create (once) the DAC-clocked sync player and start its stream."""
-        if self._player is None:
+        if self._player is None or self._player.device != self._output_device:
             self._player = SyncAudioPlayer(
                 compute_play_time=self._compute_play_time,
                 now_us=self._now_us,
                 is_synced=self._is_synced,
                 on_skew=self._notify_sync,
+                device=self._output_device,
             )
         self._player.start()
+
+    def set_output_device(self, device_name: Optional[str]) -> None:
+        """Switch the playback output device (None/"" = system default).
+
+        When a stream is currently open it is restarted on the new device;
+        otherwise the next stream picks the selection up.
+        """
+        device_name = device_name or None
+        if device_name == self._output_device:
+            return
+        self._output_device = device_name
+        logger.info(f"Sendspin: output device set to {device_name or 'system default'}")
+        if self._player is not None and self._player.is_ready():
+            try:
+                self._player.stop()
+                self._player.start()
+                logger.info("Sendspin: playback restarted on new output device")
+            except Exception as e:
+                logger.error(f"Failed to restart playback on new output device: {e}")
 
     def _stop_playback(self) -> None:
         if self._player is not None:

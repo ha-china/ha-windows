@@ -263,6 +263,20 @@ class HomeAssistantWindows:
             self._audio_recorder.start_recording(audio_callback=self._audio_callback)
         logger.info(f"🎤 Microphone set to: {device_name or 'system default'}")
 
+    def _set_output_device(self, device_name: str) -> None:
+        """Switch the audio output device ("" = system default) and persist it."""
+        state = self.api_server.state
+        state.preferences.output_device = device_name
+        state.save_preferences()
+
+        from src.core import audio_output
+
+        audio_output.apply_output_device(device_name)
+
+        if self.sendspin:
+            self.sendspin.set_output_device(device_name or None)
+        logger.info(f"🔊 Output device set to: {device_name or 'system default'}")
+
     def _set_muted(self, muted: bool) -> None:
         """Set microphone mute state and persist it (called by protocol callback)."""
         state = self.api_server.state
@@ -313,7 +327,12 @@ class HomeAssistantWindows:
         try:
             from src.sendspin_player import SendspinReceiver
 
-            self.sendspin = SendspinReceiver(name=self.device_name)
+            self.sendspin = SendspinReceiver(
+                name=self.device_name,
+                output_device=getattr(
+                    self.api_server.state.preferences, 'output_device', ""
+                ) or None,
+            )
             self.sendspin.set_metadata_callback(self._on_sendspin_metadata)
             self.sendspin.set_connection_callback(self._on_sendspin_connection)
             self.sendspin.set_state_callback(self._on_sendspin_state)
@@ -597,11 +616,19 @@ class HomeAssistantWindows:
         self.tray.set_callbacks(
             on_quit=self._request_quit,
             on_mic_change=self._set_microphone,
+            on_output_change=self._set_output_device,
             on_mute_change=self._on_tray_mute_toggle,
             on_bubble_toggle=self._on_tray_bubble_toggle,
             on_sendspin_toggle=self._on_tray_sendspin_toggle,
             on_run_as_admin=self._relaunch_as_admin,
             on_mini_player_toggle=self._on_tray_mini_player_toggle,
+        )
+
+        # Apply the saved output device to the local playback backends
+        from src.core import audio_output
+
+        audio_output.apply_output_device(
+            getattr(self.api_server.state.preferences, 'output_device', "") or None
         )
 
         # Apply saved mini player preference and wire its handlers

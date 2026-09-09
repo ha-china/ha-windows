@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-09
+
+### Added
+- 音频输出设备选择 (issue #12): 托盘菜单新增「音频输出」子菜单（与麦克风选择同级），支持 pygame（TTS/公告）、VLC（音乐流）和 Sendspin 三个后端统一切换；选择持久化到偏好文件，启动时自动恢复
+- 新增 `src/core/audio_output.py`：输出设备枚举（WASAPI 优先、去重）、名称解析、pygame mixer 重建（未知设备自动回退系统默认）、pycaw 渲染端点 ID 查询（供 VLC mmdevice 切换）
+- Sendspin 热切换：播放中切换输出设备立即生效（重建流并重锚定 DAC 时钟映射）；设备打开失败自动回退系统默认，不会中断播放
+- About 对话框重新设计：无边框深色圆角卡片（与 pairing dialog / mini player 设计语言一致）、反锯齿 accent 徽章、accent 色版本号、可点击 GitHub 链接、pill 关闭按钮、支持拖拽和 Esc 关闭
+
+### Fixed
+- Sendspin 播放中切换输出设备不生效：热切换时未更新 `player.device`，导致每次重启都开在旧设备上；设备名称解析优先 WASAPI（此前可能命中 MME/DirectSound 同名副本），并记录实际打开的设备到日志
+
 ## [1.2.0] - 2026-09-04
 
 ### Fixed

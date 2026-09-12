@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-12
+
+### Added
+- 托盘隐藏模式 (issue #11): 托盘菜单可隐藏图标，隐藏时仅保留设备状态传感器上报，语音助手 / Sendspin / 远程指令（媒体播放器、按钮、服务、麦克风静音/思考音 switch）全部 unload；HA 设备页 Controls 区新增「隐藏图标」switch 作为唯一恢复入口，开关即 unload/load；偏好持久化，重启保持
+- 新增 `src/sensors/tray_icon_switch.py` 托盘图标开关实体
+
+### Fixed
+- 修复语音被静音: 上一个 pipeline run 的迟到 `RUN_END`（hide/show 重连后 HA 先 abort 旧 run）会清掉新会话的 streaming 标志，导致整轮对话无音频；现在语音边界 `VAD_END`/`STT_END` 才是权威停止点
+- 修复隐藏模式三个恢复缺陷: `_event_loop` 仅在唤醒词初始化时赋值，隐藏启动后回调全部丢失；`_schedule` 在事件循环线程上改用 `create_task`；pystray 默认 setup 无条件显示图标，改用自定义 setup 尊重隐藏意图
+- 修复托盘隐藏后被 HA 重连触发的 phase 重绘恢复（`_replace_icon` 在隐藏状态下不再重新添加图标）
+- 修复开关语义反转导致隐藏不生效/状态回退；switch 状态直接等于 hidden 标志；Tray Icon switch key 700→701，强制 HA 重建实体以从 Configuration 归入 Controls
+- 修复 `output_device` 偏好未写入 `save/load_preferences` 导致输出设备选择不持久化
+
+### Removed
+- 移除 Screenshot 按钮: CommandExecutor 中从未注册该命令，按下只会被白名单拒绝的死功能
+
 ## [1.3.0] - 2026-09-09
 
 ### Added

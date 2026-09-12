@@ -127,7 +127,7 @@ class TestEntityGating:
         assert not msgs, "buttons must not respond in hidden mode"
 
     def test_tray_icon_switch_responds_in_hidden_mode(self, tmp_path):
-        """The Tray Icon switch is the restore path and must always work."""
+        """The switch is the restore path and must always work (ON = hidden)."""
         protocol = make_protocol(tmp_path, tray_icon_hidden=True)
         list(protocol.handle_message(ListEntitiesRequest()))
 
@@ -135,3 +135,45 @@ class TestEntityGating:
 
         assert msgs, "Tray Icon switch must respond in hidden mode"
         assert getattr(msgs[0], "state", None) is True
+
+    def test_switch_state_tracks_mode_flag(self, tmp_path):
+        """Regression: switch state must match the mode flag exactly.
+
+        An earlier version inverted the semantics so turning the switch off
+        was a no-op and the state bounced back on the next state push.
+        """
+        protocol = make_protocol(tmp_path, tray_icon_hidden=False)
+        invoked = []
+        protocol.set_tray_hidden_callback(lambda hidden: invoked.append(hidden))
+        list(protocol.handle_message(ListEntitiesRequest()))
+
+        msgs = list(protocol.handle_message(SwitchCommandRequest(key=700, state=True)))
+        assert invoked == [True], f"ON must signal hidden=True, got {invoked}"
+        assert msgs and getattr(msgs[0], "state", None) is True
+
+        invoked.clear()
+        msgs = list(protocol.handle_message(SwitchCommandRequest(key=700, state=False)))
+        assert invoked == [False], f"OFF must signal hidden=False, got {invoked}"
+        assert msgs and getattr(msgs[0], "state", None) is False
+
+    def test_tray_icon_switch_has_no_entity_category(self, tmp_path):
+        """No category: HA must group the switch under 'Controls'."""
+        from aioesphomeapi.model import EntityCategory
+
+        protocol = make_protocol(tmp_path, tray_icon_hidden=False)
+        msgs = list(protocol.handle_message(ListEntitiesRequest()))
+
+        switch_defs = [m for m in msgs if getattr(m, "object_id", "") == "tray_icon"]
+        assert switch_defs, "tray_icon switch definition missing"
+        assert getattr(switch_defs[0], "entity_category", None) in (
+            None,
+            EntityCategory.NONE,
+        ), "tray_icon must not be a CONFIG entity (belongs in Controls)"
+
+    def test_tray_icon_switch_name_is_localized(self, tmp_path):
+        protocol = make_protocol(tmp_path, tray_icon_hidden=False)
+        msgs = list(protocol.handle_message(ListEntitiesRequest()))
+
+        switch_defs = [m for m in msgs if getattr(m, "object_id", "") == "tray_icon"]
+        assert switch_defs, "tray_icon switch definition missing"
+        assert getattr(switch_defs[0], "name", ""), "switch must have a name"

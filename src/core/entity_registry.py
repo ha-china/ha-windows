@@ -142,15 +142,16 @@ class EntityRegistryMixin:
 
         # Tray icon switch: ALWAYS available - in sensors-only mode it is the
         # only way to restore the hidden features (issue #11/#12).
+        # Switch state == mode flag: ON = icon hidden.
         if self._tray_icon_entity is None:
             from src.sensors.tray_icon_switch import TrayIconSwitchEntity
 
             self._tray_icon_entity = TrayIconSwitchEntity(
                 key=700,
-                name="Tray Icon",
+                name=_i18n.t("tray_hide_switch"),
                 object_id="tray_icon",
-                get_visible=lambda: not getattr(self.state.preferences, "tray_icon_hidden", False),
-                set_visible=self._set_tray_hidden_and_push,
+                get_hidden=lambda: getattr(self.state.preferences, "tray_icon_hidden", False),
+                set_hidden=self._set_tray_hidden_and_push,
             )
 
         enabled = self._remote_features_enabled()

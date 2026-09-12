@@ -177,3 +177,48 @@ class TestEntityGating:
         switch_defs = [m for m in msgs if getattr(m, "object_id", "") == "tray_icon"]
         assert switch_defs, "tray_icon switch definition missing"
         assert getattr(switch_defs[0], "name", ""), "switch must have a name"
+
+
+class TestTrayIconRepaintGuard:
+    """Regression: phase changes after an HA reconnect must not resurrect
+    a hidden tray icon (_replace_icon used to re-add it unconditionally)."""
+
+    def _make_tray(self):
+        from src.ui.system_tray_icon import SystemTrayIcon
+
+        tray = SystemTrayIcon()
+        tray._status_info = {"name": "n", "ip": "1.2.3.4", "port": "6053"}
+        tray._current_phase = SystemTrayIcon.PHASE_IDLE
+        return tray
+
+    def test_replace_icon_suppressed_when_hidden(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from src.ui import system_tray_icon as sti
+
+        tray = self._make_tray()
+        calls = []
+        monkeypatch.setattr(
+            sti,
+            "_shell32",
+            SimpleNamespace(Shell_NotifyIconW=lambda cmd, nid: calls.append(cmd)),
+        )
+        monkeypatch.setattr(
+            sti,
+            "_user32",
+            SimpleNamespace(LoadImageW=lambda *a, **k: 42, DestroyIcon=lambda h: None),
+        )
+
+        tray._icon_visible = False
+        tray._replace_icon(123)
+        assert calls == [], "hidden icon must not be re-added"
+
+        tray._icon_visible = True
+        tray._replace_icon(123)
+        assert len(calls) == 2, "visible icon must be deleted + re-added"
+
+    def test_set_icon_visible_tracks_intent_without_icon(self):
+        tray = self._make_tray()
+
+        tray.set_icon_visible(False)
+        assert tray._icon_visible is False, "intent must be tracked even when the pystray icon is missing"

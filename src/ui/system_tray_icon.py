@@ -111,6 +111,7 @@ class SystemTrayIcon:
         self._on_run_as_admin: Optional[Callable] = None
         self._version = "0.0.0"
         self._sendspin_connected = False
+        self._icon_visible = True  # tray-hidden mode: suppress icon repaints
 
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
         color = self._PHASE_COLORS.get(self._current_phase, self._PHASE_COLORS[self.PHASE_IDLE])
@@ -140,6 +141,10 @@ class SystemTrayIcon:
 
     def _replace_icon(self, hwnd: int) -> None:
         """Delete and re-add tray icon to force visual update"""
+        # Tray-hidden mode: re-adding would resurrect the hidden icon
+        # (e.g. when HA reconnects and a phase change triggers a repaint).
+        if not self._icon_visible:
+            return
         # Delete old icon
         _shell32.Shell_NotifyIconW(_NIM_DELETE, ctypes.byref(_NID(cbSize=ctypes.sizeof(_NID), hWnd=hwnd)))
 
@@ -387,10 +392,14 @@ class SystemTrayIcon:
 
     def set_icon_visible(self, visible: bool) -> None:
         """Show or hide the tray icon (pystray supports runtime visibility)."""
+        visible = bool(visible)
+        # Track the intent even when the icon is not up yet, so phase-change
+        # repaints between start() and this call cannot resurrect it.
+        self._icon_visible = visible
         if self.icon is None:
             return
         try:
-            self.icon.visible = bool(visible)
+            self.icon.visible = visible
             logger.info(f"Tray icon {'shown' if visible else 'hidden'}")
         except Exception as e:
             logger.error(f"Failed to change tray icon visibility: {e}")

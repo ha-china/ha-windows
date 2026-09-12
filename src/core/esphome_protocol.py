@@ -64,8 +64,7 @@ PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
 logger = logging.getLogger(__name__)
 
 
-class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
-                      asyncio.Protocol):
+class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin, asyncio.Protocol):
     """
     ESPHome API Protocol Handler
 
@@ -115,6 +114,7 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
         self._hotkey_manager = None
         self._thinking_sound_entity = None
         self._mic_mute_entity = None
+        self._tray_icon_entity = None
         self._state_update_task: Optional[asyncio.Task] = None
         self._processing = False
         self._ha_host: Optional[str] = None
@@ -128,6 +128,9 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
         # Conversation text callback for tray balloon notifications
         self._conversation_callback: Optional[Callable[[str, str], None]] = None
 
+        # Tray icon visibility callback (sensors-only mode toggle, set by main)
+        self._tray_hidden_callback: Optional[Callable[[bool], None]] = None
+
         # Debug capture of the audio actually streamed to HA (last conversation)
         self._debug_audio_chunks: List[bytes] = []
         self._audio_chunks_sent = 0
@@ -139,6 +142,30 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
         """Thread-safe view of the TTS playback flag (read from the audio thread)."""
         return self._is_playing_tts
 
+    def _remote_features_enabled(self) -> bool:
+        """False in tray-hidden (sensors-only) mode.
+
+        With the tray icon hidden only device-status sensors are reported:
+        voice assistant, media player, Sendspin and remote commands are
+        unloaded. The single source of truth is the persisted preference.
+        """
+        return not getattr(self.state.preferences, "tray_icon_hidden", False)
+
+    def close_connection(self) -> None:
+        """Drop the HA connection so it reconnects and re-lists entities.
+
+        ESPHome native API has no mid-connection entity add/remove: HA caches
+        the entity list from ListEntitiesRequest. Closing the transport makes
+        HA mark the device briefly unavailable and reconnect, and the fresh
+        protocol instance serves the current feature set.
+        """
+        if self._transport is not None:
+            logger.info("Closing HA connection to refresh the entity list")
+            try:
+                self._transport.close()
+            except Exception as e:
+                logger.debug(f"Transport close failed: {e}")
+
     def set_phase_callback(self, callback: Optional[Callable[[str], None]]) -> None:
         self._phase_callback = callback
 
@@ -147,6 +174,18 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
 
     def set_conversation_callback(self, callback: Optional[Callable[[str, str], None]]) -> None:
         self._conversation_callback = callback
+
+    def set_tray_hidden_callback(self, callback: Optional[Callable[[bool], None]]) -> None:
+        """Register the callback that applies tray-hidden (sensors-only) mode."""
+        self._tray_hidden_callback = callback
+
+    def _set_tray_hidden_and_push(self, hidden: bool) -> None:
+        """Apply tray-hidden mode (called by the Tray Icon switch entity)."""
+        if self._tray_hidden_callback:
+            try:
+                self._tray_hidden_callback(hidden)
+            except Exception as e:
+                logger.error(f"Failed to apply tray-hidden mode: {e}")
 
     def _set_muted(self, muted: bool) -> None:
         """Persist and apply microphone mute state (called by switch entity)."""
@@ -159,9 +198,7 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
     def _push_mute_state(self) -> None:
         """Push the current mute switch state to Home Assistant."""
         if self._mic_mute_entity is not None:
-            self.send_messages(
-                list(self._mic_mute_entity.handle_message(SubscribeHomeAssistantStatesRequest()))
-            )
+            self.send_messages(list(self._mic_mute_entity.handle_message(SubscribeHomeAssistantStatesRequest())))
 
     def _set_muted_and_push(self, muted: bool) -> None:
         """Apply the mute state and push it to Home Assistant (tray path)."""
@@ -199,7 +236,7 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
             if self._service_manager is not None:
                 self._service_manager.set_ha_host(self._ha_host)
         logger.info(f"📱 New client connected: {peername}")
-        self._set_phase('idle')
+        self._set_phase("idle")
 
     def connection_lost(self, exc) -> None:
         """Connection lost"""
@@ -223,7 +260,7 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
 
         # Restore volume (if previously ducked)
         self.unduck()
-        self._set_phase('not_ready')
+        self._set_phase("not_ready")
 
     def data_received(self, data: bytes) -> None:
         """Receive data"""
@@ -334,15 +371,20 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin,
             self.send_messages([PingResponse()])
         # Voice Assistant messages
         elif isinstance(msg_inst, VoiceAssistantEventResponse):
-            self._handle_voice_event(msg_inst)
+            if self._remote_features_enabled():
+                self._handle_voice_event(msg_inst)
         elif isinstance(msg_inst, VoiceAssistantAnnounceRequest):
-            self._handle_announce_request(msg_inst)
+            if self._remote_features_enabled():
+                self._handle_announce_request(msg_inst)
         elif isinstance(msg_inst, VoiceAssistantTimerEventResponse):
-            self._handle_timer_event(msg_inst)
+            if self._remote_features_enabled():
+                self._handle_timer_event(msg_inst)
         elif isinstance(msg_inst, VoiceAssistantConfigurationRequest):
-            self._handle_voice_config(msg_inst)
+            if self._remote_features_enabled():
+                self._handle_voice_config(msg_inst)
         elif isinstance(msg_inst, VoiceAssistantSetConfiguration):
-            self._handle_set_voice_config(msg_inst)
+            if self._remote_features_enabled():
+                self._handle_set_voice_config(msg_inst)
         # Entity messages
         else:
             msgs = list(self.handle_message(msg_inst))
@@ -431,6 +473,7 @@ class ESPHomeServer:
         self._phase_callback: Optional[Callable[[str], None]] = None
         self._muted_callback: Optional[Callable[[bool], None]] = None
         self._conversation_callback: Optional[Callable[[str, str], None]] = None
+        self._tray_hidden_callback: Optional[Callable[[bool], None]] = None
 
     def set_phase_callback(self, callback: Optional[Callable[[str], None]]) -> None:
         self._phase_callback = callback
@@ -447,6 +490,11 @@ class ESPHomeServer:
         if self._protocol:
             self._protocol.set_conversation_callback(callback)
 
+    def set_tray_hidden_callback(self, callback: Optional[Callable[[bool], None]]) -> None:
+        self._tray_hidden_callback = callback
+        if self._protocol:
+            self._protocol.set_tray_hidden_callback(callback)
+
     async def start(self) -> bool:
         """Start server"""
         try:
@@ -462,6 +510,8 @@ class ESPHomeServer:
                     self._protocol.set_muted_callback(self._muted_callback)
                 if self._conversation_callback:
                     self._protocol.set_conversation_callback(self._conversation_callback)
+                if self._tray_hidden_callback:
+                    self._protocol.set_tray_hidden_callback(self._tray_hidden_callback)
                 return self._protocol
 
             self.server = await loop.create_server(

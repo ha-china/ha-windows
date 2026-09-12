@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Any, Callable, Tupl
 
 try:
     import aioesphomeapi
+
     _ESPHOME_CORE_VERSION = getattr(aioesphomeapi, "__version__", "2025.9.0")
 except ImportError:
     _ESPHOME_CORE_VERSION = "45.7.0"
@@ -98,7 +99,9 @@ def get_device_identity() -> Dict[str, str]:
                 logger.error(
                     "Device identity file unreadable (%s). Backing it up to %s "
                     "and generating a NEW identity - restore the backup to keep "
-                    "the existing Home Assistant device.", e, backup_path
+                    "the existing Home Assistant device.",
+                    e,
+                    backup_path,
                 )
                 try:
                     shutil.copy2(identity_path, backup_path)
@@ -153,6 +156,7 @@ def _check_pycaw():
     if PYCAW_AVAILABLE is None:
         try:
             from pycaw.pycaw import AudioUtilities  # noqa: F401
+
             PYCAW_AVAILABLE = True
         except (ImportError, OSError) as e:
             PYCAW_AVAILABLE = False
@@ -162,6 +166,7 @@ def _check_pycaw():
 
 class WakeWordType(str, Enum):
     """Wake word type"""
+
     MICRO_WAKE_WORD = "micro"
     OPEN_WAKE_WORD = "openWakeWord"
 
@@ -169,6 +174,7 @@ class WakeWordType(str, Enum):
 @dataclass
 class AvailableWakeWord:
     """Available wake word"""
+
     id: str
     type: WakeWordType
     wake_word: str
@@ -180,6 +186,7 @@ class AvailableWakeWord:
         if self.type == WakeWordType.MICRO_WAKE_WORD:
             try:
                 from pymicro_wakeword import MicroWakeWord
+
                 return MicroWakeWord.from_config(config_path=self.wake_word_path)
             except ImportError:
                 logger.warning("pymicro_wakeword not installed")
@@ -191,6 +198,7 @@ class AvailableWakeWord:
         if self.type == WakeWordType.OPEN_WAKE_WORD:
             try:
                 from pyopen_wakeword import OpenWakeWord
+
                 oww_model = OpenWakeWord.from_model(model_path=self.wake_word_path)
                 setattr(oww_model, "wake_word", self.wake_word)
                 return oww_model
@@ -207,6 +215,7 @@ class AvailableWakeWord:
 @dataclass
 class Preferences:
     """User preferences"""
+
     active_wake_words: List[str] = field(default_factory=list)
     thinking_sound: int = 0
     volume: Optional[float] = None
@@ -217,6 +226,9 @@ class Preferences:
     conversation_bubble_enabled: bool = True
     sendspin_enabled: bool = True
     mini_player_enabled: bool = True
+    # Tray-hidden (sensors-only) mode: icon hidden, VA/Sendspin/remote
+    # commands unloaded; the HA "Tray Icon" switch is the only way back.
+    tray_icon_hidden: bool = False
 
 
 class WindowsVolumeController:
@@ -257,6 +269,7 @@ class WindowsVolumeController:
 
         try:
             from pycaw.pycaw import AudioUtilities
+
             devices = AudioUtilities.GetSpeakers()
             # New pycaw uses EndpointVolume property
             self._volume_interface = devices.EndpointVolume
@@ -355,7 +368,8 @@ class AudioPlayer:
 
         try:
             import vlc
-            self._vlc_instance = vlc.Instance('--no-xlib')
+
+            self._vlc_instance = vlc.Instance("--no-xlib")
             self._vlc_player = self._vlc_instance.media_player_new()
             self._vlc_available = True
             self._apply_vlc_output_device()
@@ -367,6 +381,7 @@ class AudioPlayer:
         self._pygame_available = False
         try:
             import pygame
+
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
             self._pygame_available = True
@@ -377,14 +392,14 @@ class AudioPlayer:
 
         if not (self._vlc_available or self._pygame_available):
             logger.error(
-                "No audio backend available (neither VLC nor pygame) - "
-                "playback and volume control are disabled"
+                "No audio backend available (neither VLC nor pygame) - " "playback and volume control are disabled"
             )
 
     @property
     def is_playing(self) -> bool:
         if self._vlc_available and self._vlc_player:
             import vlc
+
             state = self._vlc_player.get_state()
             return state in (vlc.State.Playing, vlc.State.Buffering)
         return self._is_playing
@@ -405,11 +420,7 @@ class AudioPlayer:
             self._play_vlc(url, playback_id)
         else:
             # Fallback to pygame in background thread without buffering URL in memory
-            self._play_thread = threading.Thread(
-                target=self._play_pygame,
-                args=(url, playback_id),
-                daemon=True
-            )
+            self._play_thread = threading.Thread(target=self._play_pygame, args=(url, playback_id), daemon=True)
             self._play_thread.start()
 
     def _apply_vlc_output_device(self) -> None:
@@ -519,7 +530,7 @@ class AudioPlayer:
         try:
             import pygame
 
-            if url.startswith(('http://', 'https://')):
+            if url.startswith(("http://", "https://")):
                 logger.debug(f"Downloading audio to temp file: {url}")
                 local_path = self._download_to_temp_file(url, playback_id)
                 if local_path is None:
@@ -562,6 +573,7 @@ class AudioPlayer:
                 self._vlc_player.stop()
             elif self._pygame_available:
                 import pygame
+
                 pygame.mixer.music.stop()
         except Exception as e:
             logger.error(f"Stop error: {e}")
@@ -576,6 +588,7 @@ class AudioPlayer:
                 self._vlc_player.pause()
             elif self._pygame_available:
                 import pygame
+
                 pygame.mixer.music.pause()
         except Exception as e:
             logger.error(f"Pause error: {e}")
@@ -589,6 +602,7 @@ class AudioPlayer:
                 self._vlc_player.pause()  # VLC toggle pause
             elif self._pygame_available:
                 import pygame
+
                 pygame.mixer.music.unpause()
         except Exception as e:
             logger.error(f"Resume error: {e}")
@@ -610,6 +624,7 @@ class AudioPlayer:
                 self._vlc_player.audio_set_volume(self._volume)
             elif self._pygame_available:
                 import pygame
+
                 pygame.mixer.music.set_volume(self._volume / 100)
         except Exception as e:
             logger.error(f"Set volume error: {e}")
@@ -633,6 +648,8 @@ class AudioPlayer:
                 callback()
             except Exception as e:
                 logger.error(f"Error in done callback: {e}")
+
+
 def get_hardware_identity() -> Tuple[str, str]:
     """Return (manufacturer, model) of the local machine.
 
@@ -664,6 +681,7 @@ class ServerState:
 
     References linux-voice-assistant's ServerState
     """
+
     name: str
     mac_address: str
     friendly_name: str = ""
@@ -695,7 +713,7 @@ class ServerState:
 
     # Preferences
     preferences: Preferences = field(default_factory=Preferences)
-    preferences_path: Path = field(default_factory=lambda: get_user_data_dir() / 'preferences.json')
+    preferences_path: Path = field(default_factory=lambda: get_user_data_dir() / "preferences.json")
     download_dir: Path = field(default_factory=lambda: Path("downloads"))
 
     # Entity references
@@ -720,17 +738,24 @@ class ServerState:
                 self.preferences_path.parent.mkdir(parents=True, exist_ok=True)
                 tmp_path = self.preferences_path.with_suffix(".json.tmp")
                 with open(tmp_path, "w", encoding="utf-8") as f:
-                    json.dump({
-                        "active_wake_words": self.preferences.active_wake_words,
-                        "thinking_sound": self.preferences.thinking_sound,
-                        "volume": self.preferences.volume,
-                        "voice_input_hotkey": self.preferences.voice_input_hotkey,
-                        "mic_device": self.preferences.mic_device,
-                        "muted": self.preferences.muted,
-                        "conversation_bubble_enabled": self.preferences.conversation_bubble_enabled,
-                        "sendspin_enabled": self.preferences.sendspin_enabled,
-                        "mini_player_enabled": self.preferences.mini_player_enabled
-                    }, f, ensure_ascii=False, indent=4)
+                    json.dump(
+                        {
+                            "active_wake_words": self.preferences.active_wake_words,
+                            "thinking_sound": self.preferences.thinking_sound,
+                            "volume": self.preferences.volume,
+                            "voice_input_hotkey": self.preferences.voice_input_hotkey,
+                            "mic_device": self.preferences.mic_device,
+                            "output_device": self.preferences.output_device,
+                            "muted": self.preferences.muted,
+                            "conversation_bubble_enabled": self.preferences.conversation_bubble_enabled,
+                            "sendspin_enabled": self.preferences.sendspin_enabled,
+                            "mini_player_enabled": self.preferences.mini_player_enabled,
+                            "tray_icon_hidden": self.preferences.tray_icon_hidden,
+                        },
+                        f,
+                        ensure_ascii=False,
+                        indent=4,
+                    )
                 os.replace(tmp_path, self.preferences_path)
             except Exception as e:
                 logger.error(f"Failed to save preferences: {e}")
@@ -749,11 +774,13 @@ class ServerState:
                 self.preferences.volume = float(volume) if volume is not None else None
                 self.preferences.voice_input_hotkey = data.get("voice_input_hotkey", "")
                 self.preferences.mic_device = data.get("mic_device", "")
+                self.preferences.output_device = data.get("output_device", "")
                 self.preferences.muted = data.get("muted", False)
                 self.preferences.conversation_bubble_enabled = data.get("conversation_bubble_enabled", True)
                 self.preferences.sendspin_enabled = data.get("sendspin_enabled", True)
                 self.preferences.mini_player_enabled = data.get("mini_player_enabled", True)
-                
+                self.preferences.tray_icon_hidden = data.get("tray_icon_hidden", False)
+
         except Exception as e:
             logger.error(f"Failed to load preferences: {e}")
 
@@ -777,8 +804,8 @@ def create_default_state(name: str) -> ServerState:
 
     # Default activate okay_nabu, if not available use the first one
     default_active = set()
-    if 'okay_nabu' in available_wake_words:
-        default_active.add('okay_nabu')
+    if "okay_nabu" in available_wake_words:
+        default_active.add("okay_nabu")
     elif available_wake_words:
         default_active.add(next(iter(available_wake_words.keys())))
 

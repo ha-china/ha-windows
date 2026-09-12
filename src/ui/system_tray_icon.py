@@ -37,24 +37,26 @@ _LR_LOADFROMFILE = 0x0010
 # pystray defines WM_NOTIFY as WM_USER + 11 = 1035
 _WM_NOTIFY = 1035
 
+
 class _NID(ctypes.Structure):
     _fields_ = [
-        ('cbSize', ctypes.wintypes.DWORD),
-        ('hWnd', ctypes.wintypes.HWND),
-        ('uID', ctypes.wintypes.UINT),
-        ('uFlags', ctypes.wintypes.UINT),
-        ('uCallbackMessage', ctypes.wintypes.UINT),
-        ('hIcon', ctypes.wintypes.HANDLE),
-        ('szTip', ctypes.wintypes.WCHAR * 128),
-        ('dwState', ctypes.wintypes.DWORD),
-        ('dwStateMask', ctypes.wintypes.DWORD),
-        ('szInfo', ctypes.wintypes.WCHAR * 256),
-        ('uVersion', ctypes.wintypes.UINT),
-        ('szInfoTitle', ctypes.wintypes.WCHAR * 64),
-        ('dwInfoFlags', ctypes.wintypes.DWORD),
-        ('guidItem', ctypes.c_byte * 16),
-        ('hBalloonIcon', ctypes.wintypes.HANDLE),
+        ("cbSize", ctypes.wintypes.DWORD),
+        ("hWnd", ctypes.wintypes.HWND),
+        ("uID", ctypes.wintypes.UINT),
+        ("uFlags", ctypes.wintypes.UINT),
+        ("uCallbackMessage", ctypes.wintypes.UINT),
+        ("hIcon", ctypes.wintypes.HANDLE),
+        ("szTip", ctypes.wintypes.WCHAR * 128),
+        ("dwState", ctypes.wintypes.DWORD),
+        ("dwStateMask", ctypes.wintypes.DWORD),
+        ("szInfo", ctypes.wintypes.WCHAR * 256),
+        ("uVersion", ctypes.wintypes.UINT),
+        ("szInfoTitle", ctypes.wintypes.WCHAR * 64),
+        ("dwInfoFlags", ctypes.wintypes.DWORD),
+        ("guidItem", ctypes.c_byte * 16),
+        ("hBalloonIcon", ctypes.wintypes.HANDLE),
     ]
+
 
 _user32 = ctypes.windll.user32
 _shell32 = ctypes.windll.shell32
@@ -66,13 +68,13 @@ class SystemTrayIcon:
     """
 
     # Phase constants
-    PHASE_IDLE = 'idle'
-    PHASE_WAITING = 'waiting'
-    PHASE_LISTENING = 'listening'
-    PHASE_THINKING = 'thinking'
-    PHASE_REPLYING = 'replying'
-    PHASE_ERROR = 'error'
-    PHASE_NOT_READY = 'not_ready'
+    PHASE_IDLE = "idle"
+    PHASE_WAITING = "waiting"
+    PHASE_LISTENING = "listening"
+    PHASE_THINKING = "thinking"
+    PHASE_REPLYING = "replying"
+    PHASE_ERROR = "error"
+    PHASE_NOT_READY = "not_ready"
 
     # Phase colors (RGB)
     _PHASE_COLORS = {
@@ -93,9 +95,9 @@ class SystemTrayIcon:
         self._state = state
         self._current_phase = self.PHASE_IDLE
         self._status_info = {
-            'name': _i18n.t('unknown'),
-            'ip': _i18n.t('unknown'),
-            'port': _i18n.t('unknown'),
+            "name": _i18n.t("unknown"),
+            "ip": _i18n.t("unknown"),
+            "port": _i18n.t("unknown"),
         }
         self._on_quit: Optional[Callable] = None
         self._on_mic_change: Optional[Callable] = None
@@ -105,13 +107,14 @@ class SystemTrayIcon:
         self._on_mini_player_toggle: Optional[Callable] = None
         self._on_sendspin_toggle: Optional[Callable] = None
         self._on_conversation: Optional[Callable] = None
+        self._on_tray_hide: Optional[Callable] = None
         self._on_run_as_admin: Optional[Callable] = None
         self._version = "0.0.0"
         self._sendspin_connected = False
 
     def create_icon_image(self, width: int = 64, height: int = 64) -> Image.Image:
         color = self._PHASE_COLORS.get(self._current_phase, self._PHASE_COLORS[self.PHASE_IDLE])
-        image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
         draw.ellipse([4, 4, width - 4, height - 4], fill=(*color, 255))
         hm = 16
@@ -127,41 +130,44 @@ class SystemTrayIcon:
             return
         self._current_phase = phase
         if self.icon:
-            hwnd = getattr(self.icon, '_hwnd', None)
+            hwnd = getattr(self.icon, "_hwnd", None)
             if hwnd:
                 self._replace_icon(hwnd)
             info = self._status_info
             self.icon.title = (
-                f"HA Windows: {info['name']} [{phase}]\n"
-                f"{_i18n.t('ip_label')}: {info['ip']}:{info['port']}"
+                f"HA Windows: {info['name']} [{phase}]\n" f"{_i18n.t('ip_label')}: {info['ip']}:{info['port']}"
             )
 
     def _replace_icon(self, hwnd: int) -> None:
         """Delete and re-add tray icon to force visual update"""
         # Delete old icon
-        _shell32.Shell_NotifyIconW(_NIM_DELETE, ctypes.byref(_NID(
-            cbSize=ctypes.sizeof(_NID), hWnd=hwnd)))
+        _shell32.Shell_NotifyIconW(_NIM_DELETE, ctypes.byref(_NID(cbSize=ctypes.sizeof(_NID), hWnd=hwnd)))
 
         # Create new icon image
         image = self.create_icon_image()
         info = self._status_info
         tip = f"HA Windows: {info['name']} [{self._current_phase}]\n{_i18n.t('ip_label')}: {info['ip']}:{info['port']}"
 
-        fd, path = tempfile.mkstemp('.ico')
+        fd, path = tempfile.mkstemp(".ico")
         try:
-            with os.fdopen(fd, 'wb') as f:
-                image.save(f, 'ICO')
+            with os.fdopen(fd, "wb") as f:
+                image.save(f, "ICO")
             hicon = _user32.LoadImageW(None, path, _IMAGE_ICON, 32, 32, _LR_LOADFROMFILE)
             if not hicon:
                 return
-            _shell32.Shell_NotifyIconW(_NIM_ADD, ctypes.byref(_NID(
-                cbSize=ctypes.sizeof(_NID),
-                hWnd=hwnd,
-                uFlags=_NIF_MESSAGE | _NIF_ICON | _NIF_TIP | _NIF_SHOWTIP,
-                uCallbackMessage=_WM_NOTIFY,
-                hIcon=hicon,
-                szTip=tip,
-            )))
+            _shell32.Shell_NotifyIconW(
+                _NIM_ADD,
+                ctypes.byref(
+                    _NID(
+                        cbSize=ctypes.sizeof(_NID),
+                        hWnd=hwnd,
+                        uFlags=_NIF_MESSAGE | _NIF_ICON | _NIF_TIP | _NIF_SHOWTIP,
+                        uCallbackMessage=_WM_NOTIFY,
+                        hIcon=hicon,
+                        szTip=tip,
+                    )
+                ),
+            )
             _user32.DestroyIcon(hicon)
         finally:
             try:
@@ -172,7 +178,7 @@ class SystemTrayIcon:
     def _on_show_status(self, icon, item) -> None:
         logger.info("Show status menu clicked")
         info = self._status_info
-        show_status_dialog(info['name'], info['ip'], info['port'], self._version)
+        show_status_dialog(info["name"], info["ip"], info["port"], self._version)
 
     def _on_quit_menu(self, icon, item) -> None:
         logger.info("Quit menu clicked")
@@ -207,7 +213,7 @@ class SystemTrayIcon:
     def _current_mic(self) -> str:
         if self._state is None:
             return ""
-        return getattr(self._state.preferences, 'mic_device', "")
+        return getattr(self._state.preferences, "mic_device", "")
 
     def _select_mic(self, device_name: str) -> None:
         logger.info(f"Microphone menu selected: {device_name or 'system default'}")
@@ -223,7 +229,7 @@ class SystemTrayIcon:
 
         def item_for(name: str):
             return pystray.MenuItem(
-                name or _i18n.t('settings_default_device'),
+                name or _i18n.t("settings_default_device"),
                 lambda icon, item: self._select_mic(name),
                 checked=lambda item: self._current_mic() == name,
                 radio=True,
@@ -237,7 +243,7 @@ class SystemTrayIcon:
     def _current_output_device(self) -> str:
         if self._state is None:
             return ""
-        return getattr(self._state.preferences, 'output_device', "")
+        return getattr(self._state.preferences, "output_device", "")
 
     def _select_output_device(self, device_name: str) -> None:
         logger.info(f"Output device menu selected: {device_name or 'system default'}")
@@ -253,7 +259,7 @@ class SystemTrayIcon:
 
         def item_for(name: str):
             return pystray.MenuItem(
-                name or _i18n.t('settings_default_device'),
+                name or _i18n.t("settings_default_device"),
                 lambda icon, item: self._select_output_device(name),
                 checked=lambda item: self._current_output_device() == name,
                 radio=True,
@@ -265,7 +271,7 @@ class SystemTrayIcon:
     def _current_muted(self) -> bool:
         if self._state is None:
             return False
-        return getattr(self._state.preferences, 'muted', False)
+        return getattr(self._state.preferences, "muted", False)
 
     def _toggle_mute(self) -> None:
         new_state = not self._current_muted()
@@ -279,7 +285,7 @@ class SystemTrayIcon:
     def _current_bubbles_enabled(self) -> bool:
         if self._state is None:
             return True
-        return getattr(self._state.preferences, 'conversation_bubble_enabled', True)
+        return getattr(self._state.preferences, "conversation_bubble_enabled", True)
 
     def _toggle_bubbles(self) -> None:
         new_state = not self._current_bubbles_enabled()
@@ -293,6 +299,7 @@ class SystemTrayIcon:
     def _show_conversation_balloon(self, msg_type: str, text: str) -> None:
         """Show a colored conversation bubble near the tray with STT/TTS text."""
         from src.ui.conversation_bubble import show_conversation_bubble
+
         show_conversation_bubble(msg_type, text)
 
     # --- Mini player ----------------------------------------------------------
@@ -300,7 +307,7 @@ class SystemTrayIcon:
     def _current_mini_player_enabled(self) -> bool:
         if self._state is None:
             return True
-        return getattr(self._state.preferences, 'mini_player_enabled', True)
+        return getattr(self._state.preferences, "mini_player_enabled", True)
 
     def _toggle_mini_player(self) -> None:
         new_state = not self._current_mini_player_enabled()
@@ -316,7 +323,7 @@ class SystemTrayIcon:
     def _current_sendspin_enabled(self) -> bool:
         if self._state is None:
             return True
-        return getattr(self._state.preferences, 'sendspin_enabled', True)
+        return getattr(self._state.preferences, "sendspin_enabled", True)
 
     def _toggle_sendspin(self) -> None:
         new_state = not self._current_sendspin_enabled()
@@ -340,19 +347,19 @@ class SystemTrayIcon:
         try:
             from src.sendspin_player import SendspinReceiver  # noqa: F401
         except ImportError:
-            return [disabled_item(_i18n.t('sendspin_not_available'))]
+            return [disabled_item(_i18n.t("sendspin_not_available"))]
 
         items.append(disabled_item(self._sendspin_connected_label()))
         items.append(
             pystray.MenuItem(
-                _i18n.t('sendspin_enabled'),
+                _i18n.t("sendspin_enabled"),
                 lambda icon, item: self._toggle_sendspin(),
                 checked=lambda item: self._current_sendspin_enabled(),
             )
         )
         items.append(
             pystray.MenuItem(
-                _i18n.t('mini_player'),
+                _i18n.t("mini_player"),
                 lambda icon, item: self._toggle_mini_player(),
                 checked=lambda item: self._current_mini_player_enabled(),
             )
@@ -362,6 +369,31 @@ class SystemTrayIcon:
     def _on_about_menu(self, icon, item) -> None:
         logger.info("About menu clicked")
         show_about_dialog(self._version)
+
+    # --- Tray-hidden (sensors-only) mode ---------------------------------------
+
+    def _current_tray_hidden(self) -> bool:
+        if self._state is None:
+            return False
+        return getattr(self._state.preferences, "tray_icon_hidden", False)
+
+    def _on_hide_menu(self, icon, item) -> None:
+        logger.info("Hide tray icon menu clicked")
+        if self._on_tray_hide:
+            try:
+                self._on_tray_hide()
+            except Exception as e:
+                logger.error(f"Failed to hide tray icon: {e}")
+
+    def set_icon_visible(self, visible: bool) -> None:
+        """Show or hide the tray icon (pystray supports runtime visibility)."""
+        if self.icon is None:
+            return
+        try:
+            self.icon.visible = bool(visible)
+            logger.info(f"Tray icon {'shown' if visible else 'hidden'}")
+        except Exception as e:
+            logger.error(f"Failed to change tray icon visibility: {e}")
 
     def _run_icon(self, icon: pystray.Icon) -> None:
         self._icon_ready.set()
@@ -378,43 +410,48 @@ class SystemTrayIcon:
             ip = self._get_local_ip()
 
         self._status_info = {
-            'name': name,
-            'ip': ip,
-            'port': str(port) if port else _i18n.t('unknown'),
+            "name": name,
+            "ip": ip,
+            "port": str(port) if port else _i18n.t("unknown"),
         }
 
         self.icon = pystray.Icon(
-            name='HomeAssistant Windows',
+            name="HomeAssistant Windows",
             icon=self.create_icon_image(),
             menu=pystray.Menu(
-                pystray.MenuItem(_i18n.t('status_running'), self._on_show_status),
+                pystray.MenuItem(_i18n.t("status_running"), self._on_show_status),
                 pystray.MenuItem(
-                    _i18n.t('mute_microphone'),
+                    _i18n.t("mute_microphone"),
                     lambda icon, item: self._toggle_mute(),
                     checked=lambda item: self._current_muted(),
                 ),
                 pystray.MenuItem(
-                    _i18n.t('conversation_bubbles'),
+                    _i18n.t("conversation_bubbles"),
                     lambda icon, item: self._toggle_bubbles(),
                     checked=lambda item: self._current_bubbles_enabled(),
                 ),
                 pystray.MenuItem(
-                    _i18n.t('sendspin_player'),
+                    _i18n.t("sendspin_player"),
                     pystray.Menu(self._sendspin_menu_items),
                 ),
-                pystray.MenuItem(_i18n.t('settings_microphone'), pystray.Menu(self._mic_menu_items)),
+                pystray.MenuItem(_i18n.t("settings_microphone"), pystray.Menu(self._mic_menu_items)),
                 pystray.MenuItem(
-                    _i18n.t('settings_output_device'),
+                    _i18n.t("settings_output_device"),
                     pystray.Menu(self._output_menu_items),
                 ),
                 pystray.MenuItem(
-                    _i18n.t('run_as_admin'),
+                    _i18n.t("tray_hide_icon"),
+                    lambda icon, item: self._on_hide_menu(icon, item),
+                    visible=lambda item: not self._current_tray_hidden(),
+                ),
+                pystray.MenuItem(
+                    _i18n.t("run_as_admin"),
                     self._on_run_as_admin_menu,
                     visible=lambda item: not self._is_admin(),
                 ),
-                pystray.MenuItem(_i18n.t('about'), self._on_about_menu),
-                pystray.MenuItem(_i18n.t('quit'), self._on_quit_menu),
-            )
+                pystray.MenuItem(_i18n.t("about"), self._on_about_menu),
+                pystray.MenuItem(_i18n.t("quit"), self._on_quit_menu),
+            ),
         )
 
         self.icon.title = f"HA Windows: {name}\n{_i18n.t('ip_label')}: {ip}:{port if port else _i18n.t('unknown')}"
@@ -456,29 +493,37 @@ class SystemTrayIcon:
 
     def update_status(self, name: str = None, ip: str = None, port: int = None) -> None:
         if name is not None:
-            self._status_info['name'] = name
+            self._status_info["name"] = name
         if ip is not None:
-            self._status_info['ip'] = ip
+            self._status_info["ip"] = ip
         if port is not None:
-            self._status_info['port'] = str(port)
+            self._status_info["port"] = str(port)
         if self.icon:
             self.icon.title = (
                 f"HA Windows: {self._status_info['name']}\n"
                 f"{_i18n.t('ip_label')}: {self._status_info['ip']}:{self._status_info['port']}"
             )
 
-    def set_callbacks(self, on_quit: Callable = None, on_mic_change: Callable = None,
-                      on_output_change: Callable = None,
-                      on_mute_change: Callable = None, on_conversation: Callable = None,
-                      on_bubble_toggle: Callable = None,
-                      on_sendspin_toggle: Callable = None,
-                      on_run_as_admin: Callable = None,
-                      on_mini_player_toggle: Callable = None) -> None:
+    def set_callbacks(
+        self,
+        on_quit: Callable = None,
+        on_mic_change: Callable = None,
+        on_output_change: Callable = None,
+        on_mute_change: Callable = None,
+        on_conversation: Callable = None,
+        on_bubble_toggle: Callable = None,
+        on_sendspin_toggle: Callable = None,
+        on_run_as_admin: Callable = None,
+        on_mini_player_toggle: Callable = None,
+        on_tray_hide: Callable = None,
+    ) -> None:
         self._on_quit = on_quit
         if on_mic_change is not None:
             self._on_mic_change = on_mic_change
         if on_output_change is not None:
             self._on_output_change = on_output_change
+        if on_tray_hide is not None:
+            self._on_tray_hide = on_tray_hide
         if on_mute_change is not None:
             self._on_mute_change = on_mute_change
         if on_conversation is not None:

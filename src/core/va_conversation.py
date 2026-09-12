@@ -55,14 +55,14 @@ class VoiceAssistantMixin:
             self._continue_conversation = False
             self._processing = False
             self._debug_audio_chunks = []
-            self._set_phase('listening')
+            self._set_phase("listening")
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START:
             if self.state.thinking_sound_enabled and self.state.processing_sound and not self._processing:
                 self._processing = True
                 self.duck()
                 self.state.tts_player.play(self.state.processing_sound)
-            self._set_phase('thinking')
+            self._set_phase("thinking")
 
         elif event_type in (
             VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END,
@@ -86,7 +86,7 @@ class VoiceAssistantMixin:
             # Intent processing progress
             if data.get("tts_start_streaming") == "1":
                 logger.info("🎤 INTENT_PROGRESS: tts_start_streaming")
-                self._set_phase('replying')
+                self._set_phase("replying")
                 self.play_tts()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END:
@@ -99,7 +99,7 @@ class VoiceAssistantMixin:
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START:
             # TTS generation started, emit phase for UI feedback
             logger.info("🎤 Received TTS_START")
-            self._set_phase('replying')
+            self._set_phase("replying")
             # Capture response text for conversation bubble
             response_text = data.get("text", "")
             if response_text and self._conversation_callback:
@@ -125,14 +125,18 @@ class VoiceAssistantMixin:
                 self._tts_finished()
             self._tts_played = False
             if not self._is_playing_tts:
-                self._set_phase('idle')
+                self._set_phase("idle")
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_ERROR:
             # Benign errors: user said nothing / pipeline idle timeouts. ESPHome
             # itself returns to idle for these instead of flagging an error.
-            if data.get("code") in ("stt-no-text-recognized", "wake-word-timeout",
-                                    "no_wake_word", "wake_word_detection_aborted",
-                                    "timeout"):
+            if data.get("code") in (
+                "stt-no-text-recognized",
+                "wake-word-timeout",
+                "no_wake_word",
+                "wake_word_detection_aborted",
+                "timeout",
+            ):
                 logger.info(f"🎤 Voice assistant benign error: {data.get('code')}")
                 if data.get("code") == "stt-no-text-recognized":
                     # Keep the audio that failed so it can be inspected
@@ -142,14 +146,14 @@ class VoiceAssistantMixin:
                 self._is_streaming_audio = False
                 self._processing = False
                 self._stop_audio_streaming()
-                self._set_phase('idle')
+                self._set_phase("idle")
                 return
 
             logger.error(f"Voice assistant error: {data}")
             self._is_streaming_audio = False
             self._processing = False
             self._stop_audio_streaming()
-            self._set_phase('error')
+            self._set_phase("error")
 
         else:
             logger.info(f"Unhandled voice assistant event: {event_type.name} (type={event_type.value})")
@@ -245,7 +249,6 @@ class VoiceAssistantMixin:
 
     # ========== Announcement Processing ==========
 
-
     def _start_audio_streaming(self) -> None:
         """Start audio streaming (audio is handled by main program's recorder)"""
         # Main program's recorder will send audio when _is_streaming_audio is True
@@ -262,6 +265,8 @@ class VoiceAssistantMixin:
 
         Only send audio when in streaming state
         """
+        if not self._remote_features_enabled():
+            return
         if not self._is_streaming_audio:
             return
 
@@ -283,7 +288,7 @@ class VoiceAssistantMixin:
             from src.i18n import get_i18n
             from src.ui.conversation_bubble import show_conversation_bubble
 
-            show_conversation_bubble("info", get_i18n().t('error_no_speech'))
+            show_conversation_bubble("info", get_i18n().t("error_no_speech"))
         except Exception as e:
             logger.debug(f"No-speech bubble failed: {e}")
 
@@ -314,6 +319,8 @@ class VoiceAssistantMixin:
 
         References linux-voice-assistant's wakeup
         """
+        if not self._remote_features_enabled():
+            return
         if self._timer_finished:
             # If timer is ringing, stop timer
             self._timer_finished = False
@@ -400,4 +407,3 @@ class VoiceAssistantMixin:
 
         if self._thinking_sound_entity is not None:
             self.send_messages(list(self._thinking_sound_entity.handle_message(SubscribeHomeAssistantStatesRequest())))
-

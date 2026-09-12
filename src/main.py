@@ -21,9 +21,10 @@ import platform
 from typing import Optional
 
 # PyInstaller path setup
-if getattr(sys, 'frozen', False):
+if getattr(sys, "frozen", False):
     import os
-    src_path = os.path.join(sys._MEIPASS, 'src')
+
+    src_path = os.path.join(sys._MEIPASS, "src")
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
 
@@ -35,12 +36,12 @@ def check_dependencies():
 
     # Check required modules
     modules_to_check = [
-        ('aioesphomeapi', 'ESPHome protocol'),
-        ('aiohttp', 'HTTP server'),
-        ('sounddevice', 'Audio recording'),
-        ('psutil', 'System monitoring'),
-        ('zeroconf', 'mDNS discovery'),
-        ('numpy', 'Audio processing'),
+        ("aioesphomeapi", "ESPHome protocol"),
+        ("aiohttp", "HTTP server"),
+        ("sounddevice", "Audio recording"),
+        ("psutil", "System monitoring"),
+        ("zeroconf", "mDNS discovery"),
+        ("numpy", "Audio processing"),
     ]
 
     for module_name, description in modules_to_check:
@@ -78,6 +79,7 @@ import os
 def _get_log_dir() -> str:
     """Log directory (same location as the app data dir)."""
     from src.core.models import get_user_data_dir
+
     return str(get_user_data_dir())
 
 
@@ -97,9 +99,9 @@ class SizeLimitedFileHandler(logging.FileHandler):
                 self.stream.seek(0, os.SEEK_END)
                 if self.stream.tell() >= self.max_bytes:
                     self.stream.close()
-                    self.mode = 'w'
+                    self.mode = "w"
                     self.stream = self._open()
-                    self.mode = 'a'
+                    self.mode = "a"
             except Exception:
                 self.handleError(record)
                 return
@@ -109,20 +111,20 @@ class SizeLimitedFileHandler(logging.FileHandler):
 
 log_dir = _get_log_dir()
 os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, 'ha_windows.log')
+log_file = os.path.join(log_dir, "ha_windows.log")
 log_max_bytes = 5 * 1024 * 1024
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         SizeLimitedFileHandler(
             log_file,
             max_bytes=log_max_bytes,
-            encoding='utf-8',
+            encoding="utf-8",
         ),
-        logging.StreamHandler()
-    ]
+        logging.StreamHandler(),
+    ],
 )
 
 logger = logging.getLogger(__name__)
@@ -132,7 +134,7 @@ def _get_hostname() -> str:
     """Get local hostname (remove domain part)"""
     try:
         hostname = socket.gethostname()
-        return hostname.split('.')[0]
+        return hostname.split(".")[0]
     except Exception:
         return "HA-Client"
 
@@ -200,6 +202,9 @@ class HomeAssistantWindows:
             # Step 2: Register mDNS service broadcast
             await self._register_mdns_service()
 
+            # Step 2.5: Apply persisted tray-hidden (sensors-only) mode
+            self._apply_initial_tray_hidden()
+
             # Step 3: Start wake word detection
             await self._start_wake_word_detection()
 
@@ -241,6 +246,7 @@ class HomeAssistantWindows:
         # Wire microphone mute and conversation callbacks to the server
         self.api_server.set_muted_callback(self._set_muted)
         self.api_server.set_conversation_callback(self._on_conversation_text)
+        self.api_server.set_tray_hidden_callback(self._set_tray_icon_hidden)
 
         # Run server in background
         # Keep a reference: tasks are only weakly referenced by the loop and
@@ -291,6 +297,105 @@ class HomeAssistantWindows:
         if self.tray:
             self.tray.refresh_menu()
 
+    # ------------------------------------------------------------- tray hidden
+
+    def _schedule(self, coro) -> None:
+        """Schedule a coroutine on the event loop from any thread (incl. itself)."""
+        loop = self._event_loop
+        if loop is None or loop.is_closed():
+            logger.warning("Event loop not available, dropping coroutine")
+            return
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is loop:
+            asyncio.create_task(coro)
+        else:
+            asyncio.run_coroutine_threadsafe(coro, loop)
+
+    def _refresh_ha_entities(self) -> None:
+        """Make HA re-list entities after a sensors-only mode switch.
+
+        Deferred so a switch state response can flush before the transport
+        closes (the Tray Icon switch command that triggered us is mid-yield).
+        """
+        state = self.api_server.state if self.api_server else None
+        satellite = getattr(state, "satellite", None) if state else None
+        loop = self._event_loop
+        if satellite is None or loop is None or loop.is_closed():
+            return
+
+        def _close():
+            try:
+                satellite.close_connection()
+            except Exception as e:
+                logger.debug(f"Entity refresh close failed: {e}")
+
+        try:
+            loop.call_later(0.5, _close)
+        except Exception as e:
+            logger.debug(f"Entity refresh schedule failed: {e}")
+
+    def _set_tray_icon_hidden(self, hidden: bool) -> None:
+        """Enter/exit tray-hidden (sensors-only) mode (issue #11).
+
+        Hidden: tray icon gone, HA only sees device-status sensors plus the
+        always-available Tray Icon switch; voice assistant, Sendspin and
+        remote commands are unloaded. Shown: everything loads back.
+        """
+        state = self.api_server.state
+        if bool(getattr(state.preferences, "tray_icon_hidden", False)) == hidden:
+            return
+        state.preferences.tray_icon_hidden = hidden
+        state.save_preferences()
+        logger.info(f"🫥 Tray-hidden mode: {'ON' if hidden else 'OFF'}")
+
+        if hidden:
+            if self.sendspin is not None:
+                self._schedule(self._stop_sendspin())
+            self._stop_wake_word_detection()
+            from src.core.hotkey_manager import get_hotkey_manager
+
+            get_hotkey_manager().remove_hotkey()
+            try:
+                from src.ui import conversation_bubble, mini_player
+
+                conversation_bubble.set_enabled(False)
+                mini_player.hide()
+            except Exception as e:
+                logger.debug(f"Tray-hidden UI teardown failed: {e}")
+        else:
+            self._schedule(self._start_wake_word_detection())
+            if getattr(state.preferences, "sendspin_enabled", True):
+                self._schedule(self._start_sendspin())
+            try:
+                from src.ui import conversation_bubble
+
+                conversation_bubble.set_enabled(state.preferences.conversation_bubble_enabled)
+            except Exception as e:
+                logger.debug(f"Tray-hidden UI restore failed: {e}")
+
+        if self.tray:
+            self.tray.set_icon_visible(not hidden)
+
+        # HA must re-list entities to add/remove the functional ones
+        self._refresh_ha_entities()
+
+    def _apply_initial_tray_hidden(self) -> None:
+        """Apply a persisted tray-hidden preference at startup."""
+        if not getattr(self.api_server.state.preferences, "tray_icon_hidden", False):
+            return
+        logger.info("🫥 Starting in tray-hidden (sensors-only) mode")
+        try:
+            from src.ui import conversation_bubble
+
+            conversation_bubble.set_enabled(False)
+        except Exception as e:
+            logger.debug(f"Conversation bubble disable failed: {e}")
+        if self.tray:
+            self.tray.set_icon_visible(False)
+
     def _on_tray_mute_toggle(self, muted: bool) -> None:
         """Handle mute toggle from tray, syncing to HA if connected."""
         if self.api_server and self.api_server.protocol:
@@ -320,7 +425,10 @@ class HomeAssistantWindows:
 
     async def _start_sendspin(self) -> None:
         """Start the Sendspin audio receiver (Music Assistant streams music to us)."""
-        if not getattr(self.api_server.state.preferences, 'sendspin_enabled', True):
+        if getattr(self.api_server.state.preferences, "tray_icon_hidden", False):
+            logger.info("Tray-hidden mode: skipping Sendspin receiver")
+            return
+        if not getattr(self.api_server.state.preferences, "sendspin_enabled", True):
             logger.info("Sendspin player disabled by preference, skipping")
             return
 
@@ -329,9 +437,7 @@ class HomeAssistantWindows:
 
             self.sendspin = SendspinReceiver(
                 name=self.device_name,
-                output_device=getattr(
-                    self.api_server.state.preferences, 'output_device', ""
-                ) or None,
+                output_device=getattr(self.api_server.state.preferences, "output_device", "") or None,
             )
             self.sendspin.set_metadata_callback(self._on_sendspin_metadata)
             self.sendspin.set_connection_callback(self._on_sendspin_connection)
@@ -351,8 +457,7 @@ class HomeAssistantWindows:
                     break
                 if attempt < 5:
                     logger.warning(
-                        f"Sendspin start failed (attempt {attempt+1}/6), "
-                        f"port may be busy, retrying in 2s..."
+                        f"Sendspin start failed (attempt {attempt+1}/6), " f"port may be busy, retrying in 2s..."
                     )
                     await asyncio.sleep(2)
             if self.tray:
@@ -402,6 +507,7 @@ class HomeAssistantWindows:
         """
         try:
             from src.ui import mini_player
+
             mini_player.clear_track()
         except Exception as e:
             logger.debug(f"Mini player stream event failed: {e}")
@@ -410,19 +516,16 @@ class HomeAssistantWindows:
         """Handle track metadata/progress updates from the Sendspin stream."""
         try:
             from src.ui import mini_player
+
             title = info.get("title")
             artist = info.get("artist")
             if title is not None or artist is not None:
                 logger.info(f"🎵 Now playing: {title} - {artist}")
-                mini_player.update_track(
-                    title or "", artist or "", info.get("duration_ms", 0)
-                )
+                mini_player.update_track(title or "", artist or "", info.get("duration_ms", 0))
             elif "duration_ms" in info:
                 mini_player.update_duration(info.get("duration_ms", 0))
             if "progress_ms" in info:
-                mini_player.update_progress(
-                    info.get("progress_ms", 0), info.get("speed", 0.0)
-                )
+                mini_player.update_progress(info.get("progress_ms", 0), info.get("speed", 0.0))
         except Exception as e:
             logger.debug(f"Mini player track update failed: {e}")
 
@@ -430,6 +533,7 @@ class HomeAssistantWindows:
         """Handle album artwork frames from the Sendspin stream."""
         try:
             from src.ui import mini_player
+
             mini_player.set_artwork(data)
         except Exception as e:
             logger.debug(f"Mini player artwork update failed: {e}")
@@ -438,6 +542,7 @@ class HomeAssistantWindows:
         """Keep the mini player slider and mute icon in sync."""
         try:
             from src.ui import mini_player
+
             mini_player.set_volume(volume)
             mini_player.set_muted(muted)
         except Exception as e:
@@ -447,6 +552,7 @@ class HomeAssistantWindows:
         """Forward the Sendspin playback clock skew to the mini player."""
         try:
             from src.ui import mini_player
+
             mini_player.set_sync(offset_ms, synchronized)
         except Exception as e:
             logger.debug(f"Mini player sync update failed: {e}")
@@ -455,6 +561,7 @@ class HomeAssistantWindows:
         """Show/clear the Sendspin pairing PIN popup."""
         try:
             from src.ui import pairing_dialog
+
             if pin:
                 pairing_dialog.show_pin(pin)
             else:
@@ -466,6 +573,7 @@ class HomeAssistantWindows:
         """PSK mismatch detected: prompt the user to re-pair."""
         try:
             from src.ui import pairing_dialog
+
             pairing_dialog.show_mismatch(self._repair_sendspin_pairing)
         except Exception as e:
             logger.debug(f"Pairing mismatch dialog failed: {e}")
@@ -490,6 +598,7 @@ class HomeAssistantWindows:
         logger.info(f"🎵 Sendspin playing: {playing}")
         try:
             from src.ui import mini_player
+
             if playing:
                 mini_player.show()
                 if self.sendspin:
@@ -508,6 +617,7 @@ class HomeAssistantWindows:
         if not connected:
             try:
                 from src.ui import mini_player
+
                 mini_player.hide()
             except Exception:
                 pass
@@ -537,9 +647,7 @@ class HomeAssistantWindows:
             loop = self._event_loop
             if loop is None or loop.is_closed():
                 return
-            asyncio.run_coroutine_threadsafe(
-                self.sendspin.send_media_command(command, mute=mute_value), loop
-            )
+            asyncio.run_coroutine_threadsafe(self.sendspin.send_media_command(command, mute=mute_value), loop)
             # Optimistic UI update: MA's authoritative state only arrives with
             # the next metadata push (seconds away, or never while paused).
             if cmd == "play_pause":
@@ -560,9 +668,7 @@ class HomeAssistantWindows:
             loop = self._event_loop
             if loop is None or loop.is_closed():
                 return
-            asyncio.run_coroutine_threadsafe(
-                self.sendspin.send_media_command(MediaCommand.VOLUME, volume=volume), loop
-            )
+            asyncio.run_coroutine_threadsafe(self.sendspin.send_media_command(MediaCommand.VOLUME, volume=volume), loop)
         except Exception as e:
             logger.error(f"Mini player volume failed: {e}")
 
@@ -573,6 +679,7 @@ class HomeAssistantWindows:
         state.preferences.mini_player_enabled = False
         state.save_preferences()
         from src.ui import mini_player
+
         mini_player.set_enabled(False)
         if self.tray:
             try:
@@ -587,6 +694,7 @@ class HomeAssistantWindows:
         state.preferences.mini_player_enabled = enabled
         state.save_preferences()
         from src.ui import mini_player
+
         mini_player.set_enabled(enabled)
         if enabled and self.sendspin and self.sendspin.is_playing():
             mini_player.show()
@@ -622,35 +730,30 @@ class HomeAssistantWindows:
             on_sendspin_toggle=self._on_tray_sendspin_toggle,
             on_run_as_admin=self._relaunch_as_admin,
             on_mini_player_toggle=self._on_tray_mini_player_toggle,
+            on_tray_hide=lambda: self._set_tray_icon_hidden(True),
         )
 
         # Apply the saved output device to the local playback backends
         from src.core import audio_output
 
-        audio_output.apply_output_device(
-            getattr(self.api_server.state.preferences, 'output_device', "") or None
-        )
+        audio_output.apply_output_device(getattr(self.api_server.state.preferences, "output_device", "") or None)
 
         # Apply saved mini player preference and wire its handlers
         from src.ui import mini_player
-        mini_player.set_enabled(getattr(self.api_server.state.preferences, 'mini_player_enabled', True))
+
+        mini_player.set_enabled(getattr(self.api_server.state.preferences, "mini_player_enabled", True))
         mini_player.set_command_handler(self._on_mini_player_command)
         mini_player.set_volume_handler(self._on_mini_player_volume)
         mini_player.set_close_handler(self._on_mini_player_closed)
 
         # Apply saved conversation bubble preference
         from src.ui import conversation_bubble
-        conversation_bubble.set_enabled(
-            self.api_server.state.preferences.conversation_bubble_enabled
-        )
+
+        conversation_bubble.set_enabled(self.api_server.state.preferences.conversation_bubble_enabled)
 
         # Start system tray icon
         display_name = device_info.name if device_info.name else self.device_name
-        self.tray.start(
-            name=display_name,
-            ip=self._local_ip or "Unknown",
-            port=self.port
-        )
+        self.tray.start(name=display_name, ip=self._local_ip or "Unknown", port=self.port)
 
         self._mdns_refresh_task = asyncio.create_task(self._refresh_mdns_periodically())
 
@@ -712,10 +815,11 @@ class HomeAssistantWindows:
 
     async def _start_wake_word_detection(self):
         """Start voice recording and, if available, wake word detection."""
+        if getattr(self.api_server.state.preferences, "tray_icon_hidden", False):
+            logger.info("Tray-hidden mode: skipping wake word detection")
+            return
         # The audio recorder is always created/started (used for voice input too).
-        self._audio_recorder = AudioRecorder(
-            self.api_server.state.preferences.mic_device or None
-        )
+        self._audio_recorder = AudioRecorder(self.api_server.state.preferences.mic_device or None)
         self._audio_recorder.muted = self.api_server.state.preferences.muted
 
         # Audio callback for wake word detection
@@ -767,7 +871,7 @@ class HomeAssistantWindows:
             self._update_wake_word_detector(initial_setup=True)
 
             # Initialize stop word detector
-            self._stop_word_detector = WakeWordDetector('stop')
+            self._stop_word_detector = WakeWordDetector("stop")
 
             # Save the event loop reference for use in callback
             self._event_loop = asyncio.get_running_loop()
@@ -775,6 +879,7 @@ class HomeAssistantWindows:
             # Set callback
             def on_wake_word(wake_word_phrase: str):
                 import time
+
                 now = time.monotonic()
                 # Debounce: ignore if triggered within 2 seconds
                 if now - self._last_wakeup_time < 2.0:
@@ -807,12 +912,12 @@ class HomeAssistantWindows:
     def _get_active_wake_words(self) -> list[str]:
         """Get active wake words from server state in a stable order"""
         if not self.api_server:
-            return ['okay_nabu']
+            return ["okay_nabu"]
 
         # snapshot: the event loop thread mutates this set concurrently
         active_set = set(self.api_server.state.active_wake_words)
         if not active_set:
-            return ['okay_nabu']
+            return ["okay_nabu"]
 
         ordered = [
             wake_word_id
@@ -954,15 +1059,18 @@ class HomeAssistantWindows:
         self._cleanup_done.set()
         # Force exit process (ensure all background threads are terminated)
         import os
+
         os._exit(0)
 
 
 def _stale_instance_prompt() -> int:
     """Show a Yes/No dialog for a stale instance. Returns 1=kill stale, 2=abort."""
     from src.i18n import t
-    title = t('single_instance_title')
-    msg = t('single_instance_msg')
+
+    title = t("single_instance_title")
+    msg = t("single_instance_msg")
     import ctypes
+
     # MB_YESNO (0x04) | MB_ICONQUESTION (0x20) | MB_DEFBUTTON2 (0x100)
     result = ctypes.windll.user32.MessageBoxW(0, msg, title, 0x04 | 0x20 | 0x100)
     return 1 if result == 6 else 2  # IDYES=6
@@ -977,33 +1085,35 @@ def _kill_stale_instances() -> None:
     """
     import os
     import subprocess
+
     me = os.getpid()
     try:
         if getattr(sys, "frozen", False):
             # Frozen: match the unique EXE path, exclude self.
             my_exe = os.path.normcase(os.path.abspath(sys.executable))
             cmd = (
-                f'Get-CimInstance Win32_Process | Where-Object '
-                f'{{ $_.ProcessId -ne {me} -and $_.ExecutablePath -ne $null }} | '
+                f"Get-CimInstance Win32_Process | Where-Object "
+                f"{{ $_.ProcessId -ne {me} -and $_.ExecutablePath -ne $null }} | "
                 f'Where-Object {{ (Resolve-Path $_.ExecutablePath).Path -eq "{my_exe}" }} | '
-                f'ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}'
+                f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}"
             )
             subprocess.run(
                 ["powershell", "-NoProfile", "-Command", cmd],
-                capture_output=True, timeout=10,
+                capture_output=True,
+                timeout=10,
             )
         else:
             # Bare python: match by the start.py script path in command line.
-            script_marker = os.path.normcase(os.path.abspath(os.path.join(
-                os.path.dirname(__file__), "..", "start.py")))
+            script_marker = os.path.normcase(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "start.py")))
             cmd = (
-                f'Get-CimInstance Win32_Process | Where-Object '
+                f"Get-CimInstance Win32_Process | Where-Object "
                 f'{{ $_.ProcessId -ne {me} -and $_.CommandLine -like "*{script_marker}*" }} | '
-                f'ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}'
+                f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}"
             )
             subprocess.run(
                 ["powershell", "-NoProfile", "-Command", cmd],
-                capture_output=True, timeout=10,
+                capture_output=True,
+                timeout=10,
             )
     except Exception:
         pass
@@ -1018,6 +1128,7 @@ def main():
     try:
         import ctypes
         from ctypes import wintypes
+
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel32.CreateMutexW.restype = wintypes.HANDLE
         kernel32.CreateMutexW.argtypes = [wintypes.LPCVOID, wintypes.BOOL, wintypes.LPCWSTR]
@@ -1040,31 +1151,13 @@ def main():
         pass
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(
-        description="Home Assistant Windows Client - ESPHome Device Simulator"
-    )
+    parser = argparse.ArgumentParser(description="Home Assistant Windows Client - ESPHome Device Simulator")
+    parser.add_argument("--name", default=None, help="Device name (default: hostname)")
+    parser.add_argument("--port", type=int, default=6053, help="API service port (default: 6053)")
     parser.add_argument(
-        '--name',
-        default=None,
-        help='Device name (default: hostname)'
+        "--language", choices=["zh_CN", "en_US"], default=None, help="Interface language (default: auto-detect)"
     )
-    parser.add_argument(
-        '--port',
-        type=int,
-        default=6053,
-        help='API service port (default: 6053)'
-    )
-    parser.add_argument(
-        '--language',
-        choices=['zh_CN', 'en_US'],
-        default=None,
-        help='Interface language (default: auto-detect)'
-    )
-    parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Enable debug mode'
-    )
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
     args = parser.parse_args()
 

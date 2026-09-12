@@ -406,7 +406,18 @@ class SystemTrayIcon:
 
     def _run_icon(self, icon: pystray.Icon) -> None:
         self._icon_ready.set()
-        icon.run()
+
+        def _setup(icon):
+            # The default pystray setup shows the icon unconditionally, and
+            # setting visible=False before the loop starts is a no-op (the
+            # property short-circuits on the initial False). Apply the
+            # tray-hidden intent here instead, once the backend is ready.
+            try:
+                icon.visible = self._icon_visible
+            except Exception as e:
+                logger.debug(f"Tray icon setup visibility failed: {e}")
+
+        icon.run(_setup)
 
     def start(self, name: str = None, ip: str = None, port: int = None) -> None:
         if self._running:

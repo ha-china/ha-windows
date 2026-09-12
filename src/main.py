@@ -196,6 +196,12 @@ class HomeAssistantWindows:
             logger.info(f"Version: {__version__}")
             logger.info("=" * 60)
 
+            # Save the loop reference FIRST: tray/HA callbacks from any thread
+            # (and this thread itself) schedule coroutines through it. It used
+            # to be saved deep inside wake-word setup, so callbacks arriving
+            # before (or with wake word disabled/hidden) were dropped.
+            self._event_loop = asyncio.get_running_loop()
+
             # Step 1: Start ESPHome API server
             await self._start_api_server()
 
@@ -301,18 +307,20 @@ class HomeAssistantWindows:
 
     def _schedule(self, coro) -> None:
         """Schedule a coroutine on the event loop from any thread (incl. itself)."""
-        loop = self._event_loop
-        if loop is None or loop.is_closed():
-            logger.warning("Event loop not available, dropping coroutine")
-            return
         try:
             running = asyncio.get_running_loop()
         except RuntimeError:
             running = None
-        if running is loop:
+        if running is not None:
+            # Already on the loop thread (e.g. HA switch callback)
             asyncio.create_task(coro)
-        else:
-            asyncio.run_coroutine_threadsafe(coro, loop)
+            return
+        loop = self._event_loop
+        if loop is None or loop.is_closed():
+            logger.warning("Event loop not available, dropping coroutine")
+            coro.close()  # silence the "never awaited" warning
+            return
+        asyncio.run_coroutine_threadsafe(coro, loop)
 
     def _refresh_ha_entities(self) -> None:
         """Make HA re-list entities after a sensors-only mode switch.

@@ -8,29 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] - 2026-09-12
 
 ### Added
-- 托盘隐藏模式 (issue #11): 托盘菜单可隐藏图标，隐藏时仅保留设备状态传感器上报，语音助手 / Sendspin / 远程指令（媒体播放器、按钮、服务、麦克风静音/思考音 switch）全部 unload；HA 设备页 Controls 区新增「隐藏图标」switch 作为唯一恢复入口，开关即 unload/load；偏好持久化，重启保持
-- 新增 `src/sensors/tray_icon_switch.py` 托盘图标开关实体
+- Tray-hidden (sensors-only) mode (issue #11): the tray menu can hide the icon; while hidden only device-status sensors are reported, and the voice assistant, Sendspin and remote commands (media player, buttons, services, microphone-mute/thinking-sound switches) are all unloaded. A "Hide Icon" switch in the HA device Controls section is the single restore entry - toggling it performs the unload/load. The preference persists across restarts.
+- New `src/sensors/tray_icon_switch.py` tray icon switch entity
 
 ### Fixed
-- 修复语音被静音: 上一个 pipeline run 的迟到 `RUN_END`（hide/show 重连后 HA 先 abort 旧 run）会清掉新会话的 streaming 标志，导致整轮对话无音频；现在语音边界 `VAD_END`/`STT_END` 才是权威停止点
-- 修复隐藏模式三个恢复缺陷: `_event_loop` 仅在唤醒词初始化时赋值，隐藏启动后回调全部丢失；`_schedule` 在事件循环线程上改用 `create_task`；pystray 默认 setup 无条件显示图标，改用自定义 setup 尊重隐藏意图
-- 修复托盘隐藏后被 HA 重连触发的 phase 重绘恢复（`_replace_icon` 在隐藏状态下不再重新添加图标）
-- 修复开关语义反转导致隐藏不生效/状态回退；switch 状态直接等于 hidden 标志；Tray Icon switch key 700→701，强制 HA 重建实体以从 Configuration 归入 Controls
-- 修复 `output_device` 偏好未写入 `save/load_preferences` 导致输出设备选择不持久化
+- Voice assistant muting: a late `RUN_END` from the previous pipeline run (HA aborts the old run first after hide/show reconnects) cleared the streaming flag of the fresh conversation, dropping all its audio. Speech boundaries `VAD_END`/`STT_END` are now the authoritative stop points.
+- Three tray-hidden restore defects: `_event_loop` was only assigned during wake word setup, so every callback was dropped when starting hidden; `_schedule` now uses `create_task` when already on the event loop thread; pystray's default setup unconditionally showed the icon - a custom setup now honors the hidden intent.
+- Phase repaint after HA reconnect no longer resurrects a hidden tray icon (`_replace_icon` is suppressed while hidden).
+- Inverted switch semantics made hiding a no-op and bounced the state back; the switch state now maps directly to the hidden flag. Tray Icon switch key 700→701 forces HA to recreate the entity so it lands in Controls instead of Configuration.
+- `output_device` preference was missing from `save/load_preferences`, so the output device selection was never persisted.
 
 ### Removed
-- 移除 Screenshot 按钮: CommandExecutor 中从未注册该命令，按下只会被白名单拒绝的死功能
+- Screenshot button: the command was never registered in the CommandExecutor, so pressing it only hit the whitelist rejection - dead feature.
 
 ## [1.3.0] - 2026-09-09
 
 ### Added
-- 音频输出设备选择 (issue #12): 托盘菜单新增「音频输出」子菜单（与麦克风选择同级），支持 pygame（TTS/公告）、VLC（音乐流）和 Sendspin 三个后端统一切换；选择持久化到偏好文件，启动时自动恢复
-- 新增 `src/core/audio_output.py`：输出设备枚举（WASAPI 优先、去重）、名称解析、pygame mixer 重建（未知设备自动回退系统默认）、pycaw 渲染端点 ID 查询（供 VLC mmdevice 切换）
-- Sendspin 热切换：播放中切换输出设备立即生效（重建流并重锚定 DAC 时钟映射）；设备打开失败自动回退系统默认，不会中断播放
-- About 对话框重新设计：无边框深色圆角卡片（与 pairing dialog / mini player 设计语言一致）、反锯齿 accent 徽章、accent 色版本号、可点击 GitHub 链接、pill 关闭按钮、支持拖拽和 Esc 关闭
+- Audio output device selection (issue #12): new "Audio Output" tray submenu (alongside the microphone picker) that switches pygame (TTS/announcements), VLC (music streaming) and Sendspin together; the selection persists and is restored at startup.
+- New `src/core/audio_output.py`: output device enumeration (WASAPI-first, deduplicated), name resolution, pygame mixer re-init (unknown devices fall back to the system default) and pycaw render-endpoint ID lookup for VLC mmdevice switching.
+- Sendspin hot switching: switching the output device during playback takes effect immediately (the stream is rebuilt and the DAC clock mapping re-anchored); a failed device open falls back to the system default without interrupting playback.
+- About dialog redesign: borderless dark rounded card matching the pairing dialog / mini player design language, anti-aliased accent badge, accent-colored version, clickable GitHub link, pill close button, draggable and Esc to close.
 
 ### Fixed
-- Sendspin 播放中切换输出设备不生效：热切换时未更新 `player.device`，导致每次重启都开在旧设备上；设备名称解析优先 WASAPI（此前可能命中 MME/DirectSound 同名副本），并记录实际打开的设备到日志
+- Sendspin output device switching had no effect during playback: the hot switch did not update `player.device`, so every restart reopened the old device. Device name resolution now prefers WASAPI (previously it could hit the MME/DirectSound duplicate) and the actually opened device is logged.
 
 ## [1.2.0] - 2026-09-04
 

@@ -147,7 +147,7 @@ class EntityRegistryMixin:
             from src.sensors.tray_icon_switch import TrayIconSwitchEntity
 
             self._tray_icon_entity = TrayIconSwitchEntity(
-                key=700,
+                key=701,  # was 700: new key forces HA to recreate the entity (stale registry kept the old CONFIG category)
                 name=_i18n.t("tray_hide_switch"),
                 object_id="tray_icon",
                 get_hidden=lambda: getattr(self.state.preferences, "tray_icon_hidden", False),

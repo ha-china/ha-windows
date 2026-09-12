@@ -116,9 +116,14 @@ class VoiceAssistantMixin:
             self.play_tts()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END:
-            # Conversation ended
-            logger.info("🎤 Received RUN_END, clearing streaming flag")
-            self._is_streaming_audio = False
+            # Conversation ended.
+            # NOTE: this must NOT clear _is_streaming_audio. Speech
+            # boundaries (VAD_END / STT_END) are the authoritative stop;
+            # in the normal flow the flag is already False here, so the
+            # old clear was redundant. It only ever fired when a stale
+            # RUN_END of a replaced run arrived right after a fresh
+            # trigger - muting the entire new conversation.
+            logger.info("🎤 Received RUN_END")
             self._processing = False
             self._stop_audio_streaming()
             if not self._tts_played:

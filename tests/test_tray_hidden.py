@@ -107,9 +107,9 @@ class TestEntityGating:
         list(protocol.handle_message(ListEntitiesRequest()))
         msgs = list(protocol.handle_message(SubscribeHomeAssistantStatesRequest()))
 
-        # Only sensor state keys + tray switch state key (700) expected
+        # Only sensor state keys + tray switch state key (701) expected
         state_keys = {getattr(m, "key", None) for m in msgs}
-        assert 700 in state_keys, "Tray Icon switch state must be pushed"
+        assert 701 in state_keys, "Tray Icon switch state must be pushed"
         functional_keys = {100, 101, 120, 300, 400, 500, 600}
         assert not (state_keys & functional_keys), f"Functional entity states leaked: {state_keys & functional_keys}"
 
@@ -131,7 +131,7 @@ class TestEntityGating:
         protocol = make_protocol(tmp_path, tray_icon_hidden=True)
         list(protocol.handle_message(ListEntitiesRequest()))
 
-        msgs = list(protocol.handle_message(SwitchCommandRequest(key=700, state=True)))
+        msgs = list(protocol.handle_message(SwitchCommandRequest(key=701, state=True)))
 
         assert msgs, "Tray Icon switch must respond in hidden mode"
         assert getattr(msgs[0], "state", None) is True
@@ -147,12 +147,12 @@ class TestEntityGating:
         protocol.set_tray_hidden_callback(lambda hidden: invoked.append(hidden))
         list(protocol.handle_message(ListEntitiesRequest()))
 
-        msgs = list(protocol.handle_message(SwitchCommandRequest(key=700, state=True)))
+        msgs = list(protocol.handle_message(SwitchCommandRequest(key=701, state=True)))
         assert invoked == [True], f"ON must signal hidden=True, got {invoked}"
         assert msgs and getattr(msgs[0], "state", None) is True
 
         invoked.clear()
-        msgs = list(protocol.handle_message(SwitchCommandRequest(key=700, state=False)))
+        msgs = list(protocol.handle_message(SwitchCommandRequest(key=701, state=False)))
         assert invoked == [False], f"OFF must signal hidden=False, got {invoked}"
         assert msgs and getattr(msgs[0], "state", None) is False
 

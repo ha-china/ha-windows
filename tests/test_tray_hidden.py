@@ -63,7 +63,6 @@ class TestEntityGating:
         "windows_media_player",
         "shutdown",
         "restart",
-        "screenshot",
         "thinking_sound",
         "microphone_mute",
         "voice_input_hotkey",

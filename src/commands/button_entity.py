@@ -62,9 +62,6 @@ class ButtonEntityManager:
         # System control buttons
         {'key': 100, 'name': 'Shutdown', 'object_id': 'shutdown', 'icon': 'mdi:power', 'command': 'shutdown'},
         {'key': 101, 'name': 'Restart', 'object_id': 'restart', 'icon': 'mdi:restart', 'command': 'restart'},
-
-        # Utility buttons
-        {'key': 120, 'name': 'Screenshot', 'object_id': 'screenshot', 'icon': 'mdi:camera', 'command': 'screenshot'},
     ]
 
     def __init__(self, command_executor=None):

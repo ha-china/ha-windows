@@ -114,6 +114,7 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin, a
         self._hotkey_manager = None
         self._thinking_sound_entity = None
         self._mic_mute_entity = None
+        self._wake_word_sensitivity_entity = None
         self._tray_icon_entity = None
         self._state_update_task: Optional[asyncio.Task] = None
         self._processing = False
@@ -124,6 +125,9 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin, a
 
         # Microphone mute callback (set by main program)
         self._muted_callback: Optional[Callable[[bool], None]] = None
+
+        # Wake word sensitivity callback (set by main program)
+        self._wake_word_sensitivity_callback: Optional[Callable[[float], None]] = None
 
         # Conversation text callback for tray balloon notifications
         self._conversation_callback: Optional[Callable[[str, str], None]] = None
@@ -172,12 +176,30 @@ class ESPHomeProtocol(VoiceAssistantMixin, PlaybackMixin, EntityRegistryMixin, a
     def set_muted_callback(self, callback: Optional[Callable[[bool], None]]) -> None:
         self._muted_callback = callback
 
+    def set_wake_word_sensitivity_callback(self, callback: Optional[Callable[[float], None]]) -> None:
+        """Register the callback that applies wake word sensitivity to live detectors."""
+        self._wake_word_sensitivity_callback = callback
+
     def set_conversation_callback(self, callback: Optional[Callable[[str, str], None]]) -> None:
         self._conversation_callback = callback
 
     def set_tray_hidden_callback(self, callback: Optional[Callable[[bool], None]]) -> None:
         """Register the callback that applies tray-hidden (sensors-only) mode."""
         self._tray_hidden_callback = callback
+
+    def _set_wake_word_sensitivity(self, sensitivity: float) -> None:
+        """Persist and apply wake word sensitivity (called by the number entity)."""
+        try:
+            clamped = max(0.0, min(1.0, float(sensitivity)))
+        except (TypeError, ValueError):
+            return
+        self.state.preferences.wake_word_sensitivity = clamped
+        self.state.save_preferences()
+        if self._wake_word_sensitivity_callback:
+            try:
+                self._wake_word_sensitivity_callback(clamped)
+            except Exception as e:
+                logger.error(f"Failed to apply wake word sensitivity: {e}")
 
     def _set_tray_hidden_and_push(self, hidden: bool) -> None:
         """Apply tray-hidden mode (called by the Tray Icon switch entity)."""
@@ -472,6 +494,7 @@ class ESPHomeServer:
         self._protocol: Optional[ESPHomeProtocol] = None
         self._phase_callback: Optional[Callable[[str], None]] = None
         self._muted_callback: Optional[Callable[[bool], None]] = None
+        self._wake_word_sensitivity_callback: Optional[Callable[[float], None]] = None
         self._conversation_callback: Optional[Callable[[str, str], None]] = None
         self._tray_hidden_callback: Optional[Callable[[bool], None]] = None
 
@@ -484,6 +507,11 @@ class ESPHomeServer:
         self._muted_callback = callback
         if self._protocol:
             self._protocol.set_muted_callback(callback)
+
+    def set_wake_word_sensitivity_callback(self, callback: Optional[Callable[[float], None]]) -> None:
+        self._wake_word_sensitivity_callback = callback
+        if self._protocol:
+            self._protocol.set_wake_word_sensitivity_callback(callback)
 
     def set_conversation_callback(self, callback: Optional[Callable[[str, str], None]]) -> None:
         self._conversation_callback = callback
@@ -508,6 +536,8 @@ class ESPHomeServer:
                     self._protocol.set_phase_callback(self._phase_callback)
                 if self._muted_callback:
                     self._protocol.set_muted_callback(self._muted_callback)
+                if self._wake_word_sensitivity_callback:
+                    self._protocol.set_wake_word_sensitivity_callback(self._wake_word_sensitivity_callback)
                 if self._conversation_callback:
                     self._protocol.set_conversation_callback(self._conversation_callback)
                 if self._tray_hidden_callback:

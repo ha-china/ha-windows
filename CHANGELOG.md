@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Wake word sensitivity slider: a new "Wake Word Sensitivity" number entity (0.0-1.0, HA slider) adjusts how eagerly the wake word triggers. Following the ESPHome convention, sensitivity maps to the model probability cutoff as `cutoff = 1 - sensitivity`; the value applies to all active wake word detectors immediately and persists across restarts.
+- New `src/sensors/wake_word_sensitivity_number.py` number entity and detector runtime `set_sensitivity` in `src/voice/wake_word.py`.
+
+### Changed
+- Wake word detection now uses the sensitivity-derived probability cutoff for both MicroWakeWord and OpenWakeWord models instead of each model JSON's built-in `probability_cutoff` (OpenWakeWord previously used a hard-coded 0.5). At the default sensitivity of 0.5 the effective cutoff is 0.5 - models shipped with a stricter JSON cutoff (e.g. 0.97) will trigger more eagerly until the slider is lowered.
+
 ## [1.4.0] - 2026-09-12
 
 ### Added

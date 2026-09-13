@@ -34,6 +34,9 @@ def _should_replace_wake_word(existing: AvailableWakeWord, candidate: AvailableW
 DEFAULT_WAKEWORD_DIR = Path(__file__).parent.parent / "wakewords"
 DEFAULT_OPEN_WAKEWORD_DIR = DEFAULT_WAKEWORD_DIR / "openWakeWord"
 
+# ESPHome convention: sensitivity 0.0-1.0 maps to probability_cutoff = 1 - sensitivity
+DEFAULT_WAKE_WORD_SENSITIVITY = 0.5
+
 
 def _get_user_data_dir() -> Path:
     """Get the app data directory used for user-managed files."""
@@ -222,6 +225,7 @@ class WakeWordDetector:
         self,
         model_name: str = 'okay_nabu',
         wakeword_dir: Optional[Path] = None,
+        sensitivity: float = DEFAULT_WAKE_WORD_SENSITIVITY,
     ):
         """
         Initialize wake word detector
@@ -229,12 +233,15 @@ class WakeWordDetector:
         Args:
             model_name: Wake word model name (e.g., 'okay_nabu', 'hey_jarvis')
             wakeword_dir: Optional directory containing wake word models
+            sensitivity: Detection sensitivity 0.0-1.0 (higher = easier to trigger)
         """
         self.model_name = model_name
         self.wakeword_dir = wakeword_dir
         self._on_wake_word: Optional[Callable[[str], None]] = None
         self._wake_word_phrase: str = model_name
         self._last_detection_logged = False  # Track if we already logged this detection
+        self._sensitivity: float = DEFAULT_WAKE_WORD_SENSITIVITY
+        self._probability_cutoff: float = 1.0 - DEFAULT_WAKE_WORD_SENSITIVITY
 
         # Detector type and model
         self._detector_type: Optional[str] = None
@@ -257,6 +264,32 @@ class WakeWordDetector:
             self._init_open_wakeword(wake_word_info)
         else:
             logger.error(f"Unknown wake word type: {self._detector_type}")
+
+        self.set_sensitivity(sensitivity)
+
+    def set_sensitivity(self, sensitivity: float) -> None:
+        """
+        Set detection sensitivity at runtime
+
+        Args:
+            sensitivity: 0.0-1.0 (higher = easier to trigger); converted to the
+                model probability cutoff as 1.0 - sensitivity
+        """
+        self._sensitivity = max(0.0, min(1.0, float(sensitivity)))
+        self._probability_cutoff = 1.0 - self._sensitivity
+
+        if self._model is not None and self._detector_type == WakeWordType.MICRO_WAKE_WORD:
+            self._model.probability_cutoff = self._probability_cutoff
+
+        logger.debug(
+            f"Wake word '{self.model_name}' sensitivity: {self._sensitivity:.2f} "
+            f"(probability cutoff: {self._probability_cutoff:.2f})"
+        )
+
+    @property
+    def sensitivity(self) -> float:
+        """Get the current sensitivity"""
+        return self._sensitivity
 
     def _init_micro_wakeword(self, wake_word_info: AvailableWakeWord) -> None:
         """Initialize MicroWakeWord detector"""
@@ -354,7 +387,7 @@ class WakeWordDetector:
 
         for embedding in embeddings:
             for prob in self._model.process_streaming(embedding):
-                if prob <= 0.5:
+                if prob <= self._probability_cutoff:
                     continue
 
                 # Only log once per detection sequence

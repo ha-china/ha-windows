@@ -228,9 +228,9 @@ class Preferences:
     mini_player_enabled: bool = True
     # Wake word sensitivity 0.0-1.0 (higher = easier to trigger); mapped to
     # detection probability_cutoff as 1.0 - sensitivity (ESPHome convention).
-    wake_word_sensitivity: float = 0.5
-    # Tray-hidden (sensors-only) mode: icon hidden, VA/Sendspin/remote
-    # commands unloaded; the HA "Tray Icon" switch is the only way back.
+    # Default 0.03 → cutoff 0.97, matching old MicroWakeWord model defaults
+    # to avoid false wake-ups.
+    wake_word_sensitivity: float = 0.03
     tray_icon_hidden: bool = False
 
 
@@ -785,9 +785,9 @@ class ServerState:
                 self.preferences.mini_player_enabled = data.get("mini_player_enabled", True)
                 # Clamp to 0.0-1.0 so a corrupt file cannot poison detection
                 try:
-                    self.preferences.wake_word_sensitivity = max(0.0, min(1.0, float(data.get("wake_word_sensitivity", 0.5))))
+                    self.preferences.wake_word_sensitivity = max(0.0, min(1.0, float(data.get("wake_word_sensitivity", 0.03))))
                 except (TypeError, ValueError):
-                    self.preferences.wake_word_sensitivity = 0.5
+                    self.preferences.wake_word_sensitivity = 0.03
                 self.preferences.tray_icon_hidden = data.get("tray_icon_hidden", False)
 
         except Exception as e:
@@ -807,7 +807,7 @@ class ServerState:
 
 def create_default_state(name: str) -> ServerState:
     """Create default server state"""
-    from src.voice.wake_word import load_available_wake_words
+    from src.voice.wake_word import load_available_wake_words, DEFAULT_WAKE_WORD_SENSITIVITY
 
     available_wake_words = load_available_wake_words()
 
@@ -873,5 +873,14 @@ def create_default_state(name: str) -> ServerState:
         state.tts_player.set_volume(initial_volume)
 
     state.thinking_sound_enabled = state.preferences.thinking_sound == 1
+
+    # Apply saved wake word sensitivity (or default if not saved)
+    sensitivity = state.preferences.wake_word_sensitivity
+    if sensitivity != DEFAULT_WAKE_WORD_SENSITIVITY:
+        # User has customized sensitivity
+        pass
+    else:
+        # Use default sensitivity (0.03 = cutoff 0.97, matching old behavior)
+        state.preferences.wake_word_sensitivity = DEFAULT_WAKE_WORD_SENSITIVITY
 
     return state

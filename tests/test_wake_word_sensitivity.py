@@ -24,7 +24,7 @@ from src.voice.wake_word import WakeWordDetector
 class TestPreferencesSensitivity:
     def test_default_sensitivity(self):
         prefs = Preferences()
-        assert prefs.wake_word_sensitivity == 0.5
+        assert prefs.wake_word_sensitivity == 0.03  # cutoff 0.97, matching old behavior
 
     def test_save_and_load_persists_sensitivity(self, tmp_path):
         state = create_default_state("test")
@@ -57,7 +57,7 @@ class TestPreferencesSensitivity:
         state = create_default_state("test")
         state.preferences_path = prefs_file
         state.load_preferences()
-        assert state.preferences.wake_word_sensitivity == 0.5
+        assert state.preferences.wake_word_sensitivity == 0.03  # fallback to default
 
 
 class TestWakeWordSensitivityNumberEntity:
@@ -114,7 +114,7 @@ class TestWakeWordDetectorSensitivity:
 
     def test_default_sensitivity(self):
         detector = self._bare_detector()
-        assert detector.sensitivity == 0.5
+        assert detector.sensitivity == 0.03  # cutoff 0.97, matching old behavior
 
     def test_set_sensitivity_maps_to_cutoff(self):
         detector = self._bare_detector()

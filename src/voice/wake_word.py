@@ -35,7 +35,9 @@ DEFAULT_WAKEWORD_DIR = Path(__file__).parent.parent / "wakewords"
 DEFAULT_OPEN_WAKEWORD_DIR = DEFAULT_WAKEWORD_DIR / "openWakeWord"
 
 # ESPHome convention: sensitivity 0.0-1.0 maps to probability_cutoff = 1 - sensitivity
-DEFAULT_WAKE_WORD_SENSITIVITY = 0.5
+# Default 0.03 → cutoff 0.97, matching the old MicroWakeWord model defaults (e.g. hey_jarvis 0.97)
+# to avoid false wake-ups. Users can increase sensitivity via HA slider if needed.
+DEFAULT_WAKE_WORD_SENSITIVITY = 0.03
 
 
 def _get_user_data_dir() -> Path:

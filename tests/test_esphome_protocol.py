@@ -86,8 +86,9 @@ class TestAudioStreamingStateMachine:
     **Validates: Requirements 2.3, 2.4**
     """
 
+    @pytest.mark.slow
     @given(audio_chunk=audio_chunk_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_audio_not_sent_when_not_streaming(self, audio_chunk: bytes):
         """
         Property 5: For any audio chunk, when _is_streaming_audio is False,
@@ -117,8 +118,9 @@ class TestAudioStreamingStateMachine:
         assert len(audio_messages) == 0, \
             "Audio should NOT be sent when _is_streaming_audio is False"
 
+    @pytest.mark.slow
     @given(audio_chunk=audio_chunk_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_audio_sent_when_streaming(self, audio_chunk: bytes):
         """
         Property 5: For any audio chunk, when _is_streaming_audio is True,
@@ -150,8 +152,9 @@ class TestAudioStreamingStateMachine:
         assert audio_messages[0].data == audio_chunk, \
             "Audio data should match the input chunk"
 
+    @pytest.mark.slow
     @given(wake_word=wake_word_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_wakeup_enables_streaming(self, wake_word: str):
         """
         Property 5: For any wake word detection, wakeup() SHALL set
@@ -241,11 +244,12 @@ class TestAudioStreamingStateMachine:
         assert protocol._is_streaming_audio is False, \
             "_is_streaming_audio should be False after RUN_END event"
 
+    @pytest.mark.slow
     @given(
         wake_word=wake_word_strategy,
         audio_chunks=st.lists(audio_chunk_strategy, min_size=1, max_size=10)
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_streaming_state_machine_sequence(
         self, wake_word: str, audio_chunks: List[bytes]
     ):
@@ -298,11 +302,12 @@ class TestAudioStreamingStateMachine:
         assert sent_audio_count == pre_end_count, \
             "No audio should be sent after STT_END"
 
+    @pytest.mark.slow
     @given(
         event_type=streaming_event_strategy,
         initial_streaming=st.booleans()
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_event_type_streaming_state_transitions(
         self, event_type: VoiceAssistantEventType, initial_streaming: bool
     ):

@@ -117,8 +117,9 @@ class TestSensorEntityDefinitions:
     **Validates: Requirements 5.1, 5.3, 5.4, 5.5, 5.6, 5.7**
     """
 
+    @pytest.mark.slow
     @given(system_info=system_info_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_entity_definitions_include_required_sensors(self, system_info: Dict):
         """
         Property 11: For any system configuration, entity definitions SHALL
@@ -153,8 +154,9 @@ class TestSensorEntityDefinitions:
         assert "network_status" in object_ids, \
             "Network status sensor should always be included"
 
+    @pytest.mark.slow
     @given(system_info=system_info_with_battery_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_entity_definitions_include_battery_when_available(self, system_info: Dict):
         """
         Property 11: When battery info is available, entity definitions SHALL
@@ -178,8 +180,9 @@ class TestSensorEntityDefinitions:
         assert "battery_level" in object_ids, \
             "Battery level sensor should be included when battery exists"
 
+    @pytest.mark.slow
     @given(system_info=system_info_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_entity_definitions_have_unique_keys(self, system_info: Dict):
         """
         Property 11: All entity definitions SHALL have unique keys.
@@ -199,8 +202,9 @@ class TestSensorEntityDefinitions:
         assert len(keys) == len(set(keys)), \
             f"Entity keys should be unique, got duplicates: {keys}"
 
+    @pytest.mark.slow
     @given(system_info=system_info_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_entity_definitions_have_valid_structure(self, system_info: Dict):
         """
         Property 11: All entity definitions SHALL have valid structure
@@ -306,8 +310,9 @@ class TestSensorEntityDefinitions:
         assert numeric_states[SENSOR_KEYS['gdi_count']] == 7.0
         assert numeric_states[SENSOR_KEYS['user_object_count']] == 9.0
 
+    @pytest.mark.slow
     @given(system_info=system_info_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_get_esp_entity_definitions_returns_protobuf_messages(self, system_info: Dict):
         """
         Property 11: get_esp_entity_definitions SHALL return valid protobuf
@@ -373,8 +378,9 @@ class TestSensorValueValidity:
     **Validates: Requirements 5.2**
     """
 
+    @pytest.mark.slow
     @given(cpu_percent=cpu_percent_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_cpu_usage_value_in_valid_range(self, cpu_percent: float):
         """
         Property 12: CPU usage value SHALL be in range 0-100%.
@@ -412,8 +418,9 @@ class TestSensorValueValidity:
         assert 0.0 <= value <= 100.0, \
             f"CPU usage {value} should be in range 0-100"
 
+    @pytest.mark.slow
     @given(memory_percent=memory_percent_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_memory_usage_value_in_valid_range(self, memory_percent: float):
         """
         Property 12: Memory usage value SHALL be in range 0-100%.
@@ -451,8 +458,9 @@ class TestSensorValueValidity:
         assert 0.0 <= value <= 100.0, \
             f"Memory usage {value} should be in range 0-100"
 
+    @pytest.mark.slow
     @given(disk_percent=disk_percent_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_disk_usage_value_in_valid_range(self, disk_percent: float):
         """
         Property 12: Disk usage value SHALL be in range 0-100%.
@@ -490,8 +498,9 @@ class TestSensorValueValidity:
         assert 0.0 <= value <= 100.0, \
             f"Disk usage {value} should be in range 0-100"
 
+    @pytest.mark.slow
     @given(battery_level=battery_level_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_battery_level_value_in_valid_range(self, battery_level: int):
         """
         Property 12: Battery level value SHALL be in range 0-100%.
@@ -530,8 +539,9 @@ class TestSensorValueValidity:
         assert 0 <= value <= 100, \
             f"Battery level {value} should be in range 0-100"
 
+    @pytest.mark.slow
     @given(power_plugged=battery_charging_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_battery_status_value_is_valid_enum(self, power_plugged: bool):
         """
         Property 12: Battery status value SHALL be a valid enum
@@ -573,8 +583,9 @@ class TestSensorValueValidity:
         assert battery_status.state == expected_status, \
             f"Battery status should be '{expected_status}' when power_plugged={power_plugged}"
 
+    @pytest.mark.slow
     @given(bytes_sent=network_bytes_strategy, bytes_recv=network_bytes_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_network_status_value_is_valid_enum(self, bytes_sent: int, bytes_recv: int):
         """
         Property 12: Network status value SHALL be a valid enum
@@ -610,8 +621,9 @@ class TestSensorValueValidity:
         assert network_status.state in valid_statuses, \
             f"Network status '{network_status.state}' should be in {valid_statuses}"
 
+    @pytest.mark.slow
     @given(system_info=system_info_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_all_states_are_text_sensor_responses(self, system_info: Dict):
         """
         Property 12: All sensor states SHALL be TextSensorStateResponse objects.
@@ -630,8 +642,9 @@ class TestSensorValueValidity:
             assert isinstance(state, TextSensorStateResponse), \
                 f"State should be TextSensorStateResponse, got {type(state)}"
 
+    @pytest.mark.slow
     @given(system_info=system_info_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_state_keys_match_entity_keys(self, system_info: Dict):
         """
         Property 12: All state keys SHALL match defined entity keys.

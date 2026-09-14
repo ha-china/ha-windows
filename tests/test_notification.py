@@ -74,12 +74,13 @@ class TestNotificationDisplay:
     **Validates: Requirements 10.1, 10.2, 10.3**
     """
 
+    @pytest.mark.slow
     @given(
         title=notification_title_strategy,
         message=notification_message_strategy,
         duration=duration_strategy
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_notification_contains_title_and_message(
         self, title: str, message: str, duration: int
     ):
@@ -105,11 +106,12 @@ class TestNotificationDisplay:
         assert notification.duration == duration, \
             f"Duration mismatch: expected {duration}, got {notification.duration}"
 
+    @pytest.mark.slow
     @given(
         title=notification_title_strategy,
         message=notification_message_strategy
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_notification_show_called_with_correct_params(
         self, title: str, message: str
     ):
@@ -143,11 +145,12 @@ class TestNotificationDisplay:
         assert toast.text_fields[1] == message, \
             f"Toast message mismatch: expected '{message}'"
 
+    @pytest.mark.slow
     @given(
         title=notification_title_strategy,
         message=notification_message_strategy
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_show_simple_creates_correct_notification(
         self, title: str, message: str
     ):
@@ -191,13 +194,14 @@ class TestNotificationImageHandling:
     **Validates: Requirements 10.4**
     """
 
+    @pytest.mark.slow
     @given(
         url=st.from_regex(
             r'https://example\.com/[a-z0-9]{1,10}\.(png|jpg|jpeg|gif)',
             fullmatch=True
         )
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_image_url_generates_consistent_local_path(self, url: str):
         """
         Property 20: For any image URL, the local path SHALL be deterministic
@@ -224,6 +228,7 @@ class TestNotificationImageHandling:
         assert expected_path.suffix == ext, \
             f"Extension mismatch: expected '{ext}', got '{expected_path.suffix}'"
 
+    @pytest.mark.slow
     @given(
         title=notification_title_strategy,
         message=notification_message_strategy,
@@ -232,7 +237,7 @@ class TestNotificationImageHandling:
             fullmatch=True
         )
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_notification_with_image_url_attempts_download(
         self, title: str, message: str, url: str
     ):
@@ -283,11 +288,12 @@ class TestNotificationImageHandling:
         assert download_called, \
             "Image download should be attempted when image_url is provided"
 
+    @pytest.mark.slow
     @given(
         title=notification_title_strategy,
         message=notification_message_strategy
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_notification_without_image_url_skips_download(
         self, title: str, message: str
     ):

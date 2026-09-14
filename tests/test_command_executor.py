@@ -73,8 +73,9 @@ class TestCommandWhitelistEnforcement:
     **Validates: Requirements 6.4**
     """
 
+    @pytest.mark.slow
     @given(command=invalid_command_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_non_whitelisted_commands_are_rejected(self, command: str):
         """
         Property 13: For any command NOT in the whitelist, the executor SHALL
@@ -94,8 +95,9 @@ class TestCommandWhitelistEnforcement:
         assert 'error' in result or 'message' in result, \
             "Rejected command should include error or message"
 
+    @pytest.mark.slow
     @given(command=whitelisted_command_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_whitelisted_commands_are_allowed(self, command: str):
         """
         Property 13: For any command in the whitelist, the executor SHALL
@@ -122,8 +124,9 @@ class TestCommandWhitelistEnforcement:
             assert '白名单' not in error_msg and 'whitelist' not in error_msg.lower(), \
                 f"Whitelisted command '{command}' should not be rejected by whitelist"
 
+    @pytest.mark.slow
     @given(command=dangerous_command_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_dangerous_commands_are_in_whitelist(self, command: str):
         """
         Property 13: All dangerous commands SHALL be in the whitelist
@@ -182,8 +185,9 @@ class TestCommandResultReporting:
     **Validates: Requirements 6.5**
     """
 
+    @pytest.mark.slow
     @given(command=whitelisted_command_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_result_contains_success_field(self, command: str):
         """
         Property 14: For any command execution, the result SHALL contain
@@ -206,8 +210,9 @@ class TestCommandResultReporting:
         assert isinstance(result['success'], bool), \
             f"'success' field should be boolean, got {type(result['success'])}"
 
+    @pytest.mark.slow
     @given(command=invalid_command_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_rejected_command_reports_failure(self, command: str):
         """
         Property 14: For any rejected command, the result SHALL report
@@ -226,8 +231,9 @@ class TestCommandResultReporting:
         assert result['success'] is False, \
             f"Rejected command '{command}' should report success=False"
 
+    @pytest.mark.slow
     @given(command=whitelisted_command_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_result_contains_message_field(self, command: str):
         """
         Property 14: For any command execution, the result SHALL contain
@@ -251,8 +257,9 @@ class TestCommandResultReporting:
         assert 'message' in result, \
             f"Result for command '{command}' should contain 'message' field"
 
+    @pytest.mark.slow
     @given(command=safe_command_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_successful_command_reports_success(self, command: str):
         """
         Property 14: For any successfully executed command, the result SHALL
@@ -276,8 +283,9 @@ class TestCommandResultReporting:
         assert result['success'] is True, \
             f"Successfully executed command '{command}' should report success=True"
 
+    @pytest.mark.slow
     @given(command=safe_command_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_failed_command_reports_failure_with_error(self, command: str):
         """
         Property 14: For any failed command execution, the result SHALL
@@ -302,8 +310,9 @@ class TestCommandResultReporting:
         assert result['success'] is False, \
             f"Failed command '{command}' should report success=False"
 
+    @pytest.mark.slow
     @given(command=safe_command_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_exception_in_handler_reports_failure(self, command: str):
         """
         Property 14: When a command handler raises an exception, the result

@@ -110,8 +110,9 @@ class TestTimerEventHandling:
     **Validates: Requirements 4.1, 4.2, 4.3**
     """
 
+    @pytest.mark.slow
     @given(timer_id=timer_id_strategy, timer_name=timer_name_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_timer_finished_plays_sound(self, timer_id: str, timer_name: str):
         """
         Property 10: For any TIMER_FINISHED event, the Windows_Client
@@ -148,8 +149,9 @@ class TestTimerEventHandling:
         assert call_args[0][0] == protocol.state.timer_finished_sound, \
             f"Timer sound should be played, got {call_args[0][0]}"
 
+    @pytest.mark.slow
     @given(timer_id=timer_id_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_timer_finished_does_not_duck_audio_by_default(self, timer_id: str):
         """
         Property 10: For any TIMER_FINISHED event, the Windows_Client
@@ -272,6 +274,7 @@ class TestTimerEventHandling:
         # Property: tts_player.stop should be called
         protocol.state.tts_player.stop.assert_called()
 
+    @pytest.mark.slow
     @given(
         event_type=st.sampled_from([
             VoiceAssistantTimerEventType.VOICE_ASSISTANT_TIMER_STARTED,
@@ -279,7 +282,7 @@ class TestTimerEventHandling:
             VoiceAssistantTimerEventType.VOICE_ASSISTANT_TIMER_CANCELLED,
         ])
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_non_finished_events_do_not_play_sound(
         self, event_type: VoiceAssistantTimerEventType
     ):

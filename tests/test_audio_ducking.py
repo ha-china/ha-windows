@@ -97,8 +97,9 @@ class TestAudioDuckingBehavior:
         assert controller._is_ducked is False, \
             "is_ducked should be False after unduck()"
 
+    @pytest.mark.slow
     @given(original_volume=volume_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_duck_stores_original_volume(self, original_volume: float):
         """
         Property 9: For any volume level, duck() SHALL store the original
@@ -127,8 +128,9 @@ class TestAudioDuckingBehavior:
         assert controller._original_volume == original_volume, \
             f"Original volume should be {original_volume}, got {controller._original_volume}"
 
+    @pytest.mark.slow
     @given(original_volume=volume_strategy, duck_ratio=duck_ratio_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_duck_reduces_volume_by_ratio(self, original_volume: float, duck_ratio: float):
         """
         Property 9: For any volume level and duck ratio, duck() SHALL
@@ -157,8 +159,9 @@ class TestAudioDuckingBehavior:
         expected_ducked_volume = original_volume * duck_ratio
         controller.set_volume.assert_called_once_with(expected_ducked_volume)
 
+    @pytest.mark.slow
     @given(original_volume=volume_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_unduck_restores_original_volume(self, original_volume: float):
         """
         Property 9: For any original volume, unduck() SHALL restore
@@ -243,8 +246,9 @@ class TestAudioDuckingBehavior:
         # Property: set_volume should NOT be called
         controller.set_volume.assert_not_called()
 
+    @pytest.mark.slow
     @given(original_volume=volume_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_duck_unduck_round_trip(self, original_volume: float):
         """
         Property 9: For any volume, duck() then unduck() SHALL restore

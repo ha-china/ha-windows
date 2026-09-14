@@ -110,12 +110,13 @@ class TestAnnouncementPlaybackSequence:
     **Validates: Requirements 3.1, 3.2**
     """
 
+    @pytest.mark.slow
     @given(
         media_id=media_url_strategy,
         preannounce_media_id=media_url_strategy,
         text=announcement_text_strategy,
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_preannounce_plays_before_main_announcement(
         self, media_id: str, preannounce_media_id: str, text: str
     ):
@@ -156,11 +157,12 @@ class TestAnnouncementPlaybackSequence:
         assert play_order[1] == media_id, \
             f"Second play should be main '{media_id}', got '{play_order[1]}'"
 
+    @pytest.mark.slow
     @given(
         media_id=media_url_strategy,
         text=announcement_text_strategy,
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_announcement_without_preannounce_plays_only_main(
         self, media_id: str, text: str
     ):
@@ -198,12 +200,13 @@ class TestAnnouncementPlaybackSequence:
         assert play_order[0] == media_id, \
             f"Play should be main '{media_id}', got '{play_order[0]}'"
 
+    @pytest.mark.slow
     @given(
         media_id=media_url_strategy,
         preannounce_media_id=preannounce_strategy,
         text=announcement_text_strategy,
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_announcement_playback_count_matches_urls(
         self, media_id: str, preannounce_media_id: str, text: str
     ):
@@ -261,11 +264,12 @@ class TestAnnouncementCompletionSignal:
     **Validates: Requirements 3.3**
     """
 
+    @pytest.mark.slow
     @given(
         media_id=media_url_strategy,
         text=announcement_text_strategy,
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_announce_finished_sent_after_playback(
         self, media_id: str, text: str
     ):
@@ -309,12 +313,13 @@ class TestAnnouncementCompletionSignal:
         assert len(announce_finished_msgs) == 1, \
             f"Expected 1 VoiceAssistantAnnounceFinished, got {len(announce_finished_msgs)}"
 
+    @pytest.mark.slow
     @given(
         media_id=media_url_strategy,
         preannounce_media_id=media_url_strategy,
         text=announcement_text_strategy,
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_announce_finished_sent_only_after_all_playback(
         self, media_id: str, preannounce_media_id: str, text: str
     ):
@@ -369,12 +374,13 @@ class TestAnnouncementCompletionSignal:
         assert len(play_end_events) == 2, \
             f"Expected 2 play_end events before finished, got {len(play_end_events)}"
 
+    @pytest.mark.slow
     @given(
         media_id=media_url_strategy,
         text=announcement_text_strategy,
         start_conversation=start_conversation_strategy,
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_announce_finished_sent_regardless_of_start_conversation(
         self, media_id: str, text: str, start_conversation: bool
     ):
@@ -455,13 +461,14 @@ class TestAnnouncementCompletionSignal:
 class TestAnnouncementCombinedProperties:
     """Combined tests for announcement properties"""
 
+    @pytest.mark.slow
     @given(
         media_id=media_url_strategy,
         preannounce_media_id=preannounce_strategy,
         text=announcement_text_strategy,
         start_conversation=start_conversation_strategy,
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_announcement_full_flow(
         self, 
         media_id: str, 

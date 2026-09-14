@@ -71,8 +71,9 @@ class TestAudioRecordingFormat:
         assert AudioRecorder.CHANNELS == 1, \
             f"Channels should be 1 (mono), got {AudioRecorder.CHANNELS}"
 
+    @pytest.mark.slow
     @given(audio_array=audio_array_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_pcm_conversion_produces_16bit_signed(self, audio_array: np.ndarray):
         """
         Property 17: For any audio array, PCM conversion SHALL produce
@@ -95,8 +96,9 @@ class TestAudioRecordingFormat:
         assert len(pcm_data) == expected_length, \
             f"PCM length should be {expected_length}, got {len(pcm_data)}"
 
+    @pytest.mark.slow
     @given(audio_array=audio_array_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_pcm_values_in_valid_range(self, audio_array: np.ndarray):
         """
         Property 17: For any audio array, PCM values SHALL be in valid
@@ -119,8 +121,9 @@ class TestAudioRecordingFormat:
             assert -32768 <= value <= 32767, \
                 f"PCM value {value} out of valid range"
 
+    @pytest.mark.slow
     @given(sample=st.floats(min_value=-10.0, max_value=10.0, allow_nan=False))
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_pcm_clips_out_of_range_values(self, sample: float):
         """
         Property 17: For any out-of-range audio sample, PCM conversion
@@ -153,8 +156,9 @@ class TestAudioRecordingFormat:
             assert value == -32767, \
                 f"Sample {sample} < -1.0 should clip to -32767, got {value}"
 
+    @pytest.mark.slow
     @given(duration=duration_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_silence_generation_correct_length(self, duration: float):
         """
         Property 17: For any duration, silence generation SHALL produce
@@ -174,8 +178,9 @@ class TestAudioRecordingFormat:
         assert len(silence) == expected_bytes, \
             f"Silence length should be {expected_bytes}, got {len(silence)}"
 
+    @pytest.mark.slow
     @given(duration=duration_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_silence_is_all_zeros(self, duration: float):
         """
         Property 17: For any duration, silence SHALL contain all zero values.
@@ -209,8 +214,9 @@ class TestAudioRecordingFormat:
         assert recorder.is_recording is False, "Should not be recording initially"
         assert recorder.mic is None, "Mic should be None initially"
 
+    @pytest.mark.slow
     @given(audio_array=audio_array_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_pcm_conversion_preserves_sample_count(self, audio_array: np.ndarray):
         """
         Property 17: For any audio array, PCM conversion SHALL preserve

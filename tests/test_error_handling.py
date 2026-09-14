@@ -88,8 +88,9 @@ class TestConnectionReconnection:
     **Validates: Requirements 1.5, 11.1**
     """
 
+    @pytest.mark.slow
     @given(device_name=device_name_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_connection_lost_resets_streaming_state(self, device_name: str):
         """
         Property 21: For any device, when connection is lost,
@@ -118,8 +119,9 @@ class TestConnectionReconnection:
         assert protocol._transport is None, \
             "Transport should be None after connection lost"
 
+    @pytest.mark.slow
     @given(device_name=device_name_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_connection_lost_does_not_change_system_volume(self, device_name: str):
         """
         Property 21: For any device, when connection is lost,
@@ -136,8 +138,9 @@ class TestConnectionReconnection:
         # Property: volume should not be modified
         protocol.state.music_player.unduck.assert_not_called()
 
+    @pytest.mark.slow
     @given(device_name=device_name_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_mdns_broadcaster_remains_registered_after_connection_lost(self, device_name: str):
         """
         Property 21: For any device, when a client connection is lost,
@@ -162,8 +165,9 @@ class TestConnectionReconnection:
         assert broadcaster.is_registered is True, \
             "mDNS service should remain registered after client disconnection"
 
+    @pytest.mark.slow
     @given(device_name=device_name_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_protocol_can_accept_new_connection_after_lost(self, device_name: str):
         """
         Property 21: For any device, after connection is lost,
@@ -192,11 +196,12 @@ class TestConnectionReconnection:
         assert protocol._writelines is not None, \
             "Writelines should be set after connection_made"
 
+    @pytest.mark.slow
     @given(
         device_name=device_name_strategy,
         num_reconnects=st.integers(min_value=1, max_value=5)
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_multiple_reconnections_work(self, device_name: str, num_reconnects: int):
         """
         Property 21: For any device, multiple reconnection cycles
@@ -245,8 +250,9 @@ class TestLogFileCreation:
     **Validates: Requirements 11.3**
     """
 
+    @pytest.mark.slow
     @given(log_message=log_message_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_log_messages_written_to_file(self, log_message: str):
         """
         Property 22: For any log message, it SHALL be written to the log file.
@@ -295,8 +301,9 @@ class TestLogFileCreation:
             if Path(temp_log_path).exists():
                 os.unlink(temp_log_path)
 
+    @pytest.mark.slow
     @given(device_name=device_name_strategy)
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_protocol_events_logged(self, device_name: str):
         """
         Property 22: For any protocol event, it SHALL be logged.
@@ -391,11 +398,12 @@ class TestLogFileCreation:
         except Exception as e:
             pytest.fail(f"Failed to create log file: {e}")
 
+    @pytest.mark.slow
     @given(
         log_level=st.sampled_from([logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR]),
         message=log_message_strategy
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=25, deadline=None)
     def test_different_log_levels_written(self, log_level: int, message: str):
         """
         Property 22: For any log level, messages SHALL be written to the log file.

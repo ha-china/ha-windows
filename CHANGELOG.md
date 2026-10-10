@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.1] - 2026-10-10
 
 ### Added
 - Wake word sensitivity slider: a new "Wake Word Sensitivity" number entity (0.0-1.0, HA slider) adjusts how eagerly the wake word triggers; the value applies to all active wake word detectors immediately and persists across restarts.

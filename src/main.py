@@ -313,6 +313,25 @@ class HomeAssistantWindows:
             detector.set_sensitivity(sensitivity)
         logger.info(f"🎤 Wake word sensitivity set to: {float(sensitivity):.2f}")
 
+    def _is_media_playing(self) -> bool:
+        """Whether music is currently playing through the speakers.
+
+        The microphone picks up speaker output, so wake word detection pauses
+        while media plays (same reason TTS playback pauses it). The stop word
+        detector is unaffected: it is only active during TTS/announcements.
+        """
+        try:
+            if self.api_server and self.api_server.state.music_player.is_playing:
+                return True
+        except Exception:
+            pass
+        try:
+            if self.sendspin is not None and self.sendspin.is_playing:
+                return True
+        except Exception:
+            pass
+        return False
+
     # ------------------------------------------------------------- tray hidden
 
     def _schedule(self, coro) -> None:
@@ -855,7 +874,7 @@ class HomeAssistantWindows:
                 self._update_wake_word_detector()
 
             # Skip wake word detection if TTS is playing (to avoid false positives)
-            if self.api_server and self.api_server.protocol and not self.api_server.protocol.is_playing_tts:
+            if self.api_server and self.api_server.protocol and not self.api_server.protocol.is_playing_tts and not self._is_media_playing():
                 for detector in self._wake_word_detectors.values():
                     detector.process_audio(audio_data)
 

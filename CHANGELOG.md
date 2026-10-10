@@ -8,11 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Wake word sensitivity slider: a new "Wake Word Sensitivity" number entity (0.0-1.0, HA slider) adjusts how eagerly the wake word triggers. Following the ESPHome convention, sensitivity maps to the model probability cutoff as `cutoff = 1 - sensitivity`; the value applies to all active wake word detectors immediately and persists across restarts.
+- Wake word sensitivity slider: a new "Wake Word Sensitivity" number entity (0.0-1.0, HA slider) adjusts how eagerly the wake word triggers; the value applies to all active wake word detectors immediately and persists across restarts.
 - New `src/sensors/wake_word_sensitivity_number.py` number entity and detector runtime `set_sensitivity` in `src/voice/wake_word.py`.
+- VAD gating of wake word activations (mirrors ESPHome's `micro_wake_word` `vad` option): the bundled `vad.tflite` model (from esphome/micro-wake-word-models, Apache-2.0) runs alongside the wake word models and rejects activations when no speech activity is detected, cutting false wakes from fans, music and other non-speech noise.
+- Wake word detection now pauses while media plays through the speakers (media player or Sendspin), same as during TTS playback - previously music picked up by the microphone kept the detectors running.
 
 ### Changed
-- Wake word detection now uses the sensitivity-derived probability cutoff for both MicroWakeWord and OpenWakeWord models instead of each model JSON's built-in `probability_cutoff` (OpenWakeWord previously used a hard-coded 0.5). At the default sensitivity of 0.5 the effective cutoff is 0.5 - models shipped with a stricter JSON cutoff (e.g. 0.97) will trigger more eagerly until the slider is lowered.
+- Sensitivity → probability cutoff mapping recalibrated to match the Home Assistant Voice PE device scale, so the same slider value behaves the same on both: sensitivity 0 keeps each model's manifest cutoff (e.g. okay_nabu 0.85, hey_jarvis 0.97), sensitivity 1 lands on Voice PE's FAPH-tested "Very sensitive" floors (0.56/0.83/0.93), linear in between (default 0.5 ≈ "Moderately sensitive"). Replaces the previous `cutoff = 1 - sensitivity` formula whose default was far more trigger-happy than any Voice PE tier (root cause of easy false wakes). OpenWakeWord models anchor at their previous 0.5 threshold with a floor of 0.35.
 
 ## [1.4.0] - 2026-09-12
 

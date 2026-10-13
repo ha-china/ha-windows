@@ -6,7 +6,7 @@ Music Assistant runs the Sendspin *server* (port 8927). This app runs a Sendspin
 Music Assistant auto-discovers it and connects. Incoming audio (PCM) is played
 through the selected output device (the system default unless overridden).
 
-Targets aiosendspin 10.x: Noise-encrypted pairing, a persistent client Identity
+Targets aiosendspin 9.x: Noise-encrypted pairing, a persistent client Identity
 and time-synchronized playback (play timestamps computed from the shared clock,
 so audio stays in sync with the UI instead of lagging a buffer behind).
 """
@@ -253,7 +253,7 @@ class SendspinReceiver:
             return
 
         from aiosendspin.client import ClientListener, PairingSupport, SendspinClient
-        from aiosendspin.models.artwork import ArtworkChannel
+        from aiosendspin.models.artwork import ArtworkChannel, ClientHelloArtworkSupport
         from aiosendspin.models.core import DeviceInfo
         from aiosendspin.models.player import ClientHelloPlayerSupport, SupportedAudioFormat
         from aiosendspin.models.types import AudioCodec, ArtworkSource, PictureFormat, PlayerCommand, Roles
@@ -285,25 +285,25 @@ class SendspinReceiver:
                     )
                 ],
                 buffer_capacity=BUFFER_CAPACITY,
+                supported_commands=[PlayerCommand.VOLUME, PlayerCommand.MUTE],
             )
 
-            # 10.x: channels passed directly to SendspinClient (no hello wrapper)
-            artwork_channels = [
-                ArtworkChannel(
-                    source=ArtworkSource.ALBUM,
-                    format=PictureFormat.JPEG,
-                    width=600,
-                    height=600,
-                )
-            ]
+            artwork_support = ClientHelloArtworkSupport(
+                channels=[
+                    ArtworkChannel(
+                        source=ArtworkSource.ALBUM,
+                        format=PictureFormat.JPEG,
+                        media_width=600,
+                        media_height=600,
+                    )
+                ]
+            )
 
-            # 10.x: pairing codes flow through typed out-channels; the display
-            # receives the raw code plus its grouped presentation form ("123-456").
-            async def show_pairing_code(pairing_code, *, grouped=None) -> None:
-                """Show/clear the dynamic pairing code (None clears)."""
-                self._notify_pairing_pin(grouped or pairing_code)
+            async def show_pin(pin) -> None:
+                """Show/clear the pairing PIN to the user (None clears)."""
+                self._notify_pairing_pin(pin)
 
-            pairing_support = PairingSupport(pairing_code_display=show_pairing_code)
+            pairing_support = PairingSupport(pin_display=show_pin)
 
             async def handle_connection(ws) -> None:
                 client = SendspinClient(
@@ -315,13 +315,12 @@ class SendspinReceiver:
                     roles=[Roles.PLAYER, Roles.CONTROLLER, Roles.METADATA, Roles.ARTWORK],
                     pairing_store=pairing_store,
                     player_support=player_support,
-                    artwork_channels=artwork_channels,
+                    artwork_support=artwork_support,
                     device_info=device_info,
                     pairing_support=pairing_support,
-                    output_delay_ms=STATIC_DELAY_MS,
+                    static_delay_ms=STATIC_DELAY_MS,
                     required_lead_time_ms=REQUIRED_LEAD_MS,
                     min_buffer_ms=MIN_BUFFER_MS,
-                    state_supported_commands=[PlayerCommand.VOLUME, PlayerCommand.MUTE],
                     initial_volume=self.volume_percent,
                     initial_muted=self._muted,
                 )
@@ -391,7 +390,7 @@ class SendspinReceiver:
                 self._client_id,
             )
         except ImportError as e:
-            logger.error(f"Sendspin not available (install aiosendspin>=10.0.0): {e}")
+            logger.error(f"Sendspin not available (install aiosendspin>=9.1.1): {e}")
         except Exception as e:
             logger.error(f"Failed to start Sendspin receiver: {e}")
         finally:
@@ -510,13 +509,8 @@ class SendspinReceiver:
 
     # ------------------------------------------------------------------ audio
 
-    def _on_audio_chunk(self, timestamp_us: int, payload: bytes, audio_format, send_ahead=None) -> None:
-        """Feed incoming PCM to the DAC-clocked sync player.
-
-        ``send_ahead`` (10.x) is the server-advised extra lead time already
-        reflected in the play timestamps we receive; the local target-buffer
-        tuning below supersedes it.
-        """
+    def _on_audio_chunk(self, timestamp_us: int, payload: bytes, audio_format) -> None:
+        """Feed incoming PCM to the DAC-clocked sync player."""
         try:
             codec = getattr(audio_format, "codec", None)
             codec_value = codec.value if hasattr(codec, "value") else str(codec)

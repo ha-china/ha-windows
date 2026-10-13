@@ -16,6 +16,7 @@ pycaw>=0.0.1; sys_platform == 'win32'
 keyboard>=0.13.5; sys_platform == 'win32'
 Pillow>=10.0.0
 pystray>=0.19.0
-# Keep the upper bound: aiosendspin majors are breaking rewrites (10.0.0 renamed
-# ArtworkChannel fields, reworked PairingSupport and SendspinClient options).
-aiosendspin>=10.0.0,<11.0.0
+# Upper bound required: aiosendspin 10.x is a breaking protocol rewrite and
+# Music Assistant 2.10.x servers still speak the 9.x protocol (client hello is
+# rejected, connect then instant drop). Re-migrate when MA ships 10.x support.
+aiosendspin>=9.1.1,<10.0.0

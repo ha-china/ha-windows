@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.3] - 2026-10-13
 
 ### Fixed
 - Reverted the aiosendspin 10.x client migration (first shipped in 1.4.2): Music Assistant 2.10.x still speaks the 9.x Sendspin protocol, so the 10.0.0 client hello was rejected - MA connected and dropped the connection within milliseconds, leaving the player unusable in MA. Back on the 9.x API with `aiosendspin` pinned to `>=9.1.1,<10.0.0`; the migration lands again once Music Assistant ships 10.x protocol support.

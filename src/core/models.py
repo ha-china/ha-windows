@@ -226,6 +226,11 @@ class Preferences:
     conversation_bubble_enabled: bool = True
     sendspin_enabled: bool = True
     mini_player_enabled: bool = True
+    # Wake word sensitivity 0.0-1.0 (higher = easier to trigger); the probability
+    # cutoff interpolates linearly from each model's manifest cutoff (0.0) to a
+    # Voice PE-calibrated floor (1.0). Default 0.5 ≈ HA Voice PE "Moderately
+    # sensitive".
+    wake_word_sensitivity: float = 0.5
     # Tray-hidden (sensors-only) mode: icon hidden, VA/Sendspin/remote
     # commands unloaded; the HA "Tray Icon" switch is the only way back.
     tray_icon_hidden: bool = False
@@ -750,6 +755,7 @@ class ServerState:
                             "conversation_bubble_enabled": self.preferences.conversation_bubble_enabled,
                             "sendspin_enabled": self.preferences.sendspin_enabled,
                             "mini_player_enabled": self.preferences.mini_player_enabled,
+                            "wake_word_sensitivity": self.preferences.wake_word_sensitivity,
                             "tray_icon_hidden": self.preferences.tray_icon_hidden,
                         },
                         f,
@@ -765,6 +771,8 @@ class ServerState:
         if not self.preferences_path.exists():
             return
 
+        from src.voice.wake_word import DEFAULT_WAKE_WORD_SENSITIVITY
+
         try:
             with open(self.preferences_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -779,6 +787,11 @@ class ServerState:
                 self.preferences.conversation_bubble_enabled = data.get("conversation_bubble_enabled", True)
                 self.preferences.sendspin_enabled = data.get("sendspin_enabled", True)
                 self.preferences.mini_player_enabled = data.get("mini_player_enabled", True)
+                # Clamp to 0.0-1.0 so a corrupt file cannot poison detection
+                try:
+                    self.preferences.wake_word_sensitivity = max(0.0, min(1.0, float(data.get("wake_word_sensitivity", DEFAULT_WAKE_WORD_SENSITIVITY))))
+                except (TypeError, ValueError):
+                    self.preferences.wake_word_sensitivity = DEFAULT_WAKE_WORD_SENSITIVITY
                 self.preferences.tray_icon_hidden = data.get("tray_icon_hidden", False)
 
         except Exception as e:
@@ -798,7 +811,7 @@ class ServerState:
 
 def create_default_state(name: str) -> ServerState:
     """Create default server state"""
-    from src.voice.wake_word import load_available_wake_words
+    from src.voice.wake_word import load_available_wake_words, DEFAULT_WAKE_WORD_SENSITIVITY
 
     available_wake_words = load_available_wake_words()
 

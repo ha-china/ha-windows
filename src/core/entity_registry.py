@@ -19,7 +19,6 @@ from aioesphomeapi.api_pb2 import (
     ListEntitiesDoneResponse,
     ListEntitiesRequest,
     MediaPlayerCommandRequest,
-    NumberCommandRequest,
     SubscribeHomeAssistantStatesRequest,
     SwitchCommandRequest,
 )
@@ -125,7 +124,6 @@ class EntityRegistryMixin:
                 ButtonCommandRequest,
                 ExecuteServiceRequest,
                 SwitchCommandRequest,
-                NumberCommandRequest,
             ),
         ):
             # Handle entity messages
@@ -215,17 +213,6 @@ class EntityRegistryMixin:
                     set_muted=self._set_muted,
                 )
 
-            if self._wake_word_sensitivity_entity is None:
-                from src.sensors.wake_word_sensitivity_number import WakeWordSensitivityNumberEntity
-
-                self._wake_word_sensitivity_entity = WakeWordSensitivityNumberEntity(
-                    key=800,
-                    name=_i18n.t("wake_word_sensitivity"),
-                    object_id="wake_word_sensitivity",
-                    get_sensitivity=lambda: self.state.preferences.wake_word_sensitivity,
-                    set_sensitivity=self._set_wake_word_sensitivity,
-                )
-
             # Get hotkey manager
             if self._hotkey_manager is None:
                 from src.core.hotkey_manager import get_hotkey_manager
@@ -259,7 +246,6 @@ class EntityRegistryMixin:
                 yield cfg_def
             yield from self._thinking_sound_entity.handle_message(msg)
             yield from self._mic_mute_entity.handle_message(msg)
-            yield from self._wake_word_sensitivity_entity.handle_message(msg)
 
         elif isinstance(msg, SubscribeHomeAssistantStatesRequest):
             # Send sensor states
@@ -272,7 +258,6 @@ class EntityRegistryMixin:
             yield from self._config_sensor_manager.get_states()
             yield from self._thinking_sound_entity.handle_message(msg)
             yield from self._mic_mute_entity.handle_message(msg)
-            yield from self._wake_word_sensitivity_entity.handle_message(msg)
             self._ensure_state_updates_started()
 
         elif isinstance(msg, MediaPlayerCommandRequest):
@@ -297,9 +282,5 @@ class EntityRegistryMixin:
                 yield from self._thinking_sound_entity.handle_message(msg)
             if self._mic_mute_entity is not None:
                 yield from self._mic_mute_entity.handle_message(msg)
-
-        elif isinstance(msg, NumberCommandRequest):
-            if self._wake_word_sensitivity_entity is not None:
-                yield from self._wake_word_sensitivity_entity.handle_message(msg)
 
     # ========== Message Sending ==========

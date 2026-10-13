@@ -251,7 +251,6 @@ class HomeAssistantWindows:
 
         # Wire microphone mute and conversation callbacks to the server
         self.api_server.set_muted_callback(self._set_muted)
-        self.api_server.set_wake_word_sensitivity_callback(self._apply_wake_word_sensitivity)
         self.api_server.set_conversation_callback(self._on_conversation_text)
         self.api_server.set_tray_hidden_callback(self._set_tray_icon_hidden)
 
@@ -303,34 +302,6 @@ class HomeAssistantWindows:
         # Refresh the tray menu so the checkmark reflects the current state
         if self.tray:
             self.tray.refresh_menu()
-
-    def _apply_wake_word_sensitivity(self, sensitivity: float) -> None:
-        """Apply wake word sensitivity to all live detectors (called by protocol callback).
-
-        Persistence is handled by the protocol before this callback fires.
-        """
-        for detector in self._wake_word_detectors.values():
-            detector.set_sensitivity(sensitivity)
-        logger.info(f"🎤 Wake word sensitivity set to: {float(sensitivity):.2f}")
-
-    def _is_media_playing(self) -> bool:
-        """Whether music is currently playing through the speakers.
-
-        The microphone picks up speaker output, so wake word detection pauses
-        while media plays (same reason TTS playback pauses it). The stop word
-        detector is unaffected: it is only active during TTS/announcements.
-        """
-        try:
-            if self.api_server and self.api_server.state.music_player.is_playing:
-                return True
-        except Exception:
-            pass
-        try:
-            if self.sendspin is not None and self.sendspin.is_playing():
-                return True
-        except Exception:
-            pass
-        return False
 
     # ------------------------------------------------------------- tray hidden
 
@@ -874,7 +845,7 @@ class HomeAssistantWindows:
                 self._update_wake_word_detector()
 
             # Skip wake word detection if TTS is playing (to avoid false positives)
-            if self.api_server and self.api_server.protocol and not self.api_server.protocol.is_playing_tts and not self._is_media_playing():
+            if self.api_server and self.api_server.protocol and not self.api_server.protocol.is_playing_tts:
                 for detector in self._wake_word_detectors.values():
                     detector.process_audio(audio_data)
 
@@ -968,7 +939,7 @@ class HomeAssistantWindows:
 
     def _update_wake_word_detector(self, initial_setup: bool = False):
         """Update wake word detector when active wake word changes"""
-        from src.voice.wake_word import DEFAULT_WAKE_WORD_SENSITIVITY, WakeWordDetector
+        from src.voice.wake_word import WakeWordDetector
 
         target_wake_words = self._get_active_wake_words()
         current_wake_words = list(self._wake_word_detectors.keys())
@@ -985,12 +956,7 @@ class HomeAssistantWindows:
         for wake_word_id in target_wake_words:
             detector = existing.get(wake_word_id)
             if detector is None:
-                saved_sensitivity = (
-                    self.api_server.state.preferences.wake_word_sensitivity
-                    if self.api_server
-                    else DEFAULT_WAKE_WORD_SENSITIVITY
-                )
-                detector = WakeWordDetector(wake_word_id, sensitivity=saved_sensitivity)
+                detector = WakeWordDetector(wake_word_id)
                 if getattr(detector, "_model", None) is None:
                     logger.warning(f"Wake word detector unavailable: {wake_word_id}")
                     continue

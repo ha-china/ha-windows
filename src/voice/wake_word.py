@@ -34,27 +34,6 @@ def _should_replace_wake_word(existing: AvailableWakeWord, candidate: AvailableW
 DEFAULT_WAKEWORD_DIR = Path(__file__).parent.parent / "wakewords"
 DEFAULT_OPEN_WAKEWORD_DIR = DEFAULT_WAKEWORD_DIR / "openWakeWord"
 
-# Sensitivity 0.0-1.0 maps linearly from each model's manifest probability_cutoff
-# (sensitivity 0) down to a tuned floor (sensitivity 1). This mirrors the Home
-# Assistant Voice PE firmware, whose three sensitivity levels are hand-calibrated
-# per model against the Dinner Party Corpus (false accepts per hour).
-DEFAULT_WAKE_WORD_SENSITIVITY = 0.5
-# Voice PE "Very sensitive" cutoffs (home-assistant-voice.yaml); models without
-# an entry use the generic floor, clamped to the manifest cutoff.
-CUTOFF_FLOORS = {
-    "okay_nabu": 0.56,
-    "hey_jarvis": 0.83,
-    "hey_mycroft": 0.93,
-}
-DEFAULT_CUTOFF_FLOOR = 0.6
-# OpenWakeWord models have no manifest cutoff: anchor at the 0.5 threshold this
-# code always used, with a modest range towards the more sensitive side.
-OPEN_WAKE_WORD_CUTOFF_ANCHOR = 0.5
-OPEN_WAKE_WORD_CUTOFF_FLOOR = 0.35
-
-# Internal models that must never show up as selectable wake words
-INTERNAL_WAKE_WORD_IDS = {"stop", "vad"}
-
 
 def _get_user_data_dir() -> Path:
     """Get the app data directory used for user-managed files."""
@@ -178,8 +157,7 @@ def load_wake_word(model_name: str, wakeword_dir: Optional[Path] = None) -> Opti
 def _load_public_wake_words_from_directory(wakeword_dir: Path) -> Dict[str, AvailableWakeWord]:
     """Load public wake words from a single directory."""
     wake_words = _load_wake_words_from_directory(wakeword_dir)
-    for internal_id in INTERNAL_WAKE_WORD_IDS:
-        wake_words.pop(internal_id, None)
+    wake_words.pop("stop", None)
     return wake_words
 
 
@@ -244,8 +222,6 @@ class WakeWordDetector:
         self,
         model_name: str = 'okay_nabu',
         wakeword_dir: Optional[Path] = None,
-        sensitivity: float = DEFAULT_WAKE_WORD_SENSITIVITY,
-        enable_vad: bool = True,
     ):
         """
         Initialize wake word detector
@@ -253,29 +229,17 @@ class WakeWordDetector:
         Args:
             model_name: Wake word model name (e.g., 'okay_nabu', 'hey_jarvis')
             wakeword_dir: Optional directory containing wake word models
-            sensitivity: Detection sensitivity 0.0-1.0 (higher = easier to trigger)
-            enable_vad: Gate wake word accepts behind a voice activity check
         """
         self.model_name = model_name
         self.wakeword_dir = wakeword_dir
         self._on_wake_word: Optional[Callable[[str], None]] = None
         self._wake_word_phrase: str = model_name
         self._last_detection_logged = False  # Track if we already logged this detection
-        self._sensitivity: float = DEFAULT_WAKE_WORD_SENSITIVITY
-        # Cutoff at sensitivity 0: the model manifest's recommended cutoff
-        # (OpenWakeWord models have none; the 0.5 anchor is used instead)
-        self._manifest_cutoff: float = OPEN_WAKE_WORD_CUTOFF_ANCHOR
-        self._probability_cutoff: float = OPEN_WAKE_WORD_CUTOFF_ANCHOR
 
         # Detector type and model
         self._detector_type: Optional[str] = None
         self._model: Optional[Union[MicroWakeWord, OpenWakeWord]] = None
         self._features: Optional[Union[MicroWakeWordFeatures, OpenWakeWordFeatures]] = None
-
-        # Voice activity detection gate (mirrors ESPHome's micro_wake_word `vad`)
-        self._vad_model: Optional[MicroWakeWord] = None
-        self._vad_features: Optional[MicroWakeWordFeatures] = None
-        self._vad_prob: float = 0.0
 
         # Load wake word info
         wake_word_info = load_wake_word(model_name, self.wakeword_dir)
@@ -294,80 +258,6 @@ class WakeWordDetector:
         else:
             logger.error(f"Unknown wake word type: {self._detector_type}")
 
-        if enable_vad and model_name not in INTERNAL_WAKE_WORD_IDS:
-            self._init_vad()
-
-        self.set_sensitivity(sensitivity)
-
-    def _init_vad(self) -> None:
-        """Load the internal VAD model used to reject non-speech activations."""
-        if not _microwakeword_available:
-            return
-
-        try:
-            vad_info = load_wake_word("vad", self.wakeword_dir)
-            if vad_info is None:
-                logger.debug("VAD model not found; non-speech gating disabled")
-                return
-
-            self._vad_model = MicroWakeWord.from_config(vad_info.wake_word_path)
-            self._vad_features = MicroWakeWordFeatures()
-            logger.debug("VAD gate enabled (cutoff %.2f, window %d)",
-                         self._vad_model.probability_cutoff, self._vad_model.sliding_window_size)
-        except Exception as e:
-            logger.debug(f"Failed to initialize VAD model: {e}")
-            self._vad_model = None
-            self._vad_features = None
-
-    def _update_vad(self, audio_chunk: bytes) -> None:
-        """Feed raw audio to the VAD feature stream."""
-        if self._vad_model is None or self._vad_features is None:
-            return
-
-        try:
-            for frame in self._vad_features.process_streaming(audio_chunk):
-                prob = self._vad_model.process_streaming_prob(frame)
-                if prob is not None:
-                    self._vad_prob = prob
-        except Exception as e:
-            logger.debug(f"VAD processing failed: {e}")
-
-    def _vad_allows_speech(self) -> bool:
-        """True when speech activity is detected (or VAD is unavailable)."""
-        if self._vad_model is None:
-            return True
-        return self._vad_prob > self._vad_model.probability_cutoff
-
-    def set_sensitivity(self, sensitivity: float) -> None:
-        """
-        Set detection sensitivity at runtime
-
-        Args:
-            sensitivity: 0.0-1.0 (higher = easier to trigger); the probability
-                cutoff interpolates linearly from the manifest cutoff (0.0) to
-                a per-model floor (1.0), matching Voice PE calibration
-        """
-        self._sensitivity = max(0.0, min(1.0, float(sensitivity)))
-
-        floor = CUTOFF_FLOORS.get(self.model_name, DEFAULT_CUTOFF_FLOOR)
-        if self._detector_type != WakeWordType.MICRO_WAKE_WORD:
-            floor = OPEN_WAKE_WORD_CUTOFF_FLOOR
-        floor = min(floor, self._manifest_cutoff)
-        self._probability_cutoff = self._manifest_cutoff - (self._manifest_cutoff - floor) * self._sensitivity
-
-        if self._model is not None and self._detector_type == WakeWordType.MICRO_WAKE_WORD:
-            self._model.probability_cutoff = self._probability_cutoff
-
-        logger.debug(
-            f"Wake word '{self.model_name}' sensitivity: {self._sensitivity:.2f} "
-            f"(probability cutoff: {self._probability_cutoff:.2f})"
-        )
-
-    @property
-    def sensitivity(self) -> float:
-        """Get the current sensitivity"""
-        return self._sensitivity
-
     def _init_micro_wakeword(self, wake_word_info: AvailableWakeWord) -> None:
         """Initialize MicroWakeWord detector"""
         if not _microwakeword_available:
@@ -378,8 +268,6 @@ class WakeWordDetector:
             # Load model
             self._model = MicroWakeWord.from_config(wake_word_info.wake_word_path)
             self._features = MicroWakeWordFeatures()
-            # The manifest's recommended cutoff anchors the sensitivity mapping
-            self._manifest_cutoff = float(self._model.probability_cutoff)
             logger.debug(f"Wake word detector initialized (MicroWakeWord): '{self._wake_word_phrase}' ({self.model_name})")
         except Exception as e:
             logger.error(f"Failed to initialize MicroWakeWord: {e}")
@@ -395,7 +283,6 @@ class WakeWordDetector:
             # Load model
             self._model = OpenWakeWord.from_model(model_path=wake_word_info.wake_word_path)
             self._features = OpenWakeWordFeatures.from_builtin()
-            self._manifest_cutoff = OPEN_WAKE_WORD_CUTOFF_ANCHOR
             logger.debug(f"Wake word detector initialized (OpenWakeWord): '{self._wake_word_phrase}' ({self.model_name})")
         except Exception as e:
             logger.error(f"Failed to initialize OpenWakeWord: {e}")
@@ -425,9 +312,6 @@ class WakeWordDetector:
             return False
 
         try:
-            # Keep the VAD feature stream in sync with the audio first
-            self._update_vad(audio_chunk)
-
             # Process based on detector type
             if self._detector_type == "micro":
                 return self._process_micro_wakeword(audio_chunk)
@@ -448,7 +332,7 @@ class WakeWordDetector:
         # Process each feature frame
         detected = False
         for feature in features:
-            if self._model.process_streaming(feature) and self._vad_allows_speech():
+            if self._model.process_streaming(feature):
                 detected = True
                 # Only log once per detection sequence
                 if not self._last_detection_logged:
@@ -470,9 +354,7 @@ class WakeWordDetector:
 
         for embedding in embeddings:
             for prob in self._model.process_streaming(embedding):
-                if prob <= self._probability_cutoff:
-                    continue
-                if not self._vad_allows_speech():
+                if prob <= 0.5:
                     continue
 
                 # Only log once per detection sequence
@@ -495,14 +377,11 @@ class WakeWordDetector:
             self._features = MicroWakeWordFeatures()
         elif self._detector_type == "openWakeWord" and _openwakeword_available:
             self._features = OpenWakeWordFeatures.from_builtin()
-        if self._vad_features is not None:
-            self._vad_features = MicroWakeWordFeatures()
-        self._vad_prob = 0.0
         self._last_detection_logged = False
 
     def close(self) -> None:
         """Release detector resources held by native wake word libraries."""
-        for attr in ("_features", "_model", "_vad_features", "_vad_model"):
+        for attr in ("_features", "_model"):
             resource = getattr(self, attr, None)
             if resource is None:
                 continue

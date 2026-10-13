@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Sendspin receiver failed to start against aiosendspin 10.x (`ArtworkChannel.__init__() got an unexpected keyword argument 'media_width'`): the unpinned `aiosendspin>=9.1.1` requirement silently pulled the breaking 10.0.0 rewrite. Migrated the client to the 10.x API - artwork channels passed directly (`width`/`height` fields), `static_delay_ms` renamed to `output_delay_ms`, volume/mute commands declared via `state_supported_commands`, and pairing codes delivered through the new `pairing_code_display` out-channel (shows the grouped form, e.g. `123-456`). `requirements.txt` now pins `aiosendspin>=10.0.0,<11.0.0` so future majors cannot break installs unnoticed.
+
 ## [1.4.1] - 2026-10-10
 
 ### Added

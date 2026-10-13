@@ -326,7 +326,7 @@ class HomeAssistantWindows:
         except Exception:
             pass
         try:
-            if self.sendspin is not None and self.sendspin.is_playing:
+            if self.sendspin is not None and self.sendspin.is_playing():
                 return True
         except Exception:
             pass

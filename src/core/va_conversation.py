@@ -22,6 +22,7 @@ from aioesphomeapi.api_pb2 import (
 )
 from aioesphomeapi.model import VoiceAssistantEventType, VoiceAssistantTimerEventType
 
+from src.core import event_stream
 from src.core.models import get_user_data_dir
 
 logger = logging.getLogger(__name__)
@@ -155,6 +156,7 @@ class VoiceAssistantMixin:
                 return
 
             logger.error(f"Voice assistant error: {data}")
+            event_stream.publish("error", code=data.get("code", ""), message=data.get("message", ""))
             self._is_streaming_audio = False
             self._processing = False
             self._stop_audio_streaming()
@@ -291,9 +293,15 @@ class VoiceAssistantMixin:
         """Show a bubble telling the user no speech was recognized."""
         try:
             from src.i18n import get_i18n
+
+            text = get_i18n().t("error_no_speech")
+        except Exception:
+            text = "No speech recognized"
+        event_stream.publish("info", code="stt-no-text-recognized", text=text)
+        try:
             from src.ui.conversation_bubble import show_conversation_bubble
 
-            show_conversation_bubble("info", get_i18n().t("error_no_speech"))
+            show_conversation_bubble("info", text)
         except Exception as e:
             logger.debug(f"No-speech bubble failed: {e}")
 

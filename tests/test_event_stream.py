@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import threading
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -151,6 +152,20 @@ class TestEventStreamServer:
             writer.close()
             await _wait_for_clients(server, 0)
             server.publish("phase", phase="idle")  # must not raise
+        finally:
+            await server.stop()
+
+    async def test_hello_write_failure_is_cleaned_up(self):
+        """A client that cannot even receive the hello is dropped, not leaked."""
+        server = await _start_server()
+        try:
+            reader = MagicMock()
+            reader.read = AsyncMock(side_effect=AssertionError("read must not be reached"))
+            writer = MagicMock()
+            writer.write = MagicMock(side_effect=ConnectionError("reset before hello"))
+            await server._handle_client(reader, writer)
+            assert server.client_count == 0
+            writer.close.assert_called()
         finally:
             await server.stop()
 

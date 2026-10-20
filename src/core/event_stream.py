@@ -124,18 +124,18 @@ class EventStreamServer:
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         self._writers.add(writer)
         logger.info(f"Event stream client connected ({len(self._writers)} total)")
-        writer.write(
-            self._encode(
-                "hello",
-                {
-                    "device": self.device_name,
-                    "version": self.version,
-                    "protocol": PROTOCOL_VERSION,
-                    "phase": self._phase,
-                },
-            )
-        )
         try:
+            writer.write(
+                self._encode(
+                    "hello",
+                    {
+                        "device": self.device_name,
+                        "version": self.version,
+                        "protocol": PROTOCOL_VERSION,
+                        "phase": self._phase,
+                    },
+                )
+            )
             # Input is ignored; reading only detects the client going away.
             while await reader.read(4096):
                 pass

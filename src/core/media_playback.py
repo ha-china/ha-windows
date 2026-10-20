@@ -9,6 +9,8 @@ import asyncio
 import logging
 from typing import Callable, Dict, List, Optional
 
+from src.core import event_stream
+
 from aioesphomeapi.api_pb2 import (
     VoiceAssistantAnnounceFinished,
     VoiceAssistantAnnounceRequest,
@@ -28,6 +30,8 @@ class PlaybackMixin:
         References linux-voice-assistant's handle_message VoiceAssistantAnnounceRequest handling
         """
         logger.info(f"Received announcement request: {msg.text}")
+        if msg.text:
+            event_stream.publish("announce", text=msg.text)
 
         # Build playlist
         urls = []

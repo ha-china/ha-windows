@@ -240,6 +240,35 @@ Or add manually:
 ### Voice Assistant
 Say the wake word (default: "Okay Nabu") to activate voice assistant, or use your configured global hotkey for push-to-talk.
 
+### Local Event Stream (for custom overlays)
+Start the app with `--event-port PORT` (for example `HomeAssistantWindows.exe --event-port 6054`) to stream voice assistant events to local programs, such as a custom on-screen overlay. It is off by default.
+
+- Listens on `127.0.0.1` only, so nothing is exposed to the network
+- Newline-delimited JSON over TCP, UTF-8, one object per line
+- Read-only: anything a client sends is ignored; any number of clients can connect
+- Each client first gets a `hello` with the current phase, then live events
+
+Every message has `v` (protocol version, currently `1`), `type` and `ts` (Unix time):
+
+| `type` | Fields | When |
+|---|---|---|
+| `hello` | `device`, `version`, `protocol`, `phase` | On connect |
+| `phase` | `phase`: `idle`, `listening`, `thinking`, `replying`, `error`, `not_ready` | Pipeline state changes |
+| `wake_word` | `phrase` | A wake word was detected |
+| `stt` | `text` | What the user said |
+| `tts` | `text` | The assistant's reply |
+| `announce` | `text` | An announcement from Home Assistant |
+| `info` | `code`, `text` | For example `stt-no-text-recognized` |
+| `error` | `code`, `message` | A pipeline error |
+
+```text
+{"v": 1, "type": "wake_word", "ts": 1760900000.123, "phrase": "Okay Nabu"}
+{"v": 1, "type": "stt", "ts": 1760900002.456, "text": "turn on the office lights"}
+{"v": 1, "type": "tts", "ts": 1760900003.789, "text": "Turned on the office lights."}
+```
+
+Ignore unknown types and fields so new ones can be added without breaking clients. To replace the built-in popups with your own overlay, untick **Show Conversation Bubbles** in the tray menu.
+
 ## 🎯 Wake Words
 
 Available wake words:

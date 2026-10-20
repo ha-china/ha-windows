@@ -10,6 +10,7 @@ from src.i18n import set_language
 from src.voice.audio_recorder import AudioRecorder
 from src.ui.system_tray_icon import get_tray
 from src.core.esphome_protocol import ESPHomeServer
+from src.core import event_stream
 from src.core.mdns_discovery import MDNSBroadcaster, DeviceInfo
 import sys
 import logging
@@ -152,19 +153,22 @@ class HomeAssistantWindows:
     DEFAULT_PORT = 6053
     MDNS_RESTART_INTERVAL_SECONDS = 6 * 60 * 60
 
-    def __init__(self, device_name: str = None, port: int = None):
+    def __init__(self, device_name: str = None, port: int = None, event_port: int = 0):
         """
         Initialize client
 
         Args:
             device_name: Device name (None = use hostname)
             port: API service port
+            event_port: Local event stream port on 127.0.0.1 (0 = disabled)
         """
         if device_name is None:
             device_name = _get_hostname()
 
         self.device_name = device_name
         self.port = port or self.DEFAULT_PORT
+        self.event_port = event_port or 0
+        self.event_stream: Optional[event_stream.EventStreamServer] = None
 
         # Components
         self.mdns_broadcaster: MDNSBroadcaster = None
@@ -201,6 +205,10 @@ class HomeAssistantWindows:
             # to be saved deep inside wake-word setup, so callbacks arriving
             # before (or with wake word disabled/hidden) were dropped.
             self._event_loop = asyncio.get_running_loop()
+
+            # Step 0: Optional local event stream (before the API server so
+            # the first phase changes are not missed)
+            await self._start_event_stream()
 
             # Step 1: Start ESPHome API server
             await self._start_api_server()
@@ -246,8 +254,8 @@ class HomeAssistantWindows:
         # Create system tray icon after server is initialized
         self.tray = get_tray(state=self.api_server.state)
 
-        # Connect voice assistant phase changes to tray icon updates
-        self.api_server.set_phase_callback(self.tray.set_phase)
+        # Connect voice assistant phase changes to tray icon updates (and the event stream)
+        self.api_server.set_phase_callback(self._on_phase_change)
 
         # Wire microphone mute and conversation callbacks to the server
         self.api_server.set_muted_callback(self._set_muted)
@@ -431,8 +439,24 @@ class HomeAssistantWindows:
         conversation_bubble.set_enabled(enabled)
         logger.info(f"💬 Conversation bubbles {'enabled' if enabled else 'disabled'}")
 
+    async def _start_event_stream(self) -> None:
+        """Start the opt-in local event stream (--event-port) for overlays."""
+        if not self.event_port:
+            return
+        server = event_stream.EventStreamServer(self.event_port, device_name=self.device_name, version=__version__)
+        if await server.start():
+            self.event_stream = server
+            event_stream.set_server(server)
+
+    def _on_phase_change(self, phase: str) -> None:
+        """Forward voice assistant phase changes to the event stream and tray icon."""
+        event_stream.publish("phase", phase=phase)
+        if self.tray:
+            self.tray.set_phase(phase)
+
     def _on_conversation_text(self, msg_type: str, text: str) -> None:
         """Handle conversation text from voice assistant events."""
+        event_stream.publish(msg_type, text=text)
         if self.tray:
             try:
                 self.tray._show_conversation_balloon(msg_type, text)
@@ -905,6 +929,7 @@ class HomeAssistantWindows:
                 self._last_wakeup_time = now
 
                 logger.info(f"🎤 Wake word detected: {wake_word_phrase}")
+                event_stream.publish("wake_word", phrase=wake_word_phrase)
                 if self.api_server and self.api_server.protocol:
                     try:
                         self.api_server.protocol.wakeup(wake_word_phrase)
@@ -1077,6 +1102,15 @@ class HomeAssistantWindows:
             except Exception as e:
                 logger.error(f"Failed to stop API server: {e}")
 
+        # Stop the local event stream
+        if self.event_stream:
+            event_stream.set_server(None)
+            try:
+                await self.event_stream.stop()
+            except Exception as e:
+                logger.error(f"Failed to stop event stream: {e}")
+            self.event_stream = None
+
         logger.info("Cleanup complete, exiting...")
 
         self._cleanup_done.set()
@@ -1181,6 +1215,12 @@ def main():
         "--language", choices=["zh_CN", "en_US"], default=None, help="Interface language (default: auto-detect)"
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument(
+        "--event-port",
+        type=int,
+        default=0,
+        help="Stream voice assistant events as JSON lines on 127.0.0.1:PORT for overlays (default: off)",
+    )
 
     args = parser.parse_args()
 
@@ -1221,6 +1261,7 @@ def main():
     client = HomeAssistantWindows(
         device_name=args.name,
         port=args.port,
+        event_port=args.event_port,
     )
 
     # Run async main program

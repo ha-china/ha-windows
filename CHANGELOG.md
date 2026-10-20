@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Opt-in local event stream for custom overlays: `--event-port PORT` streams voice assistant events (phase changes, wake word, recognized speech, reply text, announcements, errors) as newline-delimited JSON on `127.0.0.1:PORT`. Read-only, local only, off by default. Documented in the README under "Local Event Stream".
+- New `src/core/event_stream.py` and `tests/test_event_stream.py`.
+
 ## [1.4.3] - 2026-10-13
 
 ### Fixed

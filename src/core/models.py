@@ -440,12 +440,14 @@ class AudioPlayer:
         try:
             endpoint = resolve_endpoint_id(name)
             if endpoint is None:
-                logger.debug(f"VLC output device endpoint not found: {name}")
+                logger.info(f"VLC output device endpoint not found: {name}")
                 return
             if self._vlc_player.audio_output_device_set("mmdevice", endpoint) == 0:
-                logger.debug(f"VLC output device: {name}")
+                logger.info(f"VLC output device: {name}")
+            else:
+                logger.warning(f"VLC refused output device switch: {name}")
         except Exception as e:
-            logger.debug(f"VLC output device switch failed: {e}")
+            logger.warning(f"VLC output device switch failed: {e}")
 
     def _play_vlc(self, url: str, playback_id: int) -> None:
         """Play with VLC (true streaming)"""
@@ -789,7 +791,9 @@ class ServerState:
                 self.preferences.mini_player_enabled = data.get("mini_player_enabled", True)
                 # Clamp to 0.0-1.0 so a corrupt file cannot poison detection
                 try:
-                    self.preferences.wake_word_sensitivity = max(0.0, min(1.0, float(data.get("wake_word_sensitivity", DEFAULT_WAKE_WORD_SENSITIVITY))))
+                    self.preferences.wake_word_sensitivity = max(
+                        0.0, min(1.0, float(data.get("wake_word_sensitivity", DEFAULT_WAKE_WORD_SENSITIVITY)))
+                    )
                 except (TypeError, ValueError):
                     self.preferences.wake_word_sensitivity = DEFAULT_WAKE_WORD_SENSITIVITY
                 self.preferences.tray_icon_hidden = data.get("tray_icon_hidden", False)

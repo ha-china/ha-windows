@@ -385,7 +385,14 @@ class VoiceAssistantMixin:
             self._tts_finished()
 
     def _on_voice_input_trigger(self) -> None:
-        """Handle voice input trigger from button"""
+        """Handle voice input trigger from button or hotkey"""
+        # While TTS or a timer sound is playing, the hotkey cancels the
+        # playback instead of starting a new conversation (issue #17).
+        if self._is_playing_tts or self._timer_finished:
+            logger.info("🎤 Voice input trigger cancels current playback")
+            self.stop()
+            return
+
         logger.info("🎤 Voice input triggered via button (no wake word)")
         # Trigger voice assistant without wake word
         self.wakeup(wake_word_phrase="")

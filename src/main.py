@@ -263,6 +263,19 @@ class HomeAssistantWindows:
         self.api_server.set_conversation_callback(self._on_conversation_text)
         self.api_server.set_tray_hidden_callback(self._set_tray_icon_hidden)
 
+        # Arm the stop-word chain: the "stop" model ships with the app but must
+        # be loaded into state here - nothing else ever sets state.stop_word,
+        # and without it the audio callback never interrupts playback (this
+        # mirrors linux-voice-assistant, which loads the model at startup).
+        from src.voice.wake_word import load_wake_word
+
+        stop_info = load_wake_word("stop")
+        if stop_info is not None:
+            self.api_server.state.stop_word = stop_info
+            logger.info("🎤 Stop word model loaded ('stop' can interrupt playback)")
+        else:
+            logger.warning("Stop word model not found - saying 'stop' will not interrupt playback")
+
         # Run server in background
         # Keep a reference: tasks are only weakly referenced by the loop and
         # could otherwise be garbage-collected mid-flight.

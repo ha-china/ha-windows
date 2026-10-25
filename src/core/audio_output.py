@@ -94,6 +94,43 @@ def resolve_output_device(device_name: Optional[str]) -> Optional[int]:
         return None
 
 
+def resolve_output_device_mme(device_name: Optional[str]) -> Optional[int]:
+    """Resolve an output device name to its MME host-API index.
+
+    MME goes through the Windows mixer, which resamples any stream rate,
+    while a WASAPI open can fail when the driver does not list our 48 kHz
+    stream for that output pair (professional interfaces often expose a
+    fixed rate per output pair). Callers use this as a fallback ladder step
+    when the WASAPI entry fails to open (issue #16).
+    """
+    if not device_name:
+        return None
+    try:
+        import sounddevice as sd
+
+        devices = list(enumerate(sd.query_devices()))
+        mme = None
+        try:
+            for i, api in enumerate(sd.query_hostapis()):
+                if "MME" in api["name"]:
+                    mme = i
+                    break
+        except Exception:
+            pass
+
+        for i, dev in devices:
+            if dev["max_output_channels"] <= 0 or dev["hostapi"] != mme:
+                continue
+            # MME truncates names to 31 chars: match the truncated prefix too.
+            if dev["name"] == device_name or device_name.startswith(dev["name"]):
+                logger.info(f"MME output device resolved: '{dev['name']}' (idx {i}) for '{device_name}'")
+                return i
+        return None
+    except Exception as e:
+        logger.error(f"Failed to resolve MME output device: {e}")
+        return None
+
+
 def get_selected_device() -> str:
     """Currently selected output device name ("" = system default)."""
     return _selected_device

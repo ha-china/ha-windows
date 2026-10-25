@@ -76,25 +76,26 @@ class SyncAudioPlayer:
 
             device_id = resolve_output_device(self.device)
 
-        try:
-            self._stream = sd.RawOutputStream(
-                samplerate=SAMPLE_RATE,
-                channels=CHANNELS,
-                dtype="int16",
-                blocksize=self._BLOCKSIZE,
-                callback=self._audio_callback,
-                latency="high",
-                device=device_id,
-            )
-            self._stream.start()
-        except Exception as e:
-            if device_id is not None:
-                # A stale selection (unplugged device, changed index) must
-                # never kill playback: retry once on the system default.
-                logger.warning(
-                    f"SyncAudioPlayer: failed to open output device "
-                    f"'{self.device}' (idx {device_id}): {e}, falling back to default"
-                )
+        # Open ladder: the WASAPI entry first (matches the tray menu name),
+        # then the same name on MME - the Windows mixer resamples there, which
+        # rescues interfaces whose WASAPI side rejects our 48 kHz stream
+        # (issue #16) - and finally the system default, so music never goes
+        # silent because of a stale selection.
+        candidates: list = []
+        if device_id is not None:
+            candidates.append(device_id)
+            from src.core.audio_output import resolve_output_device_mme
+
+            mme_id = resolve_output_device_mme(self.device)
+            if mme_id is not None and mme_id != device_id:
+                candidates.append(mme_id)
+            candidates.append(None)
+        else:
+            candidates.append(None)
+
+        last_error: Optional[Exception] = None
+        for candidate in candidates:
+            try:
                 self._stream = sd.RawOutputStream(
                     samplerate=SAMPLE_RATE,
                     channels=CHANNELS,
@@ -102,10 +103,28 @@ class SyncAudioPlayer:
                     blocksize=self._BLOCKSIZE,
                     callback=self._audio_callback,
                     latency="high",
+                    device=candidate,
                 )
                 self._stream.start()
-            else:
-                raise
+                last_error = None
+                break
+            except Exception as e:
+                last_error = e
+                if self._stream is not None:
+                    try:
+                        self._stream.close()
+                    except Exception:
+                        pass
+                    self._stream = None
+                target = (
+                    self.device
+                    if candidate == device_id
+                    else (f"idx {candidate}" if candidate is not None else "system default")
+                )
+                logger.warning(f"SyncAudioPlayer: failed to open output device ({target}): {e}")
+
+        if last_error is not None:
+            raise last_error
 
         active = sd.query_devices(self._stream.device)
         hostapi = sd.query_hostapis(active["hostapi"])["name"]

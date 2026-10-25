@@ -122,9 +122,7 @@ class TestServerCommand:
         recv = SendspinReceiver(name="Test")
         payload = MagicMock()
         payload.player = None
-        with (
-            patch.object(SendspinReceiver, "_notify_volume") as mock_notify,
-        ):
+        with (patch.object(SendspinReceiver, "_notify_volume") as mock_notify,):
             recv._on_server_command(payload)
         mock_notify.assert_not_called()
 
@@ -272,3 +270,76 @@ class TestPlayback:
 
         # Not due yet -> pure silence (future-scheduled chunks wait)
         assert out.raw == self._silence()
+
+
+class TestOutputDeviceFallback:
+    """start() must try the WASAPI entry, then the same name on MME, then the
+    system default - a WASAPI rate rejection (issue #16) may not silence or
+    misroute music playback."""
+
+    @staticmethod
+    def _fake_sd(fail_indices):
+        """Build a fake sounddevice module whose RawOutputStream fails for the
+        given device indices and succeeds otherwise."""
+        sd = MagicMock()
+        streams = []
+
+        def raw_output_stream(**kwargs):
+            stream = MagicMock()
+            stream.device = kwargs.get("device")
+            if kwargs.get("device") in fail_indices:
+                raise Exception("Error opening RawOutputStream: Invalid sample rate [PaErrorCode -9997]")
+            streams.append(stream)
+            return stream
+
+        sd.RawOutputStream.side_effect = raw_output_stream
+        sd.streams = streams
+        return sd
+
+    def _run_start(self, sd, device_name="Analog (3+4) (RME Babyface Pro)"):
+        from src.sendspin_player.sync_audio_player import SyncAudioPlayer
+
+        player = SyncAudioPlayer(
+            compute_play_time=lambda ts: ts,
+            now_us=lambda: 0,
+            is_synced=lambda: True,
+            on_skew=lambda ms, ok: None,
+            device=device_name,
+        )
+        with patch.dict(sys.modules, {"sounddevice": sd}):
+            player.start()
+        return player
+
+    @patch("src.core.audio_output.resolve_output_device", return_value=30)
+    @patch("src.core.audio_output.resolve_output_device_mme", return_value=None)
+    def test_wasapi_failure_falls_back_to_system_default(self, _mme, _wasapi):
+        sd = self._fake_sd(fail_indices={30})
+        self._run_start(sd)
+
+        # Tried WASAPI 30, then system default (None)
+        assert self._attempted(sd) == [30, None]
+        assert sd.streams[-1].device is None
+        assert sd.streams[-1].start.called
+
+    @patch("src.core.audio_output.resolve_output_device", return_value=30)
+    @patch("src.core.audio_output.resolve_output_device_mme", return_value=7)
+    def test_wasapi_failure_tries_mme_variant_first(self, _mme, _wasapi):
+        sd = self._fake_sd(fail_indices={30})
+        self._run_start(sd)
+
+        # WASAPI rejected -> MME idx 7 opened, system default never touched
+        assert self._attempted(sd) == [30, 7]
+        assert sd.streams[-1].device == 7
+        assert sd.streams[-1].start.called
+
+    @patch("src.core.audio_output.resolve_output_device", return_value=30)
+    @patch("src.core.audio_output.resolve_output_device_mme", return_value=None)
+    def test_everything_failing_raises(self, _mme, _wasapi):
+        sd = self._fake_sd(fail_indices={30, None})
+        with pytest.raises(Exception):
+            self._run_start(sd)
+        assert self._attempted(sd) == [30, None]
+
+    @staticmethod
+    def _attempted(sd):
+        return [c.kwargs.get("device") for c in sd.RawOutputStream.call_args_list]

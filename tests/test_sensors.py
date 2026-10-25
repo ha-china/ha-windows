@@ -25,7 +25,6 @@ from aioesphomeapi.api_pb2 import (
 
 from src.sensors.windows_monitor import WindowsMonitor, SENSOR_KEYS
 
-
 # =============================================================================
 # Strategies for generating test data
 # =============================================================================
@@ -49,56 +48,82 @@ battery_charging_strategy = st.booleans()
 network_bytes_strategy = st.integers(min_value=0, max_value=10**12)
 
 # Strategy for generating complete system info
-system_info_strategy = st.fixed_dictionaries({
-    'cpu': st.fixed_dictionaries({
-        'cpu_percent': cpu_percent_strategy,
-        'cpu_count': st.integers(min_value=1, max_value=128),
-    }),
-    'memory': st.fixed_dictionaries({
-        'percent': memory_percent_strategy,
-        'total': st.integers(min_value=1, max_value=10**12),
-        'used': st.integers(min_value=0, max_value=10**12),
-    }),
-    'disk': st.fixed_dictionaries({
-        'C:\\': st.fixed_dictionaries({
-            'percent': disk_percent_strategy,
-            'total': st.integers(min_value=1, max_value=10**13),
-            'used': st.integers(min_value=0, max_value=10**13),
-        })
-    }),
-    'network': st.fixed_dictionaries({
-        'bytes_sent': network_bytes_strategy,
-        'bytes_recv': network_bytes_strategy,
-    }),
-})
+system_info_strategy = st.fixed_dictionaries(
+    {
+        "cpu": st.fixed_dictionaries(
+            {
+                "cpu_percent": cpu_percent_strategy,
+                "cpu_count": st.integers(min_value=1, max_value=128),
+            }
+        ),
+        "memory": st.fixed_dictionaries(
+            {
+                "percent": memory_percent_strategy,
+                "total": st.integers(min_value=1, max_value=10**12),
+                "used": st.integers(min_value=0, max_value=10**12),
+            }
+        ),
+        "disk": st.fixed_dictionaries(
+            {
+                "C:\\": st.fixed_dictionaries(
+                    {
+                        "percent": disk_percent_strategy,
+                        "total": st.integers(min_value=1, max_value=10**13),
+                        "used": st.integers(min_value=0, max_value=10**13),
+                    }
+                )
+            }
+        ),
+        "network": st.fixed_dictionaries(
+            {
+                "bytes_sent": network_bytes_strategy,
+                "bytes_recv": network_bytes_strategy,
+            }
+        ),
+    }
+)
 
 # Strategy for system info with battery
-system_info_with_battery_strategy = st.fixed_dictionaries({
-    'cpu': st.fixed_dictionaries({
-        'cpu_percent': cpu_percent_strategy,
-        'cpu_count': st.integers(min_value=1, max_value=128),
-    }),
-    'memory': st.fixed_dictionaries({
-        'percent': memory_percent_strategy,
-        'total': st.integers(min_value=1, max_value=10**12),
-        'used': st.integers(min_value=0, max_value=10**12),
-    }),
-    'disk': st.fixed_dictionaries({
-        'C:\\': st.fixed_dictionaries({
-            'percent': disk_percent_strategy,
-            'total': st.integers(min_value=1, max_value=10**13),
-            'used': st.integers(min_value=0, max_value=10**13),
-        })
-    }),
-    'battery': st.fixed_dictionaries({
-        'percent': battery_level_strategy,
-        'power_plugged': battery_charging_strategy,
-    }),
-    'network': st.fixed_dictionaries({
-        'bytes_sent': network_bytes_strategy,
-        'bytes_recv': network_bytes_strategy,
-    }),
-})
+system_info_with_battery_strategy = st.fixed_dictionaries(
+    {
+        "cpu": st.fixed_dictionaries(
+            {
+                "cpu_percent": cpu_percent_strategy,
+                "cpu_count": st.integers(min_value=1, max_value=128),
+            }
+        ),
+        "memory": st.fixed_dictionaries(
+            {
+                "percent": memory_percent_strategy,
+                "total": st.integers(min_value=1, max_value=10**12),
+                "used": st.integers(min_value=0, max_value=10**12),
+            }
+        ),
+        "disk": st.fixed_dictionaries(
+            {
+                "C:\\": st.fixed_dictionaries(
+                    {
+                        "percent": disk_percent_strategy,
+                        "total": st.integers(min_value=1, max_value=10**13),
+                        "used": st.integers(min_value=0, max_value=10**13),
+                    }
+                )
+            }
+        ),
+        "battery": st.fixed_dictionaries(
+            {
+                "percent": battery_level_strategy,
+                "power_plugged": battery_charging_strategy,
+            }
+        ),
+        "network": st.fixed_dictionaries(
+            {
+                "bytes_sent": network_bytes_strategy,
+                "bytes_recv": network_bytes_strategy,
+            }
+        ),
+    }
+)
 
 
 # =============================================================================
@@ -109,10 +134,11 @@ system_info_with_battery_strategy = st.fixed_dictionaries({
 # Validates: Requirements 5.1, 5.3, 5.4, 5.5, 5.6, 5.7
 # =============================================================================
 
+
 class TestSensorEntityDefinitions:
     """
     Property 11: Sensor Entity Definitions
-    
+
     **Feature: ha-windows-client, Property 11: Sensor Entity Definitions**
     **Validates: Requirements 5.1, 5.3, 5.4, 5.5, 5.6, 5.7**
     """
@@ -124,35 +150,35 @@ class TestSensorEntityDefinitions:
         """
         Property 11: For any system configuration, entity definitions SHALL
         include CPU, memory, disk (if C: exists), and network sensors.
-        
+
         **Feature: ha-windows-client, Property 11: Sensor Entity Definitions**
         **Validates: Requirements 5.1, 5.3, 5.4, 5.5, 5.7**
         """
         monitor = WindowsMonitor()
-        
+
         # Mock get_all_info to return our generated system info
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             entities = monitor.discover_esp_entities()
-        
+
         # Extract object_ids from entities
         object_ids = [e[0] for e in entities]
-        
+
         # Property: CPU sensor is always included
-        assert "cpu_usage" in object_ids, \
-            "CPU usage sensor should always be included"
-        
+        assert "cpu_usage" in object_ids, "CPU usage sensor should always be included"
+
         # Property: Memory sensor is always included
-        assert "memory_usage" in object_ids, \
-            "Memory usage sensor should always be included"
-        
-        # Property: Disk sensor is included when C: drive exists
-        if 'C:\\' in system_info.get('disk', {}):
-            assert "disk_usage" in object_ids, \
-                "Disk usage sensor should be included when C: drive exists"
-        
-        # Property: Network sensor is always included
-        assert "network_status" in object_ids, \
-            "Network status sensor should always be included"
+        assert "memory_usage" in object_ids, "Memory usage sensor should always be included"
+
+        # Property: Disk sensors are per-drive (disk_<mount>_usage / _free)
+        if "C:\\" in system_info.get("disk", {}):
+            assert "disk_c_usage" in object_ids, "C: drive usage sensor should be included when C: drive exists"
+            assert "disk_c_free" in object_ids, "C: drive free sensor should be included when C: drive exists"
+
+        # Property: Network sensors are always included (status was split
+        # into an IP text sensor and monotonic upload/download counters)
+        assert "ip_address" in object_ids, "IP address sensor should always be included"
+        assert "network_upload" in object_ids, "Network upload sensor should always be included"
+        assert "network_download" in object_ids, "Network download sensor should always be included"
 
     @pytest.mark.slow
     @given(system_info=system_info_with_battery_strategy)
@@ -161,24 +187,22 @@ class TestSensorEntityDefinitions:
         """
         Property 11: When battery info is available, entity definitions SHALL
         include battery status and battery level sensors.
-        
+
         **Feature: ha-windows-client, Property 11: Sensor Entity Definitions**
         **Validates: Requirements 5.6**
         """
         monitor = WindowsMonitor()
-        
+
         # Mock get_all_info to return system info with battery
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             entities = monitor.discover_esp_entities()
-        
+
         # Extract object_ids from entities
         object_ids = [e[0] for e in entities]
-        
+
         # Property: Battery sensors are included when battery info exists
-        assert "battery_status" in object_ids, \
-            "Battery status sensor should be included when battery exists"
-        assert "battery_level" in object_ids, \
-            "Battery level sensor should be included when battery exists"
+        assert "battery_status" in object_ids, "Battery status sensor should be included when battery exists"
+        assert "battery_level" in object_ids, "Battery level sensor should be included when battery exists"
 
     @pytest.mark.slow
     @given(system_info=system_info_strategy)
@@ -186,21 +210,20 @@ class TestSensorEntityDefinitions:
     def test_entity_definitions_have_unique_keys(self, system_info: Dict):
         """
         Property 11: All entity definitions SHALL have unique keys.
-        
+
         **Feature: ha-windows-client, Property 11: Sensor Entity Definitions**
         **Validates: Requirements 5.1**
         """
         monitor = WindowsMonitor()
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             entities = monitor.discover_esp_entities()
-        
+
         # Extract keys from entities
         keys = [e[3] for e in entities]
-        
+
         # Property: All keys are unique
-        assert len(keys) == len(set(keys)), \
-            f"Entity keys should be unique, got duplicates: {keys}"
+        assert len(keys) == len(set(keys)), f"Entity keys should be unique, got duplicates: {keys}"
 
     @pytest.mark.slow
     @given(system_info=system_info_strategy)
@@ -209,57 +232,52 @@ class TestSensorEntityDefinitions:
         """
         Property 11: All entity definitions SHALL have valid structure
         (object_id, name, icon, key).
-        
+
         **Feature: ha-windows-client, Property 11: Sensor Entity Definitions**
         **Validates: Requirements 5.1**
         """
         monitor = WindowsMonitor()
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             entities = monitor.discover_esp_entities()
-        
+
         for entity in entities:
             # Property: Each entity is a tuple of 4 elements
-            assert len(entity) == 4, \
-                f"Entity should have 4 elements, got {len(entity)}"
-            
+            assert len(entity) == 4, f"Entity should have 4 elements, got {len(entity)}"
+
             object_id, name, icon, key = entity
-            
+
             # Property: object_id is a non-empty string
-            assert isinstance(object_id, str) and object_id, \
-                f"object_id should be non-empty string, got {object_id}"
-            
+            assert isinstance(object_id, str) and object_id, f"object_id should be non-empty string, got {object_id}"
+
             # Property: name is a non-empty string
-            assert isinstance(name, str) and name, \
-                f"name should be non-empty string, got {name}"
-            
+            assert isinstance(name, str) and name, f"name should be non-empty string, got {name}"
+
             # Property: icon starts with "mdi:"
-            assert isinstance(icon, str) and icon.startswith("mdi:"), \
-                f"icon should start with 'mdi:', got {icon}"
-            
-            # Property: key is a positive integer
-            assert isinstance(key, int) and key > 0, \
-                f"key should be positive integer, got {key}"
+            assert isinstance(icon, str) and icon.startswith("mdi:"), f"icon should start with 'mdi:', got {icon}"
+
+            # Property: key is a non-negative integer (0 is the version sensor)
+            assert isinstance(key, int) and key >= 0, f"key should be a non-negative integer, got {key}"
 
     def test_entity_definitions_include_process_diagnostics(self):
         """Process diagnostics should be exposed as sensors."""
         monitor = WindowsMonitor()
         system_info = {
-            'cpu': {'cpu_percent': 10.0},
-            'memory': {'percent': 20.0, 'available': 8 * 1024**3},
-            'disk': {},
-            'network': {'bytes_sent_gb': 1.0, 'bytes_recv_gb': 2.0, 'ip_address': '127.0.0.1'},
-            'system': {'boot_time_iso': '2024-01-01T00:00:00', 'uptime_hours': 1.0, 'process_count': 100},
-            'process': {
-                'rss_mb': 123.4,
-                'thread_count': 8,
-                'handle_count': 42,
-                'gdi_count': 7,
-                'user_object_count': 9,
+            "cpu": {"cpu_percent": 10.0},
+            "memory": {"percent": 20.0, "available": 8 * 1024**3},
+            "disk": {},
+            "network": {"bytes_sent_gb": 1.0, "bytes_recv_gb": 2.0, "ip_address": "127.0.0.1"},
+            "system": {"boot_time_iso": "2024-01-01T00:00:00", "uptime_hours": 1.0, "process_count": 100},
+            "process": {
+                "rss_mb": 123.4,
+                "thread_count": 8,
+                "handle_count": 42,
+                "gdi_count": 7,
+                "user_object_count": 9,
             },
         }
 
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             definitions = monitor.get_esp_entity_definitions()
 
@@ -269,46 +287,42 @@ class TestSensorEntityDefinitions:
             if isinstance(definition, ListEntitiesSensorResponse)
         }
 
-        assert 'process_memory_mb' in diagnostics
-        assert 'thread_count' in diagnostics
-        assert 'handle_count' in diagnostics
-        assert 'gdi_count' in diagnostics
-        assert 'user_object_count' in diagnostics
-        assert diagnostics['process_memory_mb'].unit_of_measurement == 'MB'
+        assert "process_memory_mb" in diagnostics
+        assert "thread_count" in diagnostics
+        assert "handle_count" in diagnostics
+        assert "gdi_count" in diagnostics
+        assert "user_object_count" in diagnostics
+        assert diagnostics["process_memory_mb"].unit_of_measurement == "MB"
 
     def test_sensor_states_include_process_diagnostics(self):
         """Process diagnostic states should be reported with current values."""
         monitor = WindowsMonitor()
         system_info = {
-            'cpu': {'cpu_percent': 10.0},
-            'memory': {'percent': 20.0, 'available': 8 * 1024**3},
-            'disk': {},
-            'network': {'bytes_sent_gb': 1.0, 'bytes_recv_gb': 2.0, 'ip_address': '127.0.0.1'},
-            'system': {'boot_time_iso': '2024-01-01T00:00:00', 'uptime_hours': 1.0, 'process_count': 100},
-            'process': {
-                'rss_mb': 123.4,
-                'thread_count': 8,
-                'handle_count': 42,
-                'gdi_count': 7,
-                'user_object_count': 9,
+            "cpu": {"cpu_percent": 10.0},
+            "memory": {"percent": 20.0, "available": 8 * 1024**3},
+            "disk": {},
+            "network": {"bytes_sent_gb": 1.0, "bytes_recv_gb": 2.0, "ip_address": "127.0.0.1"},
+            "system": {"boot_time_iso": "2024-01-01T00:00:00", "uptime_hours": 1.0, "process_count": 100},
+            "process": {
+                "rss_mb": 123.4,
+                "thread_count": 8,
+                "handle_count": 42,
+                "gdi_count": 7,
+                "user_object_count": 9,
             },
         }
 
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             states = monitor.get_esp_sensor_states()
 
-        numeric_states = {
-            state.key: state.state
-            for state in states
-            if isinstance(state, SensorStateResponse)
-        }
+        numeric_states = {state.key: state.state for state in states if isinstance(state, SensorStateResponse)}
 
-        assert numeric_states[SENSOR_KEYS['process_memory_mb']] == pytest.approx(123.4)
-        assert numeric_states[SENSOR_KEYS['thread_count']] == 8.0
-        assert numeric_states[SENSOR_KEYS['handle_count']] == 42.0
-        assert numeric_states[SENSOR_KEYS['gdi_count']] == 7.0
-        assert numeric_states[SENSOR_KEYS['user_object_count']] == 9.0
+        assert numeric_states[SENSOR_KEYS["process_memory_mb"]] == pytest.approx(123.4)
+        assert numeric_states[SENSOR_KEYS["thread_count"]] == 8.0
+        assert numeric_states[SENSOR_KEYS["handle_count"]] == 42.0
+        assert numeric_states[SENSOR_KEYS["gdi_count"]] == 7.0
+        assert numeric_states[SENSOR_KEYS["user_object_count"]] == 9.0
 
     @pytest.mark.slow
     @given(system_info=system_info_strategy)
@@ -317,50 +331,62 @@ class TestSensorEntityDefinitions:
         """
         Property 11: get_esp_entity_definitions SHALL return valid protobuf
         messages ending with ListEntitiesDoneResponse.
-        
+
         **Feature: ha-windows-client, Property 11: Sensor Entity Definitions**
         **Validates: Requirements 5.1**
         """
         monitor = WindowsMonitor()
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             definitions = monitor.get_esp_entity_definitions()
-        
+
         # Property: definitions is a non-empty list
-        assert isinstance(definitions, list) and len(definitions) > 0, \
-            "Entity definitions should be a non-empty list"
-        
+        assert isinstance(definitions, list) and len(definitions) > 0, "Entity definitions should be a non-empty list"
+
         # Property: Last element is ListEntitiesDoneResponse
-        assert isinstance(definitions[-1], ListEntitiesDoneResponse), \
-            "Last element should be ListEntitiesDoneResponse"
-        
-        # Property: All other elements are ListEntitiesTextSensorResponse
+        assert isinstance(definitions[-1], ListEntitiesDoneResponse), "Last element should be ListEntitiesDoneResponse"
+
+        # Property: All other elements are sensor or text sensor definitions.
+        # Numeric values (percentages, counters) are SensorResponses; status
+        # strings (version, battery status, IP) are TextSensorResponses.
         for i, definition in enumerate(definitions[:-1]):
-            assert isinstance(definition, ListEntitiesTextSensorResponse), \
-                f"Element {i} should be ListEntitiesTextSensorResponse"
+            assert isinstance(
+                definition, (ListEntitiesSensorResponse, ListEntitiesTextSensorResponse)
+            ), f"Element {i} should be a sensor or text sensor definition, got {type(definition)}"
 
     def test_sensor_keys_are_predefined(self):
         """
         Property 11: All sensor keys SHALL be predefined in SENSOR_KEYS.
-        
+
         **Feature: ha-windows-client, Property 11: Sensor Entity Definitions**
         **Validates: Requirements 5.1**
         """
-        # Property: SENSOR_KEYS contains expected sensors
-        expected_sensors = ["cpu_usage", "memory_usage", "disk_usage", 
-                          "battery_status", "battery_level", "network_status"]
-        
+        # Property: SENSOR_KEYS contains the fixed sensors. Disk sensors are
+        # dynamic (one DISK_KEY_OFFSET pair per disk) and intentionally not
+        # predefined; "network_status" was split into upload/download.
+        expected_sensors = [
+            "version",
+            "cpu_usage",
+            "memory_usage",
+            "memory_free",
+            "battery_status",
+            "battery_level",
+            "ip_address",
+            "network_upload",
+            "network_download",
+        ]
+
         for sensor in expected_sensors:
-            assert sensor in SENSOR_KEYS, \
-                f"SENSOR_KEYS should contain '{sensor}'"
-        
-        # Property: All keys are unique positive integers
+            assert sensor in SENSOR_KEYS, f"SENSOR_KEYS should contain '{sensor}'"
+
+        # Property: dynamic per-disk keys are never predefined
+        assert "disk_usage" not in SENSOR_KEYS, "Disk sensors are dynamic per-disk and must not have a fixed key"
+
+        # Property: All keys are unique non-negative integers (0 = version)
         keys = list(SENSOR_KEYS.values())
-        assert len(keys) == len(set(keys)), \
-            "All sensor keys should be unique"
-        assert all(isinstance(k, int) and k > 0 for k in keys), \
-            "All sensor keys should be positive integers"
+        assert len(keys) == len(set(keys)), "All sensor keys should be unique"
+        assert all(isinstance(k, int) and k >= 0 for k in keys), "All sensor keys should be non-negative integers"
 
 
 # =============================================================================
@@ -370,10 +396,11 @@ class TestSensorEntityDefinitions:
 # Validates: Requirements 5.2
 # =============================================================================
 
+
 class TestSensorValueValidity:
     """
     Property 12: Sensor Value Validity
-    
+
     **Feature: ha-windows-client, Property 12: Sensor Value Validity**
     **Validates: Requirements 5.2**
     """
@@ -384,39 +411,37 @@ class TestSensorValueValidity:
     def test_cpu_usage_value_in_valid_range(self, cpu_percent: float):
         """
         Property 12: CPU usage value SHALL be in range 0-100%.
-        
+
         **Feature: ha-windows-client, Property 12: Sensor Value Validity**
         **Validates: Requirements 5.2**
         """
         monitor = WindowsMonitor()
-        
+
         system_info = {
-            'cpu': {'cpu_percent': cpu_percent},
-            'memory': {'percent': 50.0},
-            'disk': {'C:\\': {'percent': 50.0}},
-            'network': {'bytes_sent': 1000, 'bytes_recv': 1000},
+            "cpu": {"cpu_percent": cpu_percent},
+            "memory": {"percent": 50.0},
+            "disk": {"C:\\": {"percent": 50.0}},
+            "network": {"bytes_sent": 1000, "bytes_recv": 1000},
         }
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             states = monitor.get_esp_sensor_states()
-        
+
         # Find CPU state
         cpu_state = None
         for state in states:
             if state.key == SENSOR_KEYS["cpu_usage"]:
                 cpu_state = state
                 break
-        
+
         assert cpu_state is not None, "CPU state should be present"
-        
-        # Extract numeric value from state string (e.g., "50.0%")
-        value_str = cpu_state.state.rstrip('%')
-        value = float(value_str)
-        
+
+        # Numeric sensors report a float state
+        value = float(cpu_state.state)
+
         # Property: CPU value is in valid range
-        assert 0.0 <= value <= 100.0, \
-            f"CPU usage {value} should be in range 0-100"
+        assert 0.0 <= value <= 100.0, f"CPU usage {value} should be in range 0-100"
 
     @pytest.mark.slow
     @given(memory_percent=memory_percent_strategy)
@@ -424,39 +449,37 @@ class TestSensorValueValidity:
     def test_memory_usage_value_in_valid_range(self, memory_percent: float):
         """
         Property 12: Memory usage value SHALL be in range 0-100%.
-        
+
         **Feature: ha-windows-client, Property 12: Sensor Value Validity**
         **Validates: Requirements 5.2**
         """
         monitor = WindowsMonitor()
-        
+
         system_info = {
-            'cpu': {'cpu_percent': 50.0},
-            'memory': {'percent': memory_percent},
-            'disk': {'C:\\': {'percent': 50.0}},
-            'network': {'bytes_sent': 1000, 'bytes_recv': 1000},
+            "cpu": {"cpu_percent": 50.0},
+            "memory": {"percent": memory_percent},
+            "disk": {"C:\\": {"percent": 50.0}},
+            "network": {"bytes_sent": 1000, "bytes_recv": 1000},
         }
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             states = monitor.get_esp_sensor_states()
-        
+
         # Find memory state
         memory_state = None
         for state in states:
             if state.key == SENSOR_KEYS["memory_usage"]:
                 memory_state = state
                 break
-        
+
         assert memory_state is not None, "Memory state should be present"
-        
+
         # Extract numeric value from state string
-        value_str = memory_state.state.rstrip('%')
-        value = float(value_str)
-        
+        value = float(memory_state.state)
+
         # Property: Memory value is in valid range
-        assert 0.0 <= value <= 100.0, \
-            f"Memory usage {value} should be in range 0-100"
+        assert 0.0 <= value <= 100.0, f"Memory usage {value} should be in range 0-100"
 
     @pytest.mark.slow
     @given(disk_percent=disk_percent_strategy)
@@ -464,39 +487,38 @@ class TestSensorValueValidity:
     def test_disk_usage_value_in_valid_range(self, disk_percent: float):
         """
         Property 12: Disk usage value SHALL be in range 0-100%.
-        
+
         **Feature: ha-windows-client, Property 12: Sensor Value Validity**
         **Validates: Requirements 5.2**
         """
         monitor = WindowsMonitor()
-        
+
         system_info = {
-            'cpu': {'cpu_percent': 50.0},
-            'memory': {'percent': 50.0},
-            'disk': {'C:\\': {'percent': disk_percent}},
-            'network': {'bytes_sent': 1000, 'bytes_recv': 1000},
+            "cpu": {"cpu_percent": 50.0},
+            "memory": {"percent": 50.0},
+            "disk": {"C:\\": {"percent": disk_percent}},
+            "network": {"bytes_sent": 1000, "bytes_recv": 1000},
         }
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             states = monitor.get_esp_sensor_states()
-        
-        # Find disk state
+
+        # Disk sensors are per-drive: locate the C: usage entity's dynamic key
+        disk_key = monitor._entity_map["disk_c_usage"][2]
         disk_state = None
         for state in states:
-            if state.key == SENSOR_KEYS["disk_usage"]:
+            if state.key == disk_key:
                 disk_state = state
                 break
-        
+
         assert disk_state is not None, "Disk state should be present"
-        
-        # Extract numeric value from state string
-        value_str = disk_state.state.rstrip('%')
-        value = float(value_str)
-        
+
+        # Numeric sensors report a float state
+        value = float(disk_state.state)
+
         # Property: Disk value is in valid range
-        assert 0.0 <= value <= 100.0, \
-            f"Disk usage {value} should be in range 0-100"
+        assert 0.0 <= value <= 100.0, f"Disk usage {value} should be in range 0-100"
 
     @pytest.mark.slow
     @given(battery_level=battery_level_strategy)
@@ -504,40 +526,38 @@ class TestSensorValueValidity:
     def test_battery_level_value_in_valid_range(self, battery_level: int):
         """
         Property 12: Battery level value SHALL be in range 0-100%.
-        
+
         **Feature: ha-windows-client, Property 12: Sensor Value Validity**
         **Validates: Requirements 5.2**
         """
         monitor = WindowsMonitor()
-        
+
         system_info = {
-            'cpu': {'cpu_percent': 50.0},
-            'memory': {'percent': 50.0},
-            'disk': {'C:\\': {'percent': 50.0}},
-            'battery': {'percent': battery_level, 'power_plugged': True},
-            'network': {'bytes_sent': 1000, 'bytes_recv': 1000},
+            "cpu": {"cpu_percent": 50.0},
+            "memory": {"percent": 50.0},
+            "disk": {"C:\\": {"percent": 50.0}},
+            "battery": {"percent": battery_level, "power_plugged": True},
+            "network": {"bytes_sent": 1000, "bytes_recv": 1000},
         }
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             states = monitor.get_esp_sensor_states()
-        
+
         # Find battery level state
         battery_state = None
         for state in states:
             if state.key == SENSOR_KEYS["battery_level"]:
                 battery_state = state
                 break
-        
+
         assert battery_state is not None, "Battery level state should be present"
-        
-        # Extract numeric value from state string
-        value_str = battery_state.state.rstrip('%')
-        value = float(value_str)
-        
+
+        # Numeric sensors report a float state
+        value = float(battery_state.state)
+
         # Property: Battery level is in valid range
-        assert 0 <= value <= 100, \
-            f"Battery level {value} should be in range 0-100"
+        assert 0 <= value <= 100, f"Battery level {value} should be in range 0-100"
 
     @pytest.mark.slow
     @given(power_plugged=battery_charging_strategy)
@@ -546,101 +566,109 @@ class TestSensorValueValidity:
         """
         Property 12: Battery status value SHALL be a valid enum
         (Charging or Discharging).
-        
+
         **Feature: ha-windows-client, Property 12: Sensor Value Validity**
         **Validates: Requirements 5.2**
         """
         monitor = WindowsMonitor()
-        
+
         system_info = {
-            'cpu': {'cpu_percent': 50.0},
-            'memory': {'percent': 50.0},
-            'disk': {'C:\\': {'percent': 50.0}},
-            'battery': {'percent': 50, 'power_plugged': power_plugged},
-            'network': {'bytes_sent': 1000, 'bytes_recv': 1000},
+            "cpu": {"cpu_percent": 50.0},
+            "memory": {"percent": 50.0},
+            "disk": {"C:\\": {"percent": 50.0}},
+            "battery": {"percent": 50, "power_plugged": power_plugged},
+            "network": {"bytes_sent": 1000, "bytes_recv": 1000},
         }
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             states = monitor.get_esp_sensor_states()
-        
+
         # Find battery status state
         battery_status = None
         for state in states:
             if state.key == SENSOR_KEYS["battery_status"]:
                 battery_status = state
                 break
-        
+
         assert battery_status is not None, "Battery status state should be present"
-        
+
         # Property: Battery status is valid enum
         valid_statuses = {"Charging", "Discharging"}
-        assert battery_status.state in valid_statuses, \
-            f"Battery status '{battery_status.state}' should be in {valid_statuses}"
-        
+        assert (
+            battery_status.state in valid_statuses
+        ), f"Battery status '{battery_status.state}' should be in {valid_statuses}"
+
         # Property: Status matches power_plugged value
         expected_status = "Charging" if power_plugged else "Discharging"
-        assert battery_status.state == expected_status, \
-            f"Battery status should be '{expected_status}' when power_plugged={power_plugged}"
+        assert (
+            battery_status.state == expected_status
+        ), f"Battery status should be '{expected_status}' when power_plugged={power_plugged}"
 
     @pytest.mark.slow
     @given(bytes_sent=network_bytes_strategy, bytes_recv=network_bytes_strategy)
     @settings(max_examples=25, deadline=None)
-    def test_network_status_value_is_valid_enum(self, bytes_sent: int, bytes_recv: int):
+    def test_network_counters_are_non_negative(self, bytes_sent: int, bytes_recv: int):
         """
-        Property 12: Network status value SHALL be a valid enum
-        (Online or Offline).
-        
+        Property 12: Network counters SHALL be non-negative numeric values.
+
         **Feature: ha-windows-client, Property 12: Sensor Value Validity**
         **Validates: Requirements 5.2**
         """
         monitor = WindowsMonitor()
-        
+
         system_info = {
-            'cpu': {'cpu_percent': 50.0},
-            'memory': {'percent': 50.0},
-            'disk': {'C:\\': {'percent': 50.0}},
-            'network': {'bytes_sent': bytes_sent, 'bytes_recv': bytes_recv},
+            "cpu": {"cpu_percent": 50.0},
+            "memory": {"percent": 50.0},
+            "disk": {"C:\\": {"percent": 50.0}},
+            "network": {"bytes_sent": bytes_sent, "bytes_recv": bytes_recv},
         }
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             states = monitor.get_esp_sensor_states()
-        
-        # Find network status state
-        network_status = None
+
+        # Find the upload/download counter states (network_status was split
+        # into an IP text sensor and these two monotonic counters)
+        upload = download = None
         for state in states:
-            if state.key == SENSOR_KEYS["network_status"]:
-                network_status = state
-                break
-        
-        assert network_status is not None, "Network status state should be present"
-        
-        # Property: Network status is valid enum
-        valid_statuses = {"Online", "Offline"}
-        assert network_status.state in valid_statuses, \
-            f"Network status '{network_status.state}' should be in {valid_statuses}"
+            if state.key == SENSOR_KEYS["network_upload"]:
+                upload = state
+            elif state.key == SENSOR_KEYS["network_download"]:
+                download = state
+
+        assert upload is not None, "Network upload state should be present"
+        assert download is not None, "Network download state should be present"
+
+        # Property: counters are non-negative numbers
+        assert float(upload.state) >= 0.0, f"Network upload {upload.state} should be non-negative"
+        assert float(download.state) >= 0.0, f"Network download {download.state} should be non-negative"
 
     @pytest.mark.slow
     @given(system_info=system_info_strategy)
     @settings(max_examples=25, deadline=None)
-    def test_all_states_are_text_sensor_responses(self, system_info: Dict):
+    def test_all_states_are_valid_state_responses(self, system_info: Dict):
         """
-        Property 12: All sensor states SHALL be TextSensorStateResponse objects.
-        
+        Property 12: All sensor states SHALL be valid state responses.
+
+        Numeric values (percentages, counters) are SensorStateResponse;
+        status strings (version, battery status, IP) are
+        TextSensorStateResponse.
+
         **Feature: ha-windows-client, Property 12: Sensor Value Validity**
         **Validates: Requirements 5.2**
         """
         monitor = WindowsMonitor()
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             states = monitor.get_esp_sensor_states()
-        
-        # Property: All states are TextSensorStateResponse
+
+        # Property: All states are numeric sensor or text sensor responses
         for state in states:
-            assert isinstance(state, TextSensorStateResponse), \
-                f"State should be TextSensorStateResponse, got {type(state)}"
+            assert isinstance(
+                state, (SensorStateResponse, TextSensorStateResponse)
+            ), f"State should be SensorStateResponse or TextSensorStateResponse, got {type(state)}"
 
     @pytest.mark.slow
     @given(system_info=system_info_strategy)
@@ -648,31 +676,33 @@ class TestSensorValueValidity:
     def test_state_keys_match_entity_keys(self, system_info: Dict):
         """
         Property 12: All state keys SHALL match defined entity keys.
-        
+
         **Feature: ha-windows-client, Property 12: Sensor Value Validity**
         **Validates: Requirements 5.2**
         """
         monitor = WindowsMonitor()
-        
-        with patch.object(monitor, 'get_all_info', return_value=system_info):
+
+        with patch.object(monitor, "get_all_info", return_value=system_info):
             monitor.discover_esp_entities()
             definitions = monitor.get_esp_entity_definitions()
             states = monitor.get_esp_sensor_states()
-        
+
         # Get entity keys (excluding ListEntitiesDoneResponse)
         entity_keys = {d.key for d in definitions[:-1]}
-        
+
         # Get state keys
         state_keys = {s.key for s in states}
-        
+
         # Property: All state keys are in entity keys
-        assert state_keys.issubset(entity_keys), \
-            f"State keys {state_keys} should be subset of entity keys {entity_keys}"
+        assert state_keys.issubset(
+            entity_keys
+        ), f"State keys {state_keys} should be subset of entity keys {entity_keys}"
 
 
 # =============================================================================
 # Additional edge case tests
 # =============================================================================
+
 
 class TestSensorEdgeCases:
     """Edge case tests for sensor functionality"""
@@ -690,25 +720,23 @@ class TestSensorEdgeCases:
         consistent results.
         """
         monitor = WindowsMonitor()
-        
+
         entities1 = monitor.discover_esp_entities()
         entities2 = monitor.discover_esp_entities()
-        
+
         # Property: Results are consistent
-        assert entities1 == entities2, \
-            "discover_esp_entities should return consistent results"
+        assert entities1 == entities2, "discover_esp_entities should return consistent results"
 
     def test_get_entity_count_matches_entities(self):
         """
         get_esp_entity_count SHALL return the correct count.
         """
         monitor = WindowsMonitor()
-        
+
         entities = monitor.discover_esp_entities()
         count = monitor.get_esp_entity_count()
-        
-        assert count == len(entities), \
-            f"Entity count {count} should match entities length {len(entities)}"
+
+        assert count == len(entities), f"Entity count {count} should match entities length {len(entities)}"
 
     def test_states_without_discovery_triggers_discovery(self):
         """
@@ -716,13 +744,12 @@ class TestSensorEdgeCases:
         trigger entity discovery.
         """
         monitor = WindowsMonitor()
-        
+
         # Call states without discovery
         states = monitor.get_esp_sensor_states()
-        
+
         # Property: States are returned (discovery was triggered)
-        assert isinstance(states, list), \
-            "get_esp_sensor_states should return a list"
+        assert isinstance(states, list), "get_esp_sensor_states should return a list"
 
     def test_extra_states_are_included(self):
         """
@@ -731,19 +758,20 @@ class TestSensorEdgeCases:
         """
         monitor = WindowsMonitor()
         monitor.discover_esp_entities()
-        
+
         # Add a custom entity to the map for testing
         monitor._entity_map["custom_sensor"] = ("Custom Sensor", "mdi:test", 99)
-        
+
         states = monitor.get_esp_sensor_states(custom_sensor="test_value")
-        
+
         # Find custom state
         custom_state = None
         for state in states:
             if state.key == 99:
                 custom_state = state
                 break
-        
+
         assert custom_state is not None, "Custom state should be present"
-        assert custom_state.state == "test_value", \
-            f"Custom state value should be 'test_value', got '{custom_state.state}'"
+        assert (
+            custom_state.state == "test_value"
+        ), f"Custom state value should be 'test_value', got '{custom_state.state}'"

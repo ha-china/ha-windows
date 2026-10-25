@@ -41,7 +41,6 @@ DATAS = [
 # must NOT be added here again - that would duplicate their data files.
 for _pkg in [
     'sounddevice',
-    'webrtcvad',
     'zeroconf',
     'ifaddr',
     'PIL',
@@ -56,7 +55,6 @@ for _pkg in [
 BINARIES = []
 for _pkg in [
     'sounddevice',
-    'webrtcvad',
     'zeroconf',
     'ifaddr',
     'PIL',
@@ -99,7 +97,6 @@ HIDDEN_IMPORTS = [
     'HardwareMonitor',
     'pymicro_wakeword',
     'pyopen_wakeword',
-    'webrtcvad',
     'zeroconf',
     'PIL',
     'pygame',
@@ -148,7 +145,6 @@ HIDDEN_IMPORTS = [
 # collect_all() above are intentionally NOT repeated here.
 for _pkg in [
     'sounddevice',
-    'webrtcvad',
     'zeroconf',
     'ifaddr',
     'PIL',

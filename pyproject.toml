@@ -28,7 +28,6 @@ dependencies = [
     "python-vlc>=3.0.0",
     "pymicro-wakeword>=2.0.0",
     "pyopen-wakeword>=1.0.0",
-    "webrtcvad-wheels>=2.0.10",
     "psutil>=5.9.0",
     "nvidia-ml-py>=12.0.0",
     "HardwareMonitor>=1.2.0",
@@ -115,7 +114,6 @@ disallow_incomplete_defs = false
 module = [
     "soundcard.*",
     "pycaw.*",
-    "webrtcvad.*",
     "pystray.*",
     "windows_toasts.*",
 ]

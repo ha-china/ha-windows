@@ -107,7 +107,7 @@ def build_exe():
         "--noconfirm",  # Overwrite output directory without asking
         "--distpath=dist",  # Output directory
         "--workpath=build",  # Build directory
-        "--additional-hooks-dir=hooks",  # Custom hooks directory (fix webrtcvad issue)
+        "--additional-hooks-dir=hooks",  # Custom hooks directory (sounddevice/vlc packaging)
     ]
 
     # Add platform-specific arguments
@@ -121,7 +121,6 @@ def build_exe():
         "--hidden-import=psutil",
         "--hidden-import=pymicro_wakeword",
         "--hidden-import=pyopen_wakeword",
-        "--hidden-import=webrtcvad",
         "--hidden-import=zeroconf",
         "--hidden-import=PIL",
         "--hidden-import=aiosendspin",

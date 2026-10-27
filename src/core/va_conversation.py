@@ -381,6 +381,14 @@ class VoiceAssistantMixin:
             self._timer_finished = False
             logger.debug("Stopped timer sound")
         else:
+            # Mark this run as manually stopped before the finish bookkeeping:
+            # RUN_END resets _tts_played, so a TTS_END still in flight after
+            # the stop would otherwise re-play the audio we just killed
+            # (linux-voice-assistant guards the same window with
+            # _pipeline_active). Continue-conversation must also not restart
+            # the pipeline right after the user asked it to shut up.
+            self._tts_played = True
+            self._continue_conversation = False
             logger.debug("Manually stopped TTS")
             self._tts_finished()
 

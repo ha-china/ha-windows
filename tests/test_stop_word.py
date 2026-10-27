@@ -101,6 +101,50 @@ class TestStopWordInterrupt:
         assert protocol.state.stop_word.id not in protocol.state.active_wake_words
         assert protocol._is_playing_tts is False
 
+    def test_late_tts_end_after_stop_does_not_replay(self):
+        """RUN_END resets _tts_played; a TTS_END still in flight after a
+        manual stop must not re-play the audio that was just killed."""
+        from aioesphomeapi.model import VoiceAssistantEventType
+
+        protocol = make_protocol()
+        arm_stop_word(protocol)
+        protocol._tts_url = "http://example.com/tts.mp3"
+
+        # TTS started (INTENT_PROGRESS), then the user says stop
+        protocol.play_tts()
+        assert protocol._tts_played is True
+        protocol.stop()
+
+        # In-flight pipeline events arrive after the stop (RUN_END resets
+        # _tts_played exactly like the real handler does)
+        protocol.handle_voice_event(
+            VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END, {"url": "http://example.com/tts.mp3"}
+        )
+        protocol.handle_voice_event(VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END, {})
+
+        # Only the initial play: the late TTS_END must be a no-op
+        assert protocol.state.tts_player.play.call_count == 1
+
+    def test_stop_kills_continue_conversation_chain(self):
+        """With continue-conversation enabled, a manual stop must not send
+        start=True and re-open the microphone (the speaker tail would be
+        transcribed into a phantom follow-up)."""
+        from aioesphomeapi.api_pb2 import VoiceAssistantRequest
+
+        protocol = make_protocol()
+        arm_stop_word(protocol)
+        protocol._tts_url = "http://example.com/tts.mp3"
+        protocol._is_playing_tts = True
+        protocol._continue_conversation = True
+        sent: list = []
+        protocol.send_messages = sent.append
+
+        protocol.stop()
+
+        # No start=True went out, and the mic was not re-opened
+        assert not any(isinstance(m, VoiceAssistantRequest) for m in sent)
+        assert protocol._is_streaming_audio is False
+
 
 class TestHotkeyCancel:
     def test_hotkey_during_tts_cancels_playback(self):

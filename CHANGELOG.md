@@ -5,11 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachallg.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] - 2026-10-27
 
 ### Added
-- Opt-in local event stream for custom overlays: `--event-port PORT` streams voice assistant events (phase changes, wake word, recognized speech, reply text, announcements, errors) as newline-delimited JSON on `127.0.0.1:PORT`. Read-only, local only, off by default. Documented in the README under "Local Event Stream".
+- Opt-in local event stream for custom overlays: `--event-port PORT` streams voice assistant events (phase changes, wake word, recognized speech, reply text, announcements, errors) as newline-delimited JSON on `127.0.0.1:PORT`. Read-only, local only, off by default. Documented in the README under "Local Event Stream" (PR #15).
 - New `src/core/event_stream.py` and `tests/test_event_stream.py`.
+- The global hotkey now cancels the current TTS / timer-ring playback instead of starting a new conversation while something is playing (issue #17).
+
+### Fixed
+- Saying "stop" now actually interrupts playback (issue #17): the bundled `stop` model was never loaded into `state.stop_word`, so the whole stop-word chain stayed dead and the audio callback never ran the detector. It is now armed at startup, mirroring linux-voice-assistant.
+- A manual stop can no longer be undone by late pipeline events: `RUN_END` resets `_tts_played`, so a `TTS_END` still in flight re-played the just-stopped audio, and a continue-conversation pipeline immediately re-opened the microphone - the speaker tail came back as a phantom follow-up. `stop()` now marks the run as manually stopped (same guard semantics as linux-voice-assistant's `_pipeline_active`).
+- Music Assistant (Sendspin) playback ignored the selected output device on interfaces whose WASAPI side rejects the 48 kHz stream (e.g. RME fixed-rate output pairs, issue #16): the device open now falls back to the same device on MME - where the Windows mixer resamples - before giving up and using the system default.
+- VLC output-device switching is now logged at INFO/WARNING level so device-routing problems are visible in user logs (diagnosing the monitor-audio crash report, issue #16).
+
+### Removed
+- Dead `src/voice/vad.py` (webrtcvad): unreferenced since wake-word gating moved to the bundled microWakeWord VAD model. The `webrtcvad-wheels` dependency and its packaging hooks are gone.
 
 ## [1.4.3] - 2026-10-13
 
